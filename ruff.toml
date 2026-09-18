@@ -1,0 +1,25 @@
+# Shared ruff configuration so CLI and editor runners sort imports identically.
+# Without an explicit classification, isort resolves third-party packages
+# (fastapi, sqlalchemy) inconsistently and keeps re-sorting the import block.
+[lint]
+# F811 catches redefinitions of unused names (e.g. a copy-pasted duplicate
+# function that silently overwrites the original — review §1.1).
+extend-select = ["F811"]
+
+[lint.isort]
+known-first-party = [
+    "api",
+    "auth",
+    "background_sync",
+    "classroom_api",
+    "config",
+    "database",
+    "grading",
+    "main",
+    "models",
+    "path_config",
+    "schemas",
+    "sync",
+    "sync_service",
+    "sync_store",
+]

@@ -1,0 +1,5 @@
+# Development/test tooling (not needed to run the dashboard).
+#   .venv\Scripts\python.exe -m pip install -r backend/requirements-dev.txt
+-r requirements.txt
+pytest>=8
+ruff>=0.9

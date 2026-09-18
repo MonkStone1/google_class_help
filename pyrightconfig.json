@@ -1,0 +1,7 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "extraPaths": ["backend"],
+  "include": ["backend", "tests", "tools"],
+  "exclude": ["**/__pycache__", "build", "release", "frontend"]
+}

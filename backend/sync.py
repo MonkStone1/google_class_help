@@ -1,0 +1,28 @@
+"""Business-logic facade (review §2.2).
+
+The former single sync.py is split into three layers; this module only
+re-exports them so existing callers (api.py, background_sync.py) keep their
+imports:
+
+- ``grading.py``      — pure domain rules (status, percent, priority);
+- ``sync_store.py``   — everything that writes/reads the SQLite cache;
+- ``sync_service.py`` — orchestration: pull from Google, call the store.
+
+Import layers directly in new code; this facade exists for compatibility.
+"""
+
+from grading import (  # noqa: F401
+    SUBMITTED_STATES,
+    compute_priority,
+    derive_submission_status,
+    grade_percent,
+    is_submitted_state,
+)
+from sync_service import sync_now  # noqa: F401
+from sync_store import (  # noqa: F401
+    SubmissionRow,
+    get_state,
+    get_state_datetime,
+    get_submission,
+    reset_cache,
+)
