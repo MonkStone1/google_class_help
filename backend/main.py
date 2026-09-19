@@ -9,6 +9,11 @@ and use the Vite dev server (http://localhost:5173) for the frontend.
 Production: backend/launcher.py starts this app and serves the frontend
 built with `npm run build` from frontend/dist on the same origin, so the
 browser only ever talks to http://127.0.0.1:<port>.
+
+Hosted mode (GC_DASHBOARD_HOSTED=1, migration stage 2 / ADR-0020) builds a
+different app: web OAuth + sessions (hosted_auth.py) are mounted in front
+of the API and every data endpoint is gated on an application session. The
+desktop build keeps its exact pre-migration behaviour.
 """
 
 import logging
@@ -24,39 +29,32 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from api import router
 from background_sync import start as start_background_sync
 from background_sync import stop as stop_background_sync
-from config import FRONTEND_ORIGINS
-from database import init_db
+from config import FRONTEND_ORIGINS, HOSTED_MODE
+from database import SessionLocal, init_db
 from path_config import FRONTEND_DIST_DIR
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
-    """Init the DB, start the background schedule, stop it on shutdown.
+async def lifespan(app: FastAPI):
+    """Init the DB, start the background schedule (desktop), stop on shutdown.
 
-    Replaces the deprecated @app.on_event("startup") (review §1.9).
+    Replaces the deprecated @app.on_event("startup") (review §1.9). Hosted
+    mode skips the global background loop: it syncs the single token.json
+    that does not exist in hosted mode; per-user scheduling arrives with
+    migration stage 5.
     """
     init_db()
-    # Sync right after startup, then automatically every interval (ADR-0015).
-    start_background_sync()
+    if not app.state.hosted:
+        # Sync right after startup, then automatically every interval (ADR-0015).
+        start_background_sync()
     yield
-    stop_background_sync()
+    if not app.state.hosted:
+        stop_background_sync()
 
 
-app = FastAPI(
-    title="Local Google Classroom Dashboard", version="1.0.0", lifespan=lifespan
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=FRONTEND_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# ------------------------------------------------------------- local guard
+# ----------------------------------------------------- desktop local guard
 
 
 # The server binds to 127.0.0.1 only (launcher); the middleware below is the
@@ -79,55 +77,115 @@ def _origin_allowed(origin: str) -> bool:
         return False
 
 
-@app.middleware("http")
-async def enforce_local_only(request: Request, call_next):
-    host = request.headers.get("host", "").split(":")[0].lower()
-    origin = request.headers.get("origin")
-    if host not in TRUSTED_HOSTS:
-        return JSONResponse({"detail": "Forbidden"}, status_code=403)
-    # Browser requests from foreign pages are cut by Origin; non-browser
-    # requests (curl) send no Origin and are limited by the 127.0.0.1 bind.
-    if origin is not None and not _origin_allowed(origin):
-        return JSONResponse({"detail": "Forbidden origin"}, status_code=403)
-    return await call_next(request)
+def create_app(hosted: bool = False) -> FastAPI:
+    """Build the FastAPI app for one deployment mode.
 
+    Desktop (default): loopback OAuth (ADR-0019), 127.0.0.1 guards, global
+    background sync — byte-for-byte the pre-migration behaviour.
 
-app.include_router(router)
-
-
-@app.get("/api/health")
-def health() -> dict:
-    return {"ok": True}
-
-
-class SPAStaticFiles(StaticFiles):
-    """Static files with SPA fallback.
-
-    The frontend uses client-side routing (BrowserRouter); unknown paths
-    (e.g. /subjects/123) must return index.html so React Router can take
-    over, while missing static assets still return a normal 404.
+    Hosted: web OAuth + sessions (ADR-0020). The hosted /api/auth/* router
+    is included BEFORE the api router so its GET /auth/status, GET+POST
+    /auth/login and POST /auth/logout shadow the desktop ones; a session
+    gate closes every other /api path until user-scoping lands (stage 4).
     """
-
-    async def get_response(self, path: str, scope):
-        try:
-            return await super().get_response(path, scope)
-        except StarletteHTTPException as exc:
-            if exc.status_code != 404:
-                raise
-            if path.startswith("assets/"):
-                raise
-            return await super().get_response("index.html", scope)
-
-
-# Registered after the /api router: API routes always win. The mount is
-# skipped when frontend/dist has not been built yet (development).
-if FRONTEND_DIST_DIR.is_dir():
-    app.mount(
-        "/", SPAStaticFiles(directory=FRONTEND_DIST_DIR, html=True), name="frontend"
+    app = FastAPI(
+        title="Local Google Classroom Dashboard", version="1.0.0", lifespan=lifespan
     )
-else:
-    logger.warning(
-        "frontend/dist not found at %s — production frontend is not served "
-        "(run `npm run build`, or use the Vite dev server).",
-        FRONTEND_DIST_DIR,
+    app.state.hosted = hosted
+
+    if hosted:
+        from hosted_auth import resolve_session_user
+        from hosted_auth import router as hosted_router
+
+        # Added FIRST so CORS (added below) wraps the gate: 401 responses
+        # still carry CORS headers and the frontend can read them (§7).
+        @app.middleware("http")
+        async def require_session(request: Request, call_next):
+            path = request.url.path
+            # The auth flow itself, the health probe and CORS preflights
+            # must stay reachable without a session.
+            if (
+                request.method == "OPTIONS"
+                or path == "/api/health"
+                or path.startswith("/api/auth/")
+            ):
+                return await call_next(request)
+            db = SessionLocal()
+            try:
+                # Sync call inside async middleware: a single indexed
+                # session lookup for now; the async-ready dependency wiring
+                # is part of stages 3-4.
+                user = resolve_session_user(request, db)
+            except StarletteHTTPException:
+                return JSONResponse({"detail": "Not signed in."}, status_code=401)
+            finally:
+                db.close()
+            request.state.user_id = user.id
+            return await call_next(request)
+
+        app.include_router(hosted_router)
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=FRONTEND_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
+
+    if not hosted:
+        # Desktop only: the local-only Host/Origin guard. Hosted replaces
+        # it with real authentication; env-driven trusted hosts for the
+        # production domain arrive with stage 7.
+        @app.middleware("http")
+        async def enforce_local_only(request: Request, call_next):
+            host = request.headers.get("host", "").split(":")[0].lower()
+            origin = request.headers.get("origin")
+            if host not in TRUSTED_HOSTS:
+                return JSONResponse({"detail": "Forbidden"}, status_code=403)
+            # Browser requests from foreign pages are cut by Origin; non-browser
+            # requests (curl) send no Origin and are limited by the 127.0.0.1 bind.
+            if origin is not None and not _origin_allowed(origin):
+                return JSONResponse({"detail": "Forbidden origin"}, status_code=403)
+            return await call_next(request)
+
+    app.include_router(router)
+
+    @app.get("/api/health")
+    def health() -> dict:
+        return {"ok": True}
+
+    class SPAStaticFiles(StaticFiles):
+        """Static files with SPA fallback.
+
+        The frontend uses client-side routing (BrowserRouter); unknown paths
+        (e.g. /subjects/123) must return index.html so React Router can take
+        over, while missing static assets still return a normal 404.
+        """
+
+        async def get_response(self, path: str, scope):
+            try:
+                return await super().get_response(path, scope)
+            except StarletteHTTPException as exc:
+                if exc.status_code != 404:
+                    raise
+                if path.startswith("assets/"):
+                    raise
+                return await super().get_response("index.html", scope)
+
+    # Registered after the /api router: API routes always win. The mount is
+    # skipped when frontend/dist has not been built yet (development).
+    if FRONTEND_DIST_DIR.is_dir():
+        app.mount(
+            "/", SPAStaticFiles(directory=FRONTEND_DIST_DIR, html=True), name="frontend"
+        )
+    else:
+        logger.warning(
+            "frontend/dist not found at %s — production frontend is not served "
+            "(run `npm run build`, or use the Vite dev server).",
+            FRONTEND_DIST_DIR,
+        )
+    return app
+
+
+app = create_app(hosted=HOSTED_MODE)

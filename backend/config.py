@@ -14,16 +14,16 @@ from path_config import DATA_DIR, PROJECT_DIR, ensure_data_dirs
 ensure_data_dirs()
 
 # User-writable OAuth token. In production: %LOCALAPPDATA%\GoogleClassHelp\token.json
-TOKEN_FILE = Path(
-    os.environ.get("GC_DASHBOARD_TOKEN", DATA_DIR / "token.json")
-)
+TOKEN_FILE = Path(os.environ.get("GC_DASHBOARD_TOKEN", DATA_DIR / "token.json"))
 DATABASE_FILE = DATA_DIR / "classroom.db"
 
 # Development-only fallback: the visible credentials.json in the project
 # tree. In production builds the client config is embedded (see
 # build_secrets.py / auth.py) and this file is not distributed.
 CREDENTIALS_FILE = Path(
-    os.environ.get("GC_DASHBOARD_CREDENTIALS", PROJECT_DIR / "backend" / "credentials.json")
+    os.environ.get(
+        "GC_DASHBOARD_CREDENTIALS", PROJECT_DIR / "backend" / "credentials.json"
+    )
 )
 
 
@@ -63,3 +63,53 @@ FRONTEND_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
+
+
+# --------------------------------------------------------------- hosted mode
+
+
+# Hosted service switch (migration stage 2, ADR-0020): GC_DASHBOARD_HOSTED=1
+# replaces the desktop loopback OAuth with the web OAuth flow, sessions and
+# DB-stored tokens. Desktop builds never set it and keep their ADR-0019 flow.
+def _hosted_enabled() -> bool:
+    return os.environ.get("GC_DASHBOARD_HOSTED", "").strip() in {
+        "1",
+        "true",
+        "TRUE",
+        "True",
+        "yes",
+    }
+
+
+HOSTED_MODE = _hosted_enabled()
+
+# Google web OAuth client of the hosted service (migration prompt §4/§9):
+# a client of type "Web application" in the same GCP project, whose
+# authorized redirect URI must exactly match GOOGLE_REDIRECT_URI (default
+# derived from APP_BASE_URL). The client_id is public; the client_secret is
+# a server-only secret and must be injected via the environment — never
+# committed, never shipped to the browser, never in frontend assets.
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
+APP_BASE_URL = os.environ.get("APP_BASE_URL", "").strip().rstrip("/")
+GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI", "").strip() or (
+    f"{APP_BASE_URL}/api/auth/callback" if APP_BASE_URL else ""
+)
+
+
+def hosted_oauth_client_config() -> dict | None:
+    """OAuth client config of the hosted web client, or None.
+
+    Mirrors the ``{"web": {"client_id", "client_secret", "token_uri",
+    "redirect_uri"}}`` shape google-auth libraries use for web clients so
+    the token-exchange helpers in auth.py work unchanged. Returns None when
+    the configuration is incomplete — hosted endpoints then fail closed.
+    """
+    if not (GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET and GOOGLE_REDIRECT_URI):
+        return None
+    return {
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+    }

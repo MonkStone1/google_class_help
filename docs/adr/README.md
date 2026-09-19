@@ -26,3 +26,4 @@
 | [ADR-0017](adr-0017-teacher-mode.md) | Teacher-режим — отдельный маршрут чтения курса | Accepted |
 | [ADR-0018](adr-0018-single-instance-launcher.md) | Single-instance launcher — mutex, state-файл порта, трей и активация дашборда | Accepted |
 | [ADR-0019](adr-0019-oauth-flow-owned-by-app.md) | OAuth-флоу во владении приложения — свой loopback-callback и единый HTTPS-транспорт | Accepted |
+| [ADR-0020](adr-0020-hosted-web-oauth-and-sessions.md) | Хостед-режим — web OAuth, серверные сессии и шифрование токенов | Accepted |

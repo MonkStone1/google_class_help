@@ -51,7 +51,9 @@ def _resolve_data_dir() -> Path:
         return Path(override).expanduser()
     if IS_FROZEN:
         local_appdata = os.environ.get("LOCALAPPDATA")
-        base = Path(local_appdata) if local_appdata else Path.home() / "AppData" / "Local"
+        base = (
+            Path(local_appdata) if local_appdata else Path.home() / "AppData" / "Local"
+        )
         return base / "GoogleClassHelp"
     # Development keeps writable data inside the project tree.
     return PROJECT_DIR / "data"

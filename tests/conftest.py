@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from cryptography.fernet import Fernet
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent / "backend"
 sys.path.insert(0, str(BACKEND_DIR))
@@ -19,6 +20,18 @@ sys.path.insert(0, str(BACKEND_DIR))
 # setdefault: tests drop all tables, so they must never be able to point at
 # the real cache even if the env var is already set in the shell.
 os.environ["GC_DASHBOARD_DATA_DIR"] = tempfile.mkdtemp(prefix="gc-dashboard-tests-")
+
+# Hosted-mode configuration (migration stage 2). Hermetic dummy values set
+# before `config`/`hosted_auth` are imported, so importing the modules never
+# reads a developer's real Google client. The encryption key is a throwaway
+# Fernet key generated for this test process only. Tests that need the
+# hosted app build it explicitly with create_app(hosted=True).
+os.environ.setdefault(
+    "GC_DASHBOARD_OAUTH_TOKEN_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii")
+)
+os.environ.setdefault("GOOGLE_CLIENT_ID", "test-web-client.apps.googleusercontent.com")
+os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-web-client-secret")
+os.environ.setdefault("GOOGLE_REDIRECT_URI", "https://gch.test/api/auth/callback")
 
 from fastapi.testclient import TestClient
 
@@ -50,3 +63,22 @@ def db(client):
         yield session
     finally:
         session.close()
+
+
+@pytest.fixture()
+def hosted_client():
+    """The hosted-mode app (web OAuth + session gate), no lifespan.
+
+    Built through the app factory instead of the module-level ``app`` so
+    the desktop app used by the other tests is not polluted: hosted mode is
+    selected per app, not by a process-wide env switch.
+    """
+    from main import create_app
+
+    Base.metadata.create_all(engine)
+    test_client = TestClient(create_app(hosted=True), base_url="https://gch.test")
+    try:
+        yield test_client
+    finally:
+        test_client.close()
+        Base.metadata.drop_all(engine)

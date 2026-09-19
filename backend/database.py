@@ -1,3 +1,5 @@
+from collections.abc import Iterator
+
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -32,7 +34,7 @@ class Base(DeclarativeBase):
     pass
 
 
-def get_db() -> Session:
+def get_db() -> Iterator[Session]:
     db = SessionLocal()
     try:
         yield db
@@ -41,6 +43,13 @@ def get_db() -> Session:
 
 
 def init_db() -> None:
+    from models_auth import (  # noqa: F401
+        OAuthLoginState,
+        OAuthToken,
+        User,
+        UserSession,
+    )
+
     from models import (  # noqa: F401
         Course,
         CourseRole,

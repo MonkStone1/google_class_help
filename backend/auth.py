@@ -143,8 +143,12 @@ def _httplib2_request() -> google_auth_httplib2.Request:
     return google_auth_httplib2.Request(httplib2.Http(timeout=TOKEN_TIMEOUT_SECONDS))
 
 
-def _refresh_credentials(creds: Credentials) -> None:
+def refresh_credentials(creds: Credentials) -> None:
     """Refresh the access token, preferring the httplib2 transport.
+
+    Public so the hosted web flow (hosted_auth.py, migration stage 2) can
+    reuse the same transport stack instead of importing requests just for
+    a token refresh.
 
     requests/urllib3 is not used anywhere else in this application, so a
     broken urllib3 stack must not be able to sign the user out while the
@@ -188,7 +192,7 @@ def get_valid_credentials() -> Credentials | None:
             if creds.valid:
                 return creds
             try:
-                _refresh_credentials(creds)
+                refresh_credentials(creds)
             except Exception:  # noqa: BLE001 - refresh failures are reported as signed-out
                 return None
             _save_credentials(creds)
@@ -272,10 +276,14 @@ class _CallbackServer(HTTPServer):
         logger.debug("Callback connection from %s ended early.", client_address)
 
 
-def _post_token_request(
+def post_token_request(
     client_config: dict, code: str, redirect_uri: str, code_verifier: str | None
 ) -> dict:
-    """Redeem the authorization code over httplib2; returns the token payload."""
+    """Redeem the authorization code over httplib2; returns the token payload.
+
+    Public: the hosted web OAuth flow (hosted_auth.py) redeems its codes
+    through the same transport instead of duplicating it.
+    """
     fields = {
         "code": code,
         "client_id": client_config["client_id"],
@@ -310,8 +318,13 @@ def _post_token_request(
     return payload
 
 
-def _credentials_from_payload(client_config: dict, payload: dict) -> Credentials:
-    """Build credentials from the token endpoint's answer (untrusted input)."""
+def credentials_from_payload(client_config: dict, payload: dict) -> Credentials:
+    """Build credentials from the token endpoint's answer (untrusted input).
+
+    Public: the hosted web OAuth flow (hosted_auth.py) builds its
+    Credentials from the same payload shape instead of duplicating the
+    parsing/validation rules.
+    """
     token = payload.get("access_token")
     if not token:
         raise RuntimeError("The Google token endpoint returned no access token.")
@@ -359,11 +372,11 @@ def _exchange_code(flow: InstalledAppFlow, code: str, redirect_uri: str) -> Cred
         logger.warning(
             "Token exchange via requests failed (%r); retrying over httplib2.", exc
         )
-    payload = _post_token_request(
+    payload = post_token_request(
         flow.client_config, code, redirect_uri, flow.code_verifier
     )
     logger.info("Authorization code exchanged via httplib2.")
-    return _credentials_from_payload(flow.client_config, payload)
+    return credentials_from_payload(flow.client_config, payload)
 
 
 def _run_consent_flow(config: dict) -> Credentials:

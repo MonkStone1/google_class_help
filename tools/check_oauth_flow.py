@@ -146,9 +146,11 @@ def check_transports() -> bool:
 
     client = config.get("installed") or config.get("web") or config
     try:
-        auth._post_token_request(client, "bogus-code", redirect_uri, flow.code_verifier)
+        auth.post_token_request(client, "bogus-code", redirect_uri, flow.code_verifier)
         check("httplib2 reaches the token endpoint", False, "no error raised")
-    except RuntimeError as exc:
+    # The `and` in this handler's body is not an `except` expression; the
+    # rule matches descendants and flags a false positive.
+    except RuntimeError as exc:  # pi-lens-ignore: no-boolean-in-except
         text = str(exc)
         rejected_by_google = "400" in text and "code" in text.lower()
         check(

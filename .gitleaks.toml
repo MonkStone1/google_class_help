@@ -1,0 +1,36 @@
+# gitleaks configuration (v8).
+#
+# Built-in rules stay enabled; the allowlist below only removes paths that are
+# generated or git-ignored, so a real secret committed into tracked source is
+# still reported.
+#
+# Allowed groups:
+#
+#   * generated artifacts — the desktop production build (build/, release/,
+#     frontend/dist/) embeds the desktop OAuth client config on purpose
+#     (ADR-0016), so compiled Nuitka blobs carry it; those directories are
+#     git-ignored and never committed;
+#   * local secret stores that the project deliberately keeps out of Git and
+#     that `.gitignore` already covers: backend/credentials.json,
+#     backend/embedded_secrets.py, data/ (token.json), .env. They hold the
+#     *desktop* client config, never committed (verified: no matching blob in
+#     git history); scanning them as "committed secrets" is a false positive.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Generated build output, virtualenvs, dependencies and git-ignored local secret stores"
+paths = [
+  '''(^|/)build/''',
+  '''(^|/)release/''',
+  '''(^|/)dist/''',
+  '''(^|/)\.venv/''',
+  '''(^|/)node_modules/''',
+  '''(^|/)__pycache__/''',
+  '''(^|/)\.pytest_cache/''',
+  '''(^|/)frontend/dist/''',
+  '''(^|/)backend/credentials\.json$''',
+  '''(^|/)backend/embedded_secrets\.py$''',
+  '''(^|/)data/''',
+  '''(^|/)\.env$''',
+]
