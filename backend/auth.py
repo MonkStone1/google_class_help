@@ -1,5 +1,11 @@
 """Google OAuth 2.0 authentication for a local installed application.
 
+DESKTOP module (migration stage 4): since the user-scoped credential layer
+``google_credentials.py`` exists, this module is the storage backend of the
+desktop build's single local user (provider "local"). The hosted service
+reaches credentials only through that layer, never through these globals —
+its users live in ``oauth_tokens`` with per-user refresh locks (§15).
+
 The OAuth client configuration comes from, in order:
 
 1. an explicit file via ``GC_DASHBOARD_CREDENTIALS`` (development);
@@ -133,7 +139,13 @@ def load_credentials() -> Credentials | None:
         return None
 
 
-def _save_credentials(creds: Credentials) -> None:
+def save_credentials(creds: Credentials) -> None:
+    """Persist the desktop build's single-user token (§15 refactor).
+
+    Public so the user-scoped credential layer (google_credentials.py)
+    can save through the desktop backend instead of reaching into a
+    private helper.
+    """
     TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
     TOKEN_FILE.write_text(creds.to_json(), encoding="utf-8")
 
@@ -195,7 +207,7 @@ def get_valid_credentials() -> Credentials | None:
                 refresh_credentials(creds)
             except Exception:  # noqa: BLE001 - refresh failures are reported as signed-out
                 return None
-            _save_credentials(creds)
+            save_credentials(creds)
         return creds
     return None
 
@@ -427,7 +439,7 @@ def _run_login_flow() -> None:
         if config is None:
             raise RuntimeError("OAuth client configuration not available")
         creds = _run_consent_flow(config)
-        _save_credentials(creds)
+        save_credentials(creds)
         # First sync right after consent so the dashboard is not empty until
         # the next background tick. Deferred import avoids a module cycle
         # (auth <- sync <- background_sync).

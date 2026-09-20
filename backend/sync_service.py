@@ -1,6 +1,11 @@
 """Sync orchestration: pull data from Google and hand it to sync_store
 (review §2.2). Transport lives in classroom_api.py, cache writing in
 sync_store.py, domain rules in grading.py.
+
+Every sync belongs to ONE user (migration stage 4, §12): the owner is
+resolved from the authenticated user, and the Google credentials come
+from the user-scoped credential layer (google_credentials.py, §15) —
+never from a process-global token state.
 """
 
 import logging
@@ -9,14 +14,15 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
+import google_credentials
 from sqlalchemy.orm import Session
 
-import auth
 import ownership
 from classroom_api import ClassroomClient, build_service
 from config import SYNC_MAX_WORKERS
 from database import SessionLocal
 from models import Course, CourseRole
+from models_auth import User
 from sync_store import (
     _purge_stale_courses,
     _set_state,
@@ -29,16 +35,20 @@ logger = logging.getLogger(__name__)
 _SYNC_LOCK = threading.Lock()
 
 
-def sync_now() -> dict:
-    """Pull all courses, coursework and submissions from Google into the cache.
+def sync_now(user: User | None = None) -> dict:
+    """Pull the user's Classroom data into the user's cache scope (§12).
 
-    Safe to call concurrently: a second caller is told a sync is already
-    running instead of duplicating requests.
+    ``user`` is the authenticated user whose cache to refresh — the
+    session user on the hosted service, the local owner on desktop
+    (``None`` keeps the desktop background path unchanged). Safe to call
+    concurrently: a second caller is told a sync is already running
+    instead of duplicating requests. The mutex is process-wide for now;
+    per-user scheduling and worker budgets arrive with stage 5.
     """
     if not _SYNC_LOCK.acquire(blocking=False):
         return {"ok": False, "error": "A synchronization is already running."}
     try:
-        return _do_sync()
+        return _do_sync(user)
     finally:
         _SYNC_LOCK.release()
 
@@ -166,27 +176,38 @@ def _fetch_coursework(
     return results
 
 
-def _do_sync() -> dict:
-    creds = auth.get_valid_credentials()
-    if creds is None:
-        return {"ok": False, "error": "Not signed in to Google."}
-
-    service = build_service(creds)
-    client = ClassroomClient(service)
-
+def _do_sync(user: User | None) -> dict:
     db: Session = SessionLocal()
-    # The cache rows written by this sync belong to one user (migration
-    # stage 3, §10): the desktop build's single local owner. Per-user
-    # credentials/jobs for the hosted service arrive with stage 5.
-    owner_id = ownership.local_owner_id(db)
-    # One shared pool for every network stage (per-course lists and the point
-    # courseWork.get lookups): threads and their per-thread API clients are
-    # built once and reused instead of once per course. All database work
-    # stays on this thread — SQLAlchemy sessions are not thread-safe.
-    # 429s are absorbed by execute(num_retries) backoff, so exceeding the
-    # per-user quota briefly only slows down, never fails the sync.
+    owner_id: int | None = None
     pool = ThreadPoolExecutor(max_workers=SYNC_MAX_WORKERS)
     try:
+        if user is not None:
+            # The caller's ORM instance belongs to another session; reload
+            # the row here so ownership and credentials resolve within
+            # this session's transaction.
+            user = db.get(User, user.id)
+            if user is None or not user.is_active:
+                return {"ok": False, "error": "Not signed in to Google."}
+        else:
+            user = ownership.ensure_local_owner(db)
+        owner_id = user.id
+        # The cache rows written by this sync belong to this user (§10);
+        # the credentials are that same user's (§15) — hosted users read
+        # their own oauth_tokens row, desktop its single token.json.
+        creds = google_credentials.get_google_credentials(db, user)
+        if creds is None:
+            return {"ok": False, "error": "Not signed in to Google."}
+
+        service = build_service(creds)
+        client = ClassroomClient(service)
+
+        # One shared pool for every network stage (per-course lists and the
+        # point courseWork.get lookups): threads and their per-thread API
+        # clients are built once and reused instead of once per course. All
+        # database work stays on this thread — SQLAlchemy sessions are not
+        # thread-safe. 429s are absorbed by execute(num_retries) backoff,
+        # so exceeding the per-user quota briefly only slows down, never
+        # fails the sync.
         courses = _resolve_courses(client)
         if courses is None:
             # courses.list failed (HTTP error): keep the cache and record the
@@ -277,7 +298,10 @@ def _do_sync() -> dict:
         logger.exception("Classroom sync failed")
         db.rollback()
         message = f"{exc.__class__.__name__}: {exc}"
-        _set_state(db, ownership.local_owner_id(db), "last_sync_error", message)
+        # owner_id is None only if resolving the user itself failed; then
+        # there is no owner whose sync_state could record the error.
+        if owner_id is not None:
+            _set_state(db, owner_id, "last_sync_error", message)
         return {"ok": False, "error": message}
     finally:
         pool.shutdown(wait=True)

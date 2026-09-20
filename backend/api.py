@@ -4,11 +4,36 @@ Endpoints are thin: they read from the Classroom cache, derive views with
 the sync service, and return Pydantic models. Google communication lives
 in classroom_api.py / sync.py only.
 
-Cache ownership (migration stage 3, §10): every cache read below is scoped
-to the request's cache owner via the ``_owner_id`` dependency — the
-synthetic local owner on desktop, the session user in hosted mode. The
-formal ``get_current_user`` dependency per endpoint and the IDOR review
-are migration stage 4; this seam already prevents cross-user reads/joins.
+User isolation (migration stage 4, §12/§13): every endpoint takes the
+authenticated user through the ``get_current_user`` dependency
+(ownership.py) — the validated session user in hosted mode, the synthetic
+local owner on desktop — and every cache read is scoped to that user's
+rows. No handler accepts or trusts a user id from the request itself;
+IDOR-style cross-user access, including coursework reached by guessing a
+Google id, resolves to 404/403. The desktop /api/auth/* endpoints keep
+the loopback flow's single-account state by design (ADR-0019); in hosted
+mode they are shadowed by hosted_auth.py (§16: per-attempt login state).
+
+API response ownership (migration stage 4, §67): every response carries
+user data through exactly one ownership path down to ``users.id``, and no
+query joins two users' rows — aggregate joins equate ``user_id`` on both
+sides:
+
+    CourseOut / CourseDetailOut         → Course.user_id
+    AssignmentOut / AssignmentDetailOut → CourseWork.user_id → Course.user_id
+    StudentGradesOut                    → CourseWork/Course.user_id
+                                          + StudentSubmission.user_id
+    TeacherGradesOut                    → CourseStudent / CourseWorkSubmission
+                                          → Course.user_id
+    SubmissionOut                       → CourseWorkSubmission.user_id (teacher)
+                                          or StudentSubmission.user_id (student)
+    SyncStatus / AuthStatus             → the authenticated user itself
+
+The schema makes the path structural: every cache table has ``user_id`` in
+its primary key with an ownership FK (models.py, §10), so a row without an
+owner cannot exist and a same-named Google id is unique only within one
+user's scope. ``tests/test_user_isolation.py`` guards both the schema
+shape and the aggregates.
 """
 
 # ruff: noqa: B008, DTZ005, DTZ901
@@ -21,7 +46,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
@@ -39,6 +64,7 @@ from models import (
     CourseWorkSubmission,
     StudentSubmission,
 )
+from models_auth import User
 from schemas import (
     AssignmentDetailOut,
     AssignmentOut,
@@ -64,26 +90,38 @@ from sync_store import SubmissionRow, get_submission
 router = APIRouter(prefix="/api")
 
 
-# ---------------------------------------------------------------- auth
+# ------------------------------------------------------- user profile (§17)
 
-# User profile cache (review §1.3): the frontend polls /api/status every
-# ~1.5 s while logging in, and a network roundtrip to Google inside every
-# poll is unacceptable. The profile changes about once a year, so it is
-# cached for five minutes; the network call itself runs OUTSIDE the lock.
+# The frontend polls the status endpoints every ~1.5 s while logging in, and
+# a network roundtrip to Google inside every poll is unacceptable. The
+# profile changes about once a year, so it is cached for five minutes; the
+# network call itself runs OUTSIDE the lock.
+#
+# The cache is keyed by the LOCAL USER ID (§17): one entry per user, never a
+# process-global "last profile" another user could read. Hosted users do not
+# use it at all — their `users` row is the authoritative profile, refreshed
+# from Google at every login (§7) — so this path serves the desktop build's
+# single local owner, whose row stays empty until the first Google lookup.
 _profile_lock = threading.Lock()
-_profile_cache: tuple[float, str | None, str | None] | None = None
+_profile_cache: dict[int, tuple[float, str | None, str | None]] = {}
 PROFILE_TTL_SECONDS = 300
 
 
-def _cached_profile(creds) -> tuple[str | None, str | None]:
-    """User profile with a 5-minute TTL; one Google request at a time."""
-    global _profile_cache
+def _cached_profile(user: User, creds) -> tuple[str | None, str | None]:
+    """Profile of ONE user, cached under that user's id (§17).
+
+    A users row that already carries a profile (hosted: written at login)
+    is returned directly; otherwise Google userinfo is asked once and the
+    answer is remembered under ``user.id`` for PROFILE_TTL_SECONDS. User B
+    can never receive User A's cached name/email: lookups and writes use
+    the id, not a module global.
+    """
+    if user.display_name or user.email:
+        return user.display_name, user.email
     with _profile_lock:
-        if (
-            _profile_cache is not None
-            and time.monotonic() - _profile_cache[0] < PROFILE_TTL_SECONDS
-        ):
-            return _profile_cache[1], _profile_cache[2]
+        cached = _profile_cache.get(user.id)
+        if cached is not None and time.monotonic() - cached[0] < PROFILE_TTL_SECONDS:
+            return cached[1], cached[2]
     profile = ClassroomClient(build_service(creds)).get_user_profile()
     name = profile.get("name", {})
     value = (
@@ -91,59 +129,81 @@ def _cached_profile(creds) -> tuple[str | None, str | None]:
         profile.get("emailAddress") or name.get("fullName"),
     )
     with _profile_lock:
-        _profile_cache = (time.monotonic(), value[0], value[1])
+        _profile_cache[user.id] = (time.monotonic(), value[0], value[1])
     return value
 
 
-def _reset_profile_cache() -> None:
-    """Drop the cached profile (logout / re-login as another account)."""
-    global _profile_cache
+def _reset_profile_cache(user_id: int | None = None) -> None:
+    """Drop one user's cached profile (§17); no id clears every entry."""
     with _profile_lock:
-        _profile_cache = None
+        if user_id is None:
+            _profile_cache.clear()
+        else:
+            _profile_cache.pop(user_id, None)
 
 
-def _build_auth_status() -> AuthStatus:
+def _build_auth_status(user: User) -> AuthStatus:
+    """AuthStatus of ONE user (§16) with their own profile (§17).
+
+    Hosted: the ``users`` row is the authoritative profile (refreshed from
+    Google at every login, §7) and there is no loopback login state.
+    Desktop: the loopback flow's single-account state, plus the Google
+    userinfo profile cached under the local owner's id.
+    """
+    if user.provider == "google":
+        return AuthStatus(
+            authenticated=True,
+            login_in_progress=False,
+            error=None,
+            auth_url=None,
+            user_name=user.display_name,
+            user_email=user.email,
+        )
     status = auth.login_status()
     user_name = None
     user_email = None
     creds = auth.get_valid_credentials()
     if creds is not None:
-        user_name, user_email = _cached_profile(creds)
+        user_name, user_email = _cached_profile(user, creds)
     return AuthStatus(**status, user_name=user_name, user_email=user_email)
 
 
 @router.get("/auth/status", response_model=AuthStatus)
-def auth_status() -> AuthStatus:
-    return _build_auth_status()
+def auth_status(user: User = Depends(ownership.get_current_user)) -> AuthStatus:
+    return _build_auth_status(user)
 
 
 @router.post("/auth/login", response_model=AuthStatus)
-def login() -> AuthStatus:
+def login(user: User = Depends(ownership.get_current_user)) -> AuthStatus:
     result = auth.start_login()
     if not result.get("started"):
         raise HTTPException(
             status_code=500, detail=result.get("error", "Login failed.")
         )
-    return _build_auth_status()
+    return _build_auth_status(user)
 
 
 @router.post("/auth/logout", response_model=AuthStatus)
-def logout() -> AuthStatus:
+def logout(user: User = Depends(ownership.get_current_user)) -> AuthStatus:
     auth.logout()
-    _reset_profile_cache()  # the next sign-in may be a different account
-    return _build_auth_status()
+    # Only the caller's cached profile is dropped (§17); the next sign-in on
+    # this browser may be another account, but other users' entries stay.
+    _reset_profile_cache(user.id)
+    return _build_auth_status(user)
 
 
-# ------------------------------------------------------------ cache owner
+# ------------------------------------------------------- current user (§13)
 
 
-def _owner_id(request: Request, db: Session = Depends(get_db)) -> int:
-    """The cache owner of this request (stage-3 seam, ownership.py).
+def current_user_id(user: User = Depends(ownership.get_current_user)) -> int:
+    """The authenticated user's id — the cache owner of this request (§13).
 
-    Desktop: the single local owner. Hosted: the id of the session user,
-    resolved by the session-gate middleware before any /api route runs.
+    Thin derivation over ``ownership.get_current_user``, which validates
+    the hosted session (or resolves the desktop local owner) itself and
+    never trusts a request-supplied id. Most cache reads need only the id;
+    the endpoints that need the profile take the user dependency directly.
     """
-    return ownership.request_owner_id(request, db)
+    return user.id
 
 
 # ------------------------------------------------------------ derived SQL
@@ -537,7 +597,7 @@ def _course_stats_sql(db: Session, owner_id: int) -> dict[str, CourseOut]:
 
 @router.get("/courses", response_model=list[CourseOut])
 def list_courses(
-    owner_id: int = Depends(_owner_id), db: Session = Depends(get_db)
+    owner_id: int = Depends(current_user_id), db: Session = Depends(get_db)
 ) -> list[CourseOut]:
     stats = _course_stats_sql(db, owner_id)
     courses = (
@@ -554,7 +614,7 @@ def list_assignments(
     course_id: str | None = Query(default=None),
     search: str | None = Query(default=None),
     status: str | None = Query(default=None),
-    owner_id: int = Depends(_owner_id),
+    owner_id: int = Depends(current_user_id),
     db: Session = Depends(get_db),
 ) -> list[AssignmentOut]:
     assignments = _student_only(_load_assignments(db, owner_id))
@@ -585,7 +645,7 @@ def list_assignments(
 @router.get("/assignments/upcoming", response_model=list[AssignmentOut])
 def upcoming(
     days: int = Query(default=7, ge=1, le=60),
-    owner_id: int = Depends(_owner_id),
+    owner_id: int = Depends(current_user_id),
     db: Session = Depends(get_db),
 ) -> list[AssignmentOut]:
     now = datetime.now()
@@ -599,14 +659,14 @@ def upcoming(
 
 @router.get("/assignments/overdue", response_model=list[AssignmentOut])
 def overdue(
-    owner_id: int = Depends(_owner_id), db: Session = Depends(get_db)
+    owner_id: int = Depends(current_user_id), db: Session = Depends(get_db)
 ) -> list[AssignmentOut]:
     return [a for a in _student_only(_load_assignments(db, owner_id)) if a.is_overdue]
 
 
 @router.get("/grades", response_model=list[CourseGrades])
 def grades(
-    owner_id: int = Depends(_owner_id), db: Session = Depends(get_db)
+    owner_id: int = Depends(current_user_id), db: Session = Depends(get_db)
 ) -> list[CourseGrades]:
     assignments = _student_only(_load_assignments(db, owner_id))
     courses = (
@@ -659,7 +719,7 @@ def grades(
 def calendar(
     from_date: str | None = Query(default=None, alias="from"),
     to_date: str | None = Query(default=None, alias="to"),
-    owner_id: int = Depends(_owner_id),
+    owner_id: int = Depends(current_user_id),
     db: Session = Depends(get_db),
 ) -> dict:
     def _parse(value: str | None) -> datetime | None:
@@ -791,15 +851,18 @@ def _student_totals_sql(db: Session, owner_id: int) -> dict:
 
 @router.get("/status", response_model=SyncStatus)
 def status(
-    request: Request,
-    owner_id: int = Depends(_owner_id),
+    user: User = Depends(ownership.get_current_user),
     db: Session = Depends(get_db),
 ) -> SyncStatus:
-    auth_status = _build_auth_status()
+    # Auth status and profile of the CALLING user (§16/§17): hosted reads
+    # the session user's row, desktop the loopback account with its
+    # per-user profile cache — never a global login state or profile.
+    auth_state = _build_auth_status(user)
+    owner_id = user.id
     return SyncStatus(
-        authenticated=auth_status.authenticated,
-        user_name=auth_status.user_name,
-        user_email=auth_status.user_email,
+        authenticated=auth_state.authenticated,
+        user_name=auth_state.user_name,
+        user_email=auth_state.user_email,
         last_sync=sync.get_state_datetime(db, owner_id, "last_sync"),
         last_sync_error=sync.get_state(db, owner_id, "last_sync_error"),
         # Aggregated in SQL, not by loading every table: the frontend polls
@@ -809,8 +872,15 @@ def status(
 
 
 @router.post("/sync", response_model=SyncResult)
-def run_sync(db: Session = Depends(get_db)) -> SyncResult:
-    result = sync.sync_now()
+def run_sync(user: User = Depends(ownership.get_current_user)) -> SyncResult:
+    """Synchronize the calling user's cache with THEIR Google credentials.
+
+    §12: /api/sync must never touch another user's data. Desktop: the local
+    owner (token.json). Hosted: the session user's oauth_tokens — sync_now
+    resolves the cache owner and credentials from this user. One sync at a
+    time per process until the per-user scheduler lands (stage 5).
+    """
+    result = sync.sync_now(user=user)
     if not result.get("ok") and "already running" in str(result.get("error", "")):
         # A running sync is not an error: 409 tells the client to keep
         # showing its spinner instead of surfacing a failure (review §3.9).
@@ -823,7 +893,7 @@ def run_sync(db: Session = Depends(get_db)) -> SyncResult:
 @router.delete("/cache")
 def clear_cache(
     confirm: bool = Query(default=False),
-    owner_id: int = Depends(_owner_id),
+    owner_id: int = Depends(current_user_id),
     db: Session = Depends(get_db),
 ) -> dict:
     if not confirm:
@@ -967,7 +1037,7 @@ def _submissions_for_work(
 @router.get("/courses/{course_id}", response_model=CourseDetailOut)
 def course_detail(
     course_id: str,
-    owner_id: int = Depends(_owner_id),
+    owner_id: int = Depends(current_user_id),
     db: Session = Depends(get_db),
 ) -> CourseDetailOut:
     course = _get_course(db, owner_id, course_id)
@@ -984,7 +1054,7 @@ def course_detail(
 @router.get("/courses/{course_id}/coursework", response_model=list[AssignmentOut])
 def course_coursework(
     course_id: str,
-    owner_id: int = Depends(_owner_id),
+    owner_id: int = Depends(current_user_id),
     db: Session = Depends(get_db),
 ) -> list[AssignmentOut]:
     """Coursework of one course: all of it for a teacher, own work for a student."""
@@ -995,7 +1065,7 @@ def course_coursework(
 @router.get("/courses/{course_id}/students", response_model=list[StudentOut])
 def course_students(
     course_id: str,
-    owner_id: int = Depends(_owner_id),
+    owner_id: int = Depends(current_user_id),
     db: Session = Depends(get_db),
 ) -> list[StudentOut]:
     course = _get_course(db, owner_id, course_id)
@@ -1006,7 +1076,7 @@ def course_students(
 @router.get("/courses/{course_id}/grades", response_model=TeacherGradesOut)
 def course_grades(
     course_id: str,
-    owner_id: int = Depends(_owner_id),
+    owner_id: int = Depends(current_user_id),
     db: Session = Depends(get_db),
 ) -> TeacherGradesOut:
     """Spreadsheet-style grade matrix: every student × every assignment."""
@@ -1094,7 +1164,7 @@ def course_grades(
 def coursework_detail(
     course_id: str,
     coursework_id: str,
-    owner_id: int = Depends(_owner_id),
+    owner_id: int = Depends(current_user_id),
     db: Session = Depends(get_db),
 ) -> AssignmentDetailOut:
     """Full assignment page: metadata, materials and the submission table."""
@@ -1123,7 +1193,7 @@ def coursework_detail(
 def coursework_submissions(
     course_id: str,
     coursework_id: str,
-    owner_id: int = Depends(_owner_id),
+    owner_id: int = Depends(current_user_id),
     db: Session = Depends(get_db),
 ) -> list[SubmissionOut]:
     course = _get_course(db, owner_id, course_id)
@@ -1165,7 +1235,7 @@ def _grade_submissions(
 def student_grades(
     course_id: str,
     student_id: str,
-    owner_id: int = Depends(_owner_id),
+    owner_id: int = Depends(current_user_id),
     db: Session = Depends(get_db),
 ) -> StudentGradesOut:
     """One student's coursework, submission state and grade for a course."""

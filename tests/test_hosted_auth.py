@@ -12,6 +12,7 @@ cookie, gate, logout — runs as shipped.
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 
+import google_credentials
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -335,7 +336,7 @@ def test_expired_token_is_refreshed_and_persisted_encrypted(db: Session, monkeyp
 
     monkeypatch.setattr(auth_module, "refresh_credentials", fake_refresh)
 
-    creds = hosted_auth.get_valid_credentials_for(db, user)
+    creds = google_credentials.get_google_credentials(db, user)
     assert creds is not None
     assert creds.token == "at-new"
     row = db.get(OAuthToken, user.id)
@@ -352,14 +353,14 @@ def test_failed_refresh_reports_signed_out(db: Session, monkeypatch):
         raise RuntimeError("invalid_grant")
 
     monkeypatch.setattr(auth_module, "refresh_credentials", boom)
-    assert hosted_auth.get_valid_credentials_for(db, user) is None
+    assert google_credentials.get_google_credentials(db, user) is None
 
 
 def test_stale_scope_set_forces_a_new_consent(db: Session):
     user = _make_user_with_token(
         db, expires_at=_now() + timedelta(hours=1), scopes=["openid"]
     )
-    assert hosted_auth.get_valid_credentials_for(db, user) is None
+    assert google_credentials.get_google_credentials(db, user) is None
     # The unusable row is dropped so the next login re-consents.
     assert db.get(OAuthToken, user.id) is None
 
@@ -371,7 +372,7 @@ def test_valid_token_is_returned_without_a_refresh(db: Session, monkeypatch):
         raise AssertionError("a valid token must not be refreshed")
 
     monkeypatch.setattr(auth_module, "refresh_credentials", unexpected)
-    creds = hosted_auth.get_valid_credentials_for(db, user)
+    creds = google_credentials.get_google_credentials(db, user)
     assert creds is not None and creds.token == "at-old"
 
 

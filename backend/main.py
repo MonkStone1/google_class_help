@@ -86,7 +86,10 @@ def create_app(hosted: bool = False) -> FastAPI:
     Hosted: web OAuth + sessions (ADR-0020). The hosted /api/auth/* router
     is included BEFORE the api router so its GET /auth/status, GET+POST
     /auth/login and POST /auth/logout shadow the desktop ones; a session
-    gate closes every other /api path until user-scoping lands (stage 4).
+    gate closes every other /api path, and since stage 4 every data
+    endpoint additionally resolves its user through the
+    ``ownership.get_current_user`` dependency (§13) — the gate is the
+    outermost check, the dependency is the authoritative one.
     """
     app = FastAPI(
         title="Local Google Classroom Dashboard", version="1.0.0", lifespan=lifespan
@@ -112,9 +115,10 @@ def create_app(hosted: bool = False) -> FastAPI:
                 return await call_next(request)
             db = SessionLocal()
             try:
-                # Sync call inside async middleware: a single indexed
-                # session lookup for now; the async-ready dependency wiring
-                # is part of stages 3-4.
+                # Sync call inside async middleware. Since stage 4 the
+                # authoritative user resolution is the get_current_user
+                # dependency inside each endpoint; this gate only fails the
+                # request early, before route dispatch.
                 user = resolve_session_user(request, db)
             except StarletteHTTPException:
                 return JSONResponse({"detail": "Not signed in."}, status_code=401)

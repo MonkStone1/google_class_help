@@ -34,7 +34,7 @@ def test_foreign_origin_is_forbidden(client):
 def test_same_origin_post_is_allowed(client, monkeypatch):
     # Production frontend and API share 127.0.0.1: the origin guard must not
     # block the dashboard's own POSTs.
-    monkeypatch.setattr(sync, "sync_now", lambda: {"ok": True, "courses": 0})
+    monkeypatch.setattr(sync, "sync_now", lambda user=None: {"ok": True, "courses": 0})
     response = client.post("/api/sync", headers={"origin": "http://127.0.0.1"})
     assert response.status_code == 200
 
@@ -44,7 +44,10 @@ def test_second_sync_returns_409(client, monkeypatch):
     monkeypatch.setattr(
         sync,
         "sync_now",
-        lambda: {"ok": False, "error": "A synchronization is already running."},
+        lambda user=None: {
+            "ok": False,
+            "error": "A synchronization is already running.",
+        },
     )
     response = client.post("/api/sync")
     assert response.status_code == 409

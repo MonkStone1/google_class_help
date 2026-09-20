@@ -1,32 +1,34 @@
-"""Cache ownership resolution (migration stage 3).
+"""Cache ownership and the current-user dependency (migration stage 4).
 
 The Classroom cache tables are user-scoped (models.py, migration prompt
-§10): every row belongs to a local ``users`` row. Something has to say
-WHICH user's rows a given read or write touches. This module is that
-single seam, until the hosted data endpoints take the
-``get_current_user`` dependency directly (migration stage 4):
+§10): every row belongs to a local ``users`` row. :func:`get_current_user`
+(§13) is the single dependency that says WHICH user a request belongs to:
 
+- Hosted service: the request's session cookie is validated and the local
+  User record loaded (hosted_auth.py, ADR-0020). The dependency does this
+  itself — it never trusts a value the frontend or another layer supplied.
 - Desktop builds (ADR-0019) have no notion of an application user: the
-  process signs in exactly one Google account. Its cache rows belong to
-  one synthetic local user (provider "local", subject "desktop"),
-  created on demand — the desktop cache keeps working unchanged on the
-  user-scoped schema (audit: "desktop-путь обязан продолжать работать").
-
-- Hosted service: the session-gate middleware (main.py, ADR-0020) resolves
-  the session user before any /api data path runs and stores its id in
-  ``request.state.user_id``; request-scoped cache access uses that id.
+  process signs in exactly one Google account, so the current user is the
+  synthetic local owner (provider "local", subject "desktop"), created on
+  demand — the desktop cache keeps working unchanged on the user-scoped
+  schema (audit: "desktop-путь обязан продолжать работать").
 
 The synthetic local user is deliberately never created by a hosted
-request: in hosted mode the id always comes from the session gate, so a
-hosted database never accumulates a "local" row (fail closed, not shared
-state).
+request: in hosted mode the id always comes from the session, so a hosted
+database never accumulates a "local" row (fail closed, not shared state).
 """
+
+# ruff: noqa: B008
+# B008: FastAPI's documented dependency-injection idiom uses Depends() in an
+#       argument default; it is not the mutable-default bug the rule targets
+#       (same dispensation as api.py / hosted_auth.py).
 
 from datetime import datetime, timezone
 
-from fastapi import HTTPException, Request
+from fastapi import Depends, Request
 from sqlalchemy.orm import Session
 
+from database import get_db
 from models_auth import User
 
 # The single implicit owner of a desktop build's cache. provider/subject
@@ -73,21 +75,25 @@ def local_owner_id(db: Session) -> int:
     return ensure_local_owner(db).id
 
 
-def request_owner_id(request: Request, db: Session) -> int:
-    """Owner of the cache rows for one API request (stage-3 seam).
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
+    """The authenticated user of this request (migration stage 4, §13).
 
-    The hosted session gate stores the authenticated user's id in
-    ``request.state.user_id`` before the request reaches any /api route;
-    desktop requests carry no user state and resolve the single local
-    owner. Stage 4 replaces per-endpoint usage of this helper with the
-    ``get_current_user`` dependency; the scoping itself does not change.
+    One dependency for both deployment modes, selected by the app instance
+    (``app.state.hosted``, set by ``main.create_app``) — not by a process
+    flag, so tests can build both apps side by side:
+
+    - hosted: the session cookie is read, validated against ``sessions``
+      (missing/expired/revoked → 401) and the active local User record is
+      loaded (hosted_auth.get_current_user). No handler may trust any
+      user id from the request itself.
+    - desktop: the single local owner (loopback OAuth has no sessions;
+      the process is the one user, ADR-0019).
     """
-    user_id = getattr(request.state, "user_id", None)
-    if user_id is not None:
-        try:
-            return int(user_id)
-        except (TypeError, ValueError) as exc:
-            # The gate only ever stores ints; a foreign value must not be
-            # able to alias another user's cache (fail closed).
-            raise HTTPException(status_code=401, detail="Not signed in.") from exc
-    return local_owner_id(db)
+    if request.app.state.hosted:
+        # Imported here, not at module level: hosted_auth builds on this
+        # module's credential layer (google_credentials), which depends on
+        # ownership.get_current_user in turn.
+        from hosted_auth import get_current_user as session_user
+
+        return session_user(request, db)
+    return ensure_local_owner(db)

@@ -36,6 +36,10 @@ Security invariants enforced here (§5, §8, §9):
 - sessions are opaque random tokens, stored hashed (SHA-256), revocable
   independently of the Google grant; logout keeps the refresh token
   server-side (decision documented in ADR-0020).
+
+Since migration stage 4 the user-scoped credential operations (§15) live
+in ``google_credentials.py``; this module owns the OAuth flow and the
+sessions, and reaches credentials only through that layer.
 """
 
 import base64
@@ -44,21 +48,18 @@ import hmac
 import json
 import logging
 import secrets
-import threading
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
+import google_credentials
 import httplib2
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
-from google.oauth2.credentials import Credentials
 from sqlalchemy.orm import Session
 
 import auth
-import token_crypto
-from config import hosted_oauth_client_config
 from database import get_db
-from models_auth import OAuthLoginState, OAuthToken, User, UserSession
+from models_auth import OAuthLoginState, User, UserSession
 
 logger = logging.getLogger(__name__)
 
@@ -80,18 +81,6 @@ _TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 _USERINFO_ENDPOINT = "https://openidconnect.googleapis.com/v1/userinfo"
 # offline → refresh token; consent → re-issue even when a grant exists.
 _EXTRA_AUTH_PARAMS = {"access_type": "offline", "prompt": "consent"}
-
-# Serialized per-user token refreshes (audit A3: the refresh is a network
-# call; two threads hitting an expired token of the same user must not both
-# POST to the token endpoint).
-_refresh_locks_guard = threading.Lock()
-_refresh_locks: dict[int, threading.Lock] = {}
-
-
-def _refresh_lock_for(user_id: int) -> threading.Lock:
-    with _refresh_locks_guard:
-        return _refresh_locks.setdefault(user_id, threading.Lock())
-
 
 # ------------------------------------------------------------------ helpers
 
@@ -219,26 +208,6 @@ def _upsert_user(db: Session, identity: dict, now: datetime) -> User:
     return user
 
 
-def _store_token(db: Session, user_id: int, creds: Credentials, now: datetime) -> None:
-    """Encrypt and persist the Google credentials (§8).
-
-    The ciphertext prefix from token_crypto makes plaintext rows impossible
-    to confuse with encrypted ones; the key never enters the database.
-    """
-    row = db.get(OAuthToken, user_id)
-    if row is None:
-        row = OAuthToken(user_id=user_id, created_at=now)
-        db.add(row)
-    row.access_token = token_crypto.encrypt(creds.token)
-    row.refresh_token = (
-        token_crypto.encrypt(creds.refresh_token) if creds.refresh_token else None
-    )
-    row.token_uri = creds.token_uri or _TOKEN_ENDPOINT
-    row.scopes = list(creds.scopes or auth.SCOPES)
-    row.expires_at = creds.expiry
-    row.updated_at = now
-
-
 # ---------------------------------------------------------------- sessions
 
 
@@ -304,132 +273,26 @@ def resolve_session_user(request: Request, db: Session) -> User:
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
-    """FastAPI dependency: the session user of this request.
+    """FastAPI dependency: the session user of this request (§13).
 
-    The seam every data endpoint will depend on from stage 4 on; in stage 2
-    it additionally backs the hosted session gate in main.py, so no cached
-    data is reachable without a session (audit §6.1: hosted access must not
-    open before user-scoping exists).
+    Validates the session cookie and loads the active User record — it
+    never trusts a user id from the request itself. Since stage 4 every
+    data endpoint reaches it through ``ownership.get_current_user`` (which
+    dispatches desktop requests to the local owner instead); this
+    dependency additionally backs the hosted session gate in main.py.
     """
     user = resolve_session_user(request, db)
     request.state.user_id = user.id
     return user
 
 
-# ------------------------------------------------------- credentials by user
-
-
-def _decrypt_refresh_token(row: OAuthToken) -> str | None:
-    if not row.refresh_token:
-        return None
-    try:
-        return token_crypto.decrypt(row.refresh_token)
-    except token_crypto.TokenEncryptionError as exc:
-        logger.error(
-            "Cannot read the stored Google authorization of user id=%s.",
-            row.user_id,
-        )
-        raise HTTPException(
-            status_code=401,
-            detail="Stored credentials are unreadable; please sign in again.",
-        ) from exc
-
-
-def get_valid_credentials_for(db: Session, user: User) -> Credentials | None:
-    """Valid Google credentials of one user, refreshed when possible.
-
-    Hosted counterpart of ``auth.get_valid_credentials`` (audit A1/A3/A5):
-    tokens come from ``oauth_tokens`` instead of the single token.json,
-    refreshes are serialized per user, and a refreshed access token is
-    persisted (encrypted) before it is handed out.
-    """
-    client_config = _require_client_config()
-    row = db.get(OAuthToken, user.id)
-    if row is None:
-        return None
-    if not set(auth.SCOPES).issubset(set(row.scopes or [])):
-        # Token predates a scope change: force a new consent (same policy
-        # as the desktop flow, auth.get_valid_credentials).
-        db.delete(row)
-        db.commit()
-        return None
-
-    def _build() -> Credentials:
-        return Credentials(
-            token=token_crypto.decrypt(row.access_token),
-            refresh_token=_decrypt_refresh_token(row),
-            token_uri=row.token_uri,
-            client_id=client_config["client_id"],
-            client_secret=client_config["client_secret"],
-            scopes=list(row.scopes or []),
-            expiry=row.expires_at,
-        )
-
-    creds = _build()
-    if creds.valid:
-        return creds
-    if not creds.expired or not creds.refresh_token:
-        return None
-    with _refresh_lock_for(user.id):
-        # Double-check under the lock: another thread may already have
-        # refreshed and persisted the token while we waited.
-        db.refresh(row)
-        row.expires_at = row.expires_at or _utcnow()
-        creds = _build()
-        if creds.valid:
-            return creds
-        try:
-            auth.refresh_credentials(creds)
-        except Exception:  # noqa: BLE001 - a failed refresh means signed out
-            logger.warning(
-                "Google authorization refresh failed for user id=%s; sign-in required.",
-                user.id,
-            )
-            return None
-        _store_token(db, user.id, creds, _utcnow())
-        db.commit()
-        return creds
-
-
-def require_google_credentials(
-    user: User = Depends(get_current_user), db: Session = Depends(get_db)
-) -> Credentials:
-    """Google credentials of the session user, or 401.
-
-    Hosted analogue of ``auth.require_credentials`` for data endpoints
-    (stages 4+ rewire every endpoint to this dependency).
-    """
-    creds = get_valid_credentials_for(db, user)
-    if creds is None:
-        raise HTTPException(
-            status_code=401,
-            detail="Not signed in to Google. Please sign in again.",
-        )
-    return creds
-
-
 # ---------------------------------------------------------------- endpoints
-
-# Read once per process: the web client configuration is environment-only
-# (§9). A missing configuration fails closed in every endpoint.
-CLIENT_CONFIG: dict | None = hosted_oauth_client_config()
-
-
-def _require_client_config() -> dict:
-    if CLIENT_CONFIG is None:
-        raise HTTPException(
-            status_code=500,
-            detail="Google OAuth client configuration for the hosted service "
-            "is missing (set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and "
-            "GOOGLE_REDIRECT_URI or APP_BASE_URL).",
-        )
-    return CLIENT_CONFIG
 
 
 @router.get("/login")
 def login(request: Request, db: Session = Depends(get_db)) -> RedirectResponse:
     """Start a login attempt: create server-side state, redirect to Google."""
-    client_config = _require_client_config()
+    client_config = google_credentials.require_client_config()
     state = secrets.token_urlsafe(32)
     nonce = secrets.token_urlsafe(32)
     verifier, challenge = _pkce_pair()
@@ -488,7 +351,7 @@ def callback(request: Request, db: Session = Depends(get_db)) -> RedirectRespons
         logger.warning("OAuth callback rejected: %s", detail)
         return response
 
-    client_config = _require_client_config()
+    client_config = google_credentials.require_client_config()
     params = request.query_params
     state = params.get("state", "")
     code = params.get("code", "")
@@ -551,8 +414,7 @@ def callback(request: Request, db: Session = Depends(get_db)) -> RedirectRespons
     now = _utcnow()
     try:
         user = _upsert_user(db, identity, now)
-        _store_token(db, user.id, creds, now)
-        db.commit()
+        google_credentials.save_google_credentials(db, user.id, creds)
         session_token = _create_session(
             db, user.id, request.headers.get("user-agent"), now
         )
