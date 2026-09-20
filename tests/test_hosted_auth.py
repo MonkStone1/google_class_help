@@ -12,14 +12,14 @@ cookie, gate, logout — runs as shipped.
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 
-import hosted_auth
 import pytest
-import token_crypto
-from models_auth import OAuthLoginState, OAuthToken, User, UserSession
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 import auth as auth_module
+import hosted_auth
+import token_crypto
+from models_auth import OAuthLoginState, OAuthToken, User, UserSession
 
 REDIRECT = "https://gch.test/api/auth/callback"
 

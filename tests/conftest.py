@@ -66,6 +66,14 @@ def db(client):
 
 
 @pytest.fixture()
+def owner_id(db):
+    """The desktop cache owner (migration stage 3): seeds need its id."""
+    import ownership
+
+    return ownership.local_owner_id(db)
+
+
+@pytest.fixture()
 def hosted_client():
     """The hosted-mode app (web OAuth + session gate), no lifespan.
 

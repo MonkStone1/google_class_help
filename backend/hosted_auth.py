@@ -49,16 +49,16 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 import httplib2
-import token_crypto
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from google.oauth2.credentials import Credentials
-from models_auth import OAuthLoginState, OAuthToken, User, UserSession
 from sqlalchemy.orm import Session
 
 import auth
+import token_crypto
 from config import hosted_oauth_client_config
 from database import get_db
+from models_auth import OAuthLoginState, OAuthToken, User, UserSession
 
 logger = logging.getLogger(__name__)
 

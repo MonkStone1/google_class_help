@@ -10,9 +10,16 @@ from models import Course, CourseRole, CourseWork, StudentSubmission
 NOW = datetime.now()  # noqa: DTZ005 - naive local time matches the cache
 
 
-def _work(work_id: str, title: str, due_days: int | None, max_points: float = 100):
+def _work(
+    owner_id: int,
+    work_id: str,
+    title: str,
+    due_days: int | None,
+    max_points: float = 100,
+):
     due = None if due_days is None else NOW + timedelta(days=due_days)
     return CourseWork(
+        user_id=owner_id,
         id=work_id,
         course_id="c1",
         title=title,
@@ -23,26 +30,32 @@ def _work(work_id: str, title: str, due_days: int | None, max_points: float = 10
 
 
 @pytest.fixture()
-def seeded_assignments(db):
-    db.add(Course(id="c1", name="History", course_state="ACTIVE"))
-    db.add(CourseRole(course_id="c1", role="STUDENT"))
+def seeded_assignments(db, owner_id):
+    db.add(Course(user_id=owner_id, id="c1", name="History", course_state="ACTIVE"))
+    db.add(CourseRole(user_id=owner_id, course_id="c1", role="STUDENT"))
     # w1: turned in, overdue window (past due) — completed
     # w2: nothing submitted, past due — todo + overdue
     # w3: nothing submitted, due in 3 days — todo + upcoming
     # w4: turned in and graded — completed + graded
     db.add_all(
         [
-            _work("w1", "Essay one", -2),
-            _work("w2", "Essay two", -1),
-            _work("w3", "Essay three", 3),
-            _work("w4", "Test", None),
+            _work(owner_id, "w1", "Essay one", -2),
+            _work(owner_id, "w2", "Essay two", -1),
+            _work(owner_id, "w3", "Essay three", 3),
+            _work(owner_id, "w4", "Test", None),
         ]
     )
     db.add_all(
         [
-            StudentSubmission(course_id="c1", coursework_id="w1", state="TURNED_IN"),
             StudentSubmission(
-                course_id="c1", coursework_id="w4", state="RETURNED", assigned_points=80
+                user_id=owner_id, course_id="c1", coursework_id="w1", state="TURNED_IN"
+            ),
+            StudentSubmission(
+                user_id=owner_id,
+                course_id="c1",
+                coursework_id="w4",
+                state="RETURNED",
+                assigned_points=80,
             ),
         ]
     )

@@ -15,7 +15,16 @@ backend. New tables are created by ``create_all`` (ADR-0003).
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database import Base
@@ -25,6 +34,15 @@ class User(Base):
     """One local application user, linked to one Google account."""
 
     __tablename__ = "users"
+    __table_args__ = (
+        # One local user per identity (migration prompt §7): the upsert in
+        # hosted_auth._upsert_user keys on (provider, subject), never on
+        # email. The DB constraint makes duplicate users impossible even
+        # under concurrent logins of the same Google account.
+        UniqueConstraint(
+            "provider", "provider_subject", name="uq_users_provider_subject"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     # Identity provider. Only "google" exists today; the column keeps the

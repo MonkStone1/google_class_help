@@ -12,6 +12,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 import auth
+import ownership
 from classroom_api import ClassroomClient, build_service
 from config import SYNC_MAX_WORKERS
 from database import SessionLocal
@@ -29,7 +30,7 @@ _SYNC_LOCK = threading.Lock()
 
 
 def sync_now() -> dict:
-    """Pull all courses, coursework and submissions from Google into SQLite.
+    """Pull all courses, coursework and submissions from Google into the cache.
 
     Safe to call concurrently: a second caller is told a sync is already
     running instead of duplicating requests.
@@ -174,6 +175,10 @@ def _do_sync() -> dict:
     client = ClassroomClient(service)
 
     db: Session = SessionLocal()
+    # The cache rows written by this sync belong to one user (migration
+    # stage 3, §10): the desktop build's single local owner. Per-user
+    # credentials/jobs for the hosted service arrive with stage 5.
+    owner_id = ownership.local_owner_id(db)
     # One shared pool for every network stage (per-course lists and the point
     # courseWork.get lookups): threads and their per-thread API clients are
     # built once and reused instead of once per course. All database work
@@ -189,7 +194,7 @@ def _do_sync() -> dict:
             message = "Classroom courses.list failed; cached data kept."
             logger.warning(message)
             db.rollback()
-            _set_state(db, "last_sync_error", message)
+            _set_state(db, owner_id, "last_sync_error", message)
             return {"ok": False, "error": message}
         active_ids = {raw["id"] for raw, _ in courses}
 
@@ -219,9 +224,9 @@ def _do_sync() -> dict:
 
         for raw_course, role in courses:
             course_id = raw_course["id"]
-            course = db.get(Course, course_id)
+            course = db.get(Course, (owner_id, course_id))
             if course is None:
-                course = Course(id=course_id)
+                course = Course(user_id=owner_id, id=course_id)
                 db.add(course)
             course.name = raw_course.get("name", "Untitled course")
             course.description = raw_course.get("descriptionHeading") or raw_course.get(
@@ -231,9 +236,9 @@ def _do_sync() -> dict:
             course.room = raw_course.get("room")
             course.enrollment_state = raw_course.get("enrollmentState")
             course.course_state = raw_course.get("courseState")
-            course_role = db.get(CourseRole, course_id)
+            course_role = db.get(CourseRole, (owner_id, course_id))
             if course_role is None:
-                course_role = CourseRole(course_id=course_id)
+                course_role = CourseRole(user_id=owner_id, course_id=course_id)
                 db.add(course_role)
             course_role.role = role
             course.teacher_names = teacher_names.get(course_id, [])
@@ -241,20 +246,22 @@ def _do_sync() -> dict:
 
             payload = payloads[course_id]
             if role == "TEACHER":
-                assignment_count += _write_teacher_course(db, course_id, payload)
+                assignment_count += _write_teacher_course(
+                    db, owner_id, course_id, payload
+                )
             else:
                 assignment_count += _write_student_course(
-                    db, course_id, payload["submissions"], work_cache
+                    db, owner_id, course_id, payload["submissions"], work_cache
                 )
             db.commit()
 
         # Mirror cleanup: archived, deleted and unenrolled courses are no
         # longer part of the student dashboard. Anything the API did not
-        # return on this sync is removed from the cache.
-        _purge_stale_courses(db, active_ids)
+        # return for THIS owner's cache on this sync is removed from it.
+        _purge_stale_courses(db, owner_id, active_ids)
 
-        _set_state(db, "last_sync", now.isoformat())
-        _set_state(db, "last_sync_error", None)
+        _set_state(db, owner_id, "last_sync", now.isoformat())
+        _set_state(db, owner_id, "last_sync_error", None)
         return {
             "ok": True,
             "last_sync": now,
@@ -270,7 +277,7 @@ def _do_sync() -> dict:
         logger.exception("Classroom sync failed")
         db.rollback()
         message = f"{exc.__class__.__name__}: {exc}"
-        _set_state(db, "last_sync_error", message)
+        _set_state(db, ownership.local_owner_id(db), "last_sync_error", message)
         return {"ok": False, "error": message}
     finally:
         pool.shutdown(wait=True)

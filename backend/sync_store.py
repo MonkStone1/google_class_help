@@ -1,6 +1,11 @@
-"""Cache write layer: everything that writes Classroom data into SQLite
-(review §2.2). Reads happen in api.py, orchestration in sync_service.py;
-this module knows the tables and the shapes Google sends, nothing else.
+"""Cache write layer: everything that writes Classroom data into the
+Classroom cache (review §2.2). Reads happen in api.py, orchestration in
+sync_service.py; this module knows the tables and the shapes Google sends,
+nothing else.
+
+Every function takes the ``user_id`` of the cache owner (migration stage
+3, §10): rows of different users live side by side in the same tables, and
+every key lookup, delete and mirror-cleanup is scoped to one owner's rows.
 """
 
 from datetime import datetime
@@ -25,23 +30,23 @@ SubmissionRow = CourseWorkSubmission | StudentSubmission
 # ------------------------------------------------------------- sync_state
 
 
-def _set_state(db: Session, key: str, value: str | None) -> None:
-    row = db.get(SyncState, key)
+def _set_state(db: Session, user_id: int, key: str, value: str | None) -> None:
+    row = db.get(SyncState, (user_id, key))
     if row is None:
-        row = SyncState(key=key, value=value)
+        row = SyncState(user_id=user_id, key=key, value=value)
         db.add(row)
     else:
         row.value = value
     db.commit()
 
 
-def get_state(db: Session, key: str) -> str | None:
-    row = db.get(SyncState, key)
+def get_state(db: Session, user_id: int, key: str) -> str | None:
+    row = db.get(SyncState, (user_id, key))
     return row.value if row else None
 
 
-def get_state_datetime(db: Session, key: str) -> datetime | None:
-    raw = get_state(db, key)
+def get_state_datetime(db: Session, user_id: int, key: str) -> datetime | None:
+    raw = get_state(db, user_id, key)
     if not raw:
         return None
     try:
@@ -55,6 +60,7 @@ def get_state_datetime(db: Session, key: str) -> datetime | None:
 
 def get_submission(
     db: Session,
+    user_id: int,
     course_id: str,
     coursework_id: str,
     student_id: str,
@@ -66,57 +72,71 @@ def get_submission(
     The same fact lives in two tables (ADR-0003 cache compatibility): a
     teacher course keeps per-student rows in CourseWorkSubmission, the
     student route keeps the user's own row in StudentSubmission. The role
-    picks the table here, so callers never branch on it themselves.
+    picks the table here, so callers never branch on it themselves. Both
+    lookups are scoped to the cache owner (user_id) — stage 3.
     """
     if is_teacher:
-        return db.get(CourseWorkSubmission, (course_id, coursework_id, student_id))
-    return db.get(StudentSubmission, (course_id, coursework_id))
+        return db.get(
+            CourseWorkSubmission, (user_id, course_id, coursework_id, student_id)
+        )
+    return db.get(StudentSubmission, (user_id, course_id, coursework_id))
 
 
 # ------------------------------------------------------------------ purging
 
 
-def _purge_course(db: Session, course_id: str) -> None:
-    """Remove a course and its cached rows (used for archived/gone courses).
+def _purge_course(db: Session, user_id: int, course_id: str) -> None:
+    """Remove one owner's course and its cached rows (archived/gone courses).
 
-    SQLite runs with PRAGMA foreign_keys=ON (database.py), so the
-    ondelete=CASCADE rules on every child table do the work — one delete
-    instead of five hand-written ones (review §1.6).
+    SQLite runs with PRAGMA foreign_keys=ON (database.py) and PostgreSQL
+    always enforces FKs, so the ondelete=CASCADE rules on every child table
+    do the work — one delete instead of five hand-written ones (review
+    §1.6). The composite key (user_id, course_id) keeps the delete inside
+    one user's cache (audit Y3).
     """
-    stale = db.get(Course, course_id)
+    stale = db.get(Course, (user_id, course_id))
     if stale is None:
         return
     # A parameterized delete() statement, not an ORM instance delete: with
-    # PRAGMA foreign_keys=ON the DB cascades every child row itself.
-    db.execute(delete(Course).where(Course.id == course_id))
+    # enforced foreign keys the DB cascades every child row itself.
+    db.execute(delete(Course).where(Course.user_id == user_id, Course.id == course_id))
     db.commit()
 
 
-def _purge_stale_courses(db: Session, active_ids: set[str]) -> None:
-    """Remove cached courses the Classroom API no longer returns.
+def _purge_stale_courses(db: Session, user_id: int, active_ids: set[str]) -> None:
+    """Remove THIS owner's cached courses the Classroom API no longer returns.
 
     Covers ARCHIVED courses as well as courses the user left (unenrolled) or
     that were deleted in Google. The API list call has already succeeded at
-    this point, so a missing id is authoritative rather than an error.
+    this point, so a missing id is authoritative rather than an error. The
+    user_id scope is essential (audit Y3): another user's identical course
+    id must survive this purge untouched.
     """
-    cached_ids = [row[0] for row in db.query(Course.id).all()]
+    cached_ids = [
+        row[0] for row in db.query(Course.id).filter(Course.user_id == user_id).all()
+    ]
     for course_id in cached_ids:
         if course_id not in active_ids:
-            _purge_course(db, course_id)
+            _purge_course(db, user_id, course_id)
 
 
-def reset_cache(db: Session) -> None:
-    """Delete all cached Classroom data (destructive, user-confirmed)."""
-    for table in (
-        CourseWorkSubmission,
-        CourseStudent,
-        CourseRole,
-        StudentSubmission,
-        CourseWork,
-        Course,
-        SyncState,
-    ):
-        db.execute(delete(table))
+def reset_cache(db: Session, user_id: int) -> None:
+    """Delete all cached Classroom data of one user (destructive, confirmed).
+
+    Scoped to the calling user (migration stage 3 groundwork for §10/§12):
+    deleting every table's rows regardless of owner would erase other
+    users' caches. Explicit statements per table (no loop variable passed
+    to delete()): the table set is fixed at compile time.
+    """
+    db.execute(
+        delete(CourseWorkSubmission).where(CourseWorkSubmission.user_id == user_id)
+    )
+    db.execute(delete(CourseStudent).where(CourseStudent.user_id == user_id))
+    db.execute(delete(CourseRole).where(CourseRole.user_id == user_id))
+    db.execute(delete(StudentSubmission).where(StudentSubmission.user_id == user_id))
+    db.execute(delete(CourseWork).where(CourseWork.user_id == user_id))
+    db.execute(delete(Course).where(Course.user_id == user_id))
+    db.execute(delete(SyncState).where(SyncState.user_id == user_id))
     db.commit()
 
 
@@ -220,14 +240,14 @@ def _materials_to_json(raw_materials: list[dict]) -> list[dict]:
     return out
 
 
-def _upsert_work(db: Session, course_id: str, raw_work: dict) -> None:
+def _upsert_work(db: Session, user_id: int, course_id: str, raw_work: dict) -> None:
     """Insert/update one coursework row from a raw Classroom object."""
     work_id = raw_work.get("id")
     if not work_id:
         return
-    work = db.get(CourseWork, work_id)
+    work = db.get(CourseWork, (user_id, work_id))
     if work is None:
-        work = CourseWork(id=work_id, course_id=course_id)
+        work = CourseWork(user_id=user_id, id=work_id, course_id=course_id)
         db.add(work)
     work.course_id = course_id
     work.title = raw_work.get("title", "Untitled assignment")
@@ -245,6 +265,7 @@ def _upsert_work(db: Session, course_id: str, raw_work: dict) -> None:
 
 def _write_student_course(
     db: Session,
+    user_id: int,
     course_id: str,
     submissions: list[dict],
     work_cache: dict[tuple[str, str], dict],
@@ -264,12 +285,14 @@ def _write_student_course(
         if not raw_work:
             # courseWork.get may 403 (e.g. hidden/draft work) — skip.
             continue
-        _upsert_work(db, course_id, raw_work)
+        _upsert_work(db, user_id, course_id, raw_work)
         count += 1
 
-        sub = db.get(StudentSubmission, (course_id, work_id))
+        sub = db.get(StudentSubmission, (user_id, course_id, work_id))
         if sub is None:
-            sub = StudentSubmission(course_id=course_id, coursework_id=work_id)
+            sub = StudentSubmission(
+                user_id=user_id, course_id=course_id, coursework_id=work_id
+            )
             db.add(sub)
         sub.state = raw_sub.get("state")
         sub.late = bool(raw_sub.get("late"))
@@ -279,7 +302,9 @@ def _write_student_course(
     return count
 
 
-def _write_teacher_course(db: Session, course_id: str, payload: dict) -> int:
+def _write_teacher_course(
+    db: Session, user_id: int, course_id: str, payload: dict
+) -> int:
     """Cache a teacher course: ALL coursework, the roster and every submission.
 
     The teacher's own account is not a student in the course, so nothing here
@@ -296,13 +321,19 @@ def _write_teacher_course(db: Session, course_id: str, payload: dict) -> int:
             if not work_id:
                 continue
             work_ids.add(work_id)
-            _upsert_work(db, course_id, raw_work)
+            _upsert_work(db, user_id, course_id, raw_work)
             count += 1
-        for stale in db.query(CourseWork).filter_by(course_id=course_id).all():
+        for stale in (
+            db.query(CourseWork).filter_by(user_id=user_id, course_id=course_id).all()
+        ):
             if stale.id not in work_ids:
-                db.query(CourseWorkSubmission).filter_by(
-                    course_id=course_id, coursework_id=stale.id
-                ).delete(synchronize_session=False)
+                db.execute(
+                    delete(CourseWorkSubmission).where(
+                        CourseWorkSubmission.user_id == user_id,
+                        CourseWorkSubmission.course_id == course_id,
+                        CourseWorkSubmission.coursework_id == stale.id,
+                    )
+                )
                 db.delete(stale)
 
     students = payload.get("students")
@@ -313,15 +344,21 @@ def _write_teacher_course(db: Session, course_id: str, payload: dict) -> int:
             if not student_id:
                 continue
             student_ids.add(student_id)
-            row = db.get(CourseStudent, (course_id, student_id))
+            row = db.get(CourseStudent, (user_id, course_id, student_id))
             if row is None:
-                row = CourseStudent(course_id=course_id, user_id=student_id)
+                row = CourseStudent(
+                    user_id=user_id, course_id=course_id, student_id=student_id
+                )
                 db.add(row)
             row.full_name = raw_student.get("fullName") or row.full_name or student_id
             row.email = raw_student.get("emailAddress")
             row.photo_url = raw_student.get("photoUrl")
-        for stale in db.query(CourseStudent).filter_by(course_id=course_id).all():
-            if stale.user_id not in student_ids:
+        for stale in (
+            db.query(CourseStudent)
+            .filter_by(user_id=user_id, course_id=course_id)
+            .all()
+        ):
+            if stale.student_id not in student_ids:
                 db.delete(stale)
 
     submissions = payload.get("submissions")
@@ -333,10 +370,15 @@ def _write_teacher_course(db: Session, course_id: str, payload: dict) -> int:
             if not work_id or not student_id:
                 continue
             seen.add((work_id, student_id))
-            row = db.get(CourseWorkSubmission, (course_id, work_id, student_id))
+            row = db.get(
+                CourseWorkSubmission, (user_id, course_id, work_id, student_id)
+            )
             if row is None:
                 row = CourseWorkSubmission(
-                    course_id=course_id, coursework_id=work_id, student_id=student_id
+                    user_id=user_id,
+                    course_id=course_id,
+                    coursework_id=work_id,
+                    student_id=student_id,
                 )
                 db.add(row)
             row.state = raw_sub.get("state")
@@ -347,7 +389,9 @@ def _write_teacher_course(db: Session, course_id: str, payload: dict) -> int:
             row.updated_time = parse_rfc3339(raw_sub.get("updateTime"))
             row.attachments = _submission_attachments(raw_sub)
         for stale in (
-            db.query(CourseWorkSubmission).filter_by(course_id=course_id).all()
+            db.query(CourseWorkSubmission)
+            .filter_by(user_id=user_id, course_id=course_id)
+            .all()
         ):
             if (stale.coursework_id, stale.student_id) not in seen:
                 db.delete(stale)
