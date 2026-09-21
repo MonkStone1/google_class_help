@@ -58,6 +58,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 import auth
+import sync_store
 from database import get_db
 from models_auth import OAuthLoginState, User, UserSession
 
@@ -415,6 +416,12 @@ def callback(request: Request, db: Session = Depends(get_db)) -> RedirectRespons
     try:
         user = _upsert_user(db, identity, now)
         google_credentials.save_google_credentials(db, user.id, creds)
+        # The account just granted (or re-granted) access: make it due for
+        # the per-user scheduler immediately (stage 5, §63) instead of
+        # waiting out the interval, and lift ``needs_reauth`` if the grant
+        # had gone stale. sync_store is imported at module level below; no
+        # cycle (it touches models only).
+        sync_store.request_sync(db, user.id)
         session_token = _create_session(
             db, user.id, request.headers.get("user-agent"), now
         )

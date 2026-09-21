@@ -29,7 +29,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from api import router
 from background_sync import start as start_background_sync
 from background_sync import stop as stop_background_sync
-from config import FRONTEND_ORIGINS, HOSTED_MODE
+from config import EMBEDDED_SCHEDULER, FRONTEND_ORIGINS, HOSTED_MODE
 from database import SessionLocal, init_db
 from path_config import FRONTEND_DIST_DIR
 
@@ -38,20 +38,32 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Init the DB, start the background schedule (desktop), stop on shutdown.
+    """Init the DB, start the background schedule, stop it on shutdown.
 
-    Replaces the deprecated @app.on_event("startup") (review §1.9). Hosted
-    mode skips the global background loop: it syncs the single token.json
-    that does not exist in hosted mode; per-user scheduling arrives with
-    migration stage 5.
+    Replaces the deprecated @app.on_event("startup") (review §1.9).
+
+    - Desktop: the single-user schedule (ADR-0015) — sync right after
+      startup, then every interval.
+    - Hosted: per-user scheduling belongs to the dedicated worker container
+      (migration stage 5, §19, ADR-0023), so the web process does NOT start
+      it. ``GC_DASHBOARD_EMBEDDED_SCHEDULER=1`` opts a single-replica
+      deployment into running the scheduler here; duplicate jobs remain
+      impossible because every sync claims its user in the database.
     """
     init_db()
+    user_scheduler = None
     if not app.state.hosted:
         # Sync right after startup, then automatically every interval (ADR-0015).
         start_background_sync()
+    elif EMBEDDED_SCHEDULER:
+        from sync_scheduler import start as start_user_scheduler
+
+        user_scheduler = start_user_scheduler()
     yield
     if not app.state.hosted:
         stop_background_sync()
+    elif user_scheduler is not None:
+        user_scheduler.stop()
 
 
 # ----------------------------------------------------- desktop local guard

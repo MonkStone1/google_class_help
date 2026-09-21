@@ -8,9 +8,11 @@ Every function takes the ``user_id`` of the cache owner (migration stage
 every key lookup, delete and mirror-cleanup is scoped to one owner's rows.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import cast
 
-from sqlalchemy import delete
+from sqlalchemy import CursorResult, delete, or_, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from classroom_api import parse_date_time, parse_rfc3339
@@ -21,38 +23,167 @@ from models import (
     CourseWork,
     CourseWorkSubmission,
     StudentSubmission,
-    SyncState,
+    SyncStatus,
 )
 
 SubmissionRow = CourseWorkSubmission | StudentSubmission
 
 
-# ------------------------------------------------------------- sync_state
+# ------------------------------------------------------------- sync status
+#
+# One structured row per user (migration stage 5, §18) replaces the former
+# key/value sync_state table. The scheduler reads it to decide who is due;
+# the sync itself writes every transition through the functions below, so
+# there is exactly one source of truth for "when did this user last sync,
+# did it work, and may it be scheduled again".
+
+SYNC_PENDING = "pending"
+SYNC_RUNNING = "running"
+SYNC_OK = "ok"
+SYNC_ERROR = "error"
+SYNC_NEEDS_REAUTH = "needs_reauth"
+
+# Safety net for the VARCHAR(500) of sync_status.last_error: the message is
+# ours, but truncating here keeps a future longer sentence from aborting an
+# INSERT on PostgreSQL.
+_MAX_ERROR_LENGTH = 500
 
 
-def _set_state(db: Session, user_id: int, key: str, value: str | None) -> None:
-    row = db.get(SyncState, (user_id, key))
-    if row is None:
-        row = SyncState(user_id=user_id, key=key, value=value)
-        db.add(row)
-    else:
-        row.value = value
+def sync_status(db: Session, user_id: int) -> SyncStatus | None:
+    """The user's sync-status row, or None if the user never touched sync."""
+    return db.get(SyncStatus, user_id)
+
+
+def _status_row(db: Session, user_id: int) -> SyncStatus:
+    """The user's sync-status row, created on first use.
+
+    Creation is idempotent under concurrency: if another process inserted
+    the same PK between our SELECT and flush, the unique violation is
+    rolled back and the existing row is read instead. No other pending
+    change exists in this session at that point (the row is created before
+    the sync starts its work).
+    """
+    row = db.get(SyncStatus, user_id)
+    if row is not None:
+        return row
+    db.add(SyncStatus(user_id=user_id, status=SYNC_PENDING))
+    try:
+        db.flush()
+    except IntegrityError:  # pragma: no cover - concurrent first touch
+        db.rollback()
+        row = db.get(SyncStatus, user_id)
+        if row is None:
+            raise
+        return row
+    row = db.get(SyncStatus, user_id)
+    if row is None:  # pragma: no cover - only if the row vanished again
+        raise RuntimeError(f"sync_status row for user {user_id} disappeared")
+    return row
+
+
+def claim_sync(db: Session, user_id: int, now: datetime, *, stale_after: int) -> bool:
+    """Atomically claim the user's sync slot; False when one is in flight.
+
+    The conditional UPDATE is what makes the scheduler safe across worker
+    containers (migration stage 5, §19): a scan in container B cannot start
+    a job for a user a scan in container A already claimed. A ``running``
+    row whose ``last_started_at`` is older than ``stale_after`` seconds is
+    assumed to belong to a crashed worker and may be taken over, so a hard
+    kill cannot park a user forever.
+    """
+    _status_row(db, user_id)
+    cutoff = now - timedelta(seconds=stale_after)
+    result = cast(
+        CursorResult,
+        db.execute(
+            update(SyncStatus)
+            .where(SyncStatus.user_id == user_id)
+            .where(
+                or_(
+                    SyncStatus.status != SYNC_RUNNING,
+                    SyncStatus.last_started_at.is_(None),
+                    SyncStatus.last_started_at < cutoff,
+                )
+            )
+            .values(status=SYNC_RUNNING, last_started_at=now, sync_requested=False)
+        ),
+    )
+    db.commit()
+    return bool(result.rowcount)
+
+
+def request_sync(db: Session, user_id: int) -> None:
+    """Queue an immediate sync for one user, lifting ``needs_reauth`` (§63).
+
+    Called after a successful sign-in: the user just granted Google access
+    again, so a paused account becomes schedulable and should not wait out
+    the regular interval. The worker picks the flag up on its next scan and
+    the job clears it when it claims the user. A flag, not a timestamp, on
+    purpose: the sign-in happens in the web process and the job runs in the
+    worker container, so no shared clock is required.
+    """
+    row = _status_row(db, user_id)
+    row.sync_requested = True
+    if row.status == SYNC_NEEDS_REAUTH:
+        row.status = SYNC_PENDING
+        row.last_error = None
+        row.consecutive_failures = 0
     db.commit()
 
 
-def get_state(db: Session, user_id: int, key: str) -> str | None:
-    row = db.get(SyncState, (user_id, key))
-    return row.value if row else None
+def mark_sync_succeeded(db: Session, user_id: int, now: datetime) -> None:
+    """Record a finished, successful run: this is "last sync" for the UI."""
+    row = _status_row(db, user_id)
+    row.status = SYNC_OK
+    row.last_finished_at = now
+    row.last_success_at = now
+    row.last_error = None
+    row.consecutive_failures = 0
+    db.commit()
 
 
-def get_state_datetime(db: Session, user_id: int, key: str) -> datetime | None:
-    raw = get_state(db, user_id, key)
-    if not raw:
-        return None
-    try:
-        return datetime.fromisoformat(raw)
-    except ValueError:
-        return None
+def mark_sync_failed(db: Session, user_id: int, message: str, now: datetime) -> None:
+    """Record a retryable failure; ``message`` must be user-safe (§18)."""
+    row = _status_row(db, user_id)
+    row.status = SYNC_ERROR
+    row.last_finished_at = now
+    row.last_error = message[:_MAX_ERROR_LENGTH]
+    row.last_error_at = now
+    row.consecutive_failures = (row.consecutive_failures or 0) + 1
+    db.commit()
+
+
+def mark_sync_needs_reauth(
+    db: Session, user_id: int, message: str, now: datetime
+) -> None:
+    """Pause scheduled sync for a user until they sign in again (§63)."""
+    row = _status_row(db, user_id)
+    row.status = SYNC_NEEDS_REAUTH
+    row.last_finished_at = now
+    row.last_error = message[:_MAX_ERROR_LENGTH]
+    row.last_error_at = now
+    row.consecutive_failures = (row.consecutive_failures or 0) + 1
+    db.commit()
+
+
+def mark_sync_pending(db: Session, user_id: int, now: datetime) -> None:
+    """Release a claim without reporting an error (no Google grant yet)."""
+    row = _status_row(db, user_id)
+    row.status = SYNC_PENDING
+    row.last_finished_at = now
+    db.commit()
+
+
+def last_sync_time(db: Session, user_id: int) -> datetime | None:
+    """When this user's cache was last filled successfully."""
+    row = db.get(SyncStatus, user_id)
+    return row.last_success_at if row else None
+
+
+def last_sync_error(db: Session, user_id: int) -> str | None:
+    """The user-facing description of the last failed run, if any."""
+    row = db.get(SyncStatus, user_id)
+    return row.last_error if row else None
 
 
 # ------------------------------------------------------- unified access §2.3
@@ -136,7 +267,7 @@ def reset_cache(db: Session, user_id: int) -> None:
     db.execute(delete(StudentSubmission).where(StudentSubmission.user_id == user_id))
     db.execute(delete(CourseWork).where(CourseWork.user_id == user_id))
     db.execute(delete(Course).where(Course.user_id == user_id))
-    db.execute(delete(SyncState).where(SyncState.user_id == user_id))
+    db.execute(delete(SyncStatus).where(SyncStatus.user_id == user_id))
     db.commit()
 
 

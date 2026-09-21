@@ -29,3 +29,4 @@
 | [ADR-0020](adr-0020-hosted-web-oauth-and-sessions.md) | Хостед-режим — web OAuth, серверные сессии и шифрование токенов | Accepted |
 | [ADR-0021](adr-0021-postgresql-alembic-user-scoped-schema.md) | PostgreSQL + Alembic и user-scoped схема кэша | Accepted |
 | [ADR-0022](adr-0022-user-isolation-get-current-user.md) | User isolation — get_current_user и user-scoped Google-креденшелы | Accepted |
+| [ADR-0023](adr-0023-per-user-sync-scheduler.md) | Per-user синхронизация — планировщик/воркер, `sync_status`, needs_reauth | Accepted |

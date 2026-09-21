@@ -23,7 +23,9 @@ known-first-party = [
     "path_config",
     "schemas",
     "sync",
+    "sync_scheduler",
     "sync_service",
     "sync_store",
+    "sync_worker",
     "token_crypto",
 ]

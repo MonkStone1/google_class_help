@@ -209,6 +209,13 @@ class SyncStatus(BaseModel):
     last_sync: datetime | None = None
     last_sync_error: str | None = None
     syncing: bool = False
+    # Structured sync state (migration stage 5, §18). ``sync_status`` is one
+    # of "pending"/"running"/"ok"/"error"/"needs_reauth": the frontend uses
+    # it to decide between a spinner (running), a retry hint (error) and a
+    # re-auth prompt (needs_reauth) without parsing the error text.
+    sync_status: str = "pending"
+    last_sync_started_at: datetime | None = None
+    last_sync_finished_at: datetime | None = None
     total_assignments: int = 0
     completed: int = 0
     missing: int = 0

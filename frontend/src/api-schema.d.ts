@@ -183,7 +183,17 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Run Sync */
+        /**
+         * Run Sync
+         * @description Synchronize the calling user's cache with THEIR Google credentials.
+         *
+         *     §12: /api/sync must never touch another user's data. Desktop: the local
+         *     owner (token.json). Hosted: the session user's oauth_tokens — sync_now
+         *     resolves the cache owner and credentials from this user. Since the
+         *     per-user scheduler (stage 5, §18) a manual sync only conflicts with
+         *     THIS user's own running sync (background or another manual call); any
+         *     other user syncs independently.
+         */
         post: operations["run_sync_api_sync_post"];
         delete?: never;
         options?: never;
@@ -879,6 +889,15 @@ export interface components {
              * @default false
              */
             syncing: boolean;
+            /**
+             * Sync Status
+             * @default pending
+             */
+            sync_status: string;
+            /** Last Sync Started At */
+            last_sync_started_at?: string | null;
+            /** Last Sync Finished At */
+            last_sync_finished_at?: string | null;
             /**
              * Total Assignments
              * @default 0

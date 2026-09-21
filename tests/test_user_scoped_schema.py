@@ -23,13 +23,22 @@ from models import (
     CourseRole,
     CourseWork,
     StudentSubmission,
-    SyncState,
 )
 from models_auth import User
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _utc(year: int, month: int, day: int) -> datetime:
+    """Naive UTC timestamp — the convention of the user-scoped tables.
+
+    The sync_status columns are naive (DateTime without tz), so tests
+    compare them against naive values; the tzinfo here only keeps the
+    datetime constructor explicit about which clock is meant.
+    """
+    return datetime(year, month, day, tzinfo=timezone.utc).replace(tzinfo=None)
 
 
 def _make_user(db: Session, subject: str) -> User:
@@ -68,7 +77,8 @@ def _seed_course(db: Session, user_id: int, name: str) -> None:
             assigned_points=70,
         )
     )
-    db.add(SyncState(user_id=user_id, key="last_sync", value="2026-09-19T00:00:00"))
+    # Structured per-user sync state (stage 5) instead of the key/value row.
+    sync_store.mark_sync_succeeded(db, user_id, _utc(2026, 9, 19))
     db.commit()
 
 
@@ -117,14 +127,28 @@ def test_get_submission_respects_the_owner(db: Session):
     )
 
 
-def test_sync_state_is_per_user(db: Session):
+def test_sync_status_is_per_user(db: Session):
+    """Stage 5 (§18): one structured row per user, never shared."""
     alice = _make_user(db, "sub-alice")
     bob = _make_user(db, "sub-bob")
-    db.add(SyncState(user_id=alice.id, key="last_sync", value="a-time"))
-    db.add(SyncState(user_id=bob.id, key="last_sync", value="b-time"))
-    db.commit()
-    assert sync_store.get_state(db, alice.id, "last_sync") == "a-time"
-    assert sync_store.get_state(db, bob.id, "last_sync") == "b-time"
+    early = _utc(2026, 9, 19)
+    later = _utc(2026, 9, 20)
+    sync_store.mark_sync_succeeded(db, alice.id, early)
+    sync_store.mark_sync_succeeded(db, bob.id, later)
+    assert sync_store.last_sync_time(db, alice.id) == early
+    assert sync_store.last_sync_time(db, bob.id) == later
+
+    # A failure is recorded against ITS user only, with a sanitized message.
+    message = "Google API error (HTTP 500); the next sync will retry."
+    sync_store.mark_sync_failed(db, alice.id, message, later)
+    assert sync_store.last_sync_error(db, alice.id) == message
+    assert sync_store.last_sync_error(db, bob.id) is None
+    alice_row = sync_store.sync_status(db, alice.id)
+    bob_row = sync_store.sync_status(db, bob.id)
+    assert alice_row is not None and alice_row.status == sync_store.SYNC_ERROR
+    assert alice_row.consecutive_failures == 1
+    assert bob_row is not None and bob_row.status == sync_store.SYNC_OK
+    assert bob_row.consecutive_failures == 0
 
 
 def test_purge_stale_courses_keeps_other_users(db: Session):
@@ -151,9 +175,9 @@ def test_reset_cache_only_deletes_the_caller_rows(db: Session):
     assert db.query(Course).filter_by(user_id=alice.id).count() == 0
     assert db.query(Course).filter_by(user_id=bob.id).count() == 1
     assert db.query(StudentSubmission).filter_by(user_id=bob.id).count() == 1
-    # sync_state of the caller is gone, the other user's is intact.
-    assert sync_store.get_state(db, alice.id, "last_sync") is None
-    assert sync_store.get_state(db, bob.id, "last_sync") == "2026-09-19T00:00:00"
+    # The sync state of the caller is gone, the other user's is intact.
+    assert sync_store.last_sync_time(db, alice.id) is None
+    assert sync_store.last_sync_time(db, bob.id) == _utc(2026, 9, 19)
 
 
 def test_deleting_a_user_cascades_their_cache(db: Session):

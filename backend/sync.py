@@ -18,11 +18,17 @@ from grading import (  # noqa: F401
     grade_percent,
     is_submitted_state,
 )
-from sync_service import sync_now  # noqa: F401
+from sync_service import sync_now, sync_user_id  # noqa: F401
 from sync_store import (  # noqa: F401
+    SYNC_ERROR,
+    SYNC_NEEDS_REAUTH,
+    SYNC_OK,
+    SYNC_PENDING,
+    SYNC_RUNNING,
     SubmissionRow,
-    get_state,
-    get_state_datetime,
     get_submission,
+    last_sync_error,
+    last_sync_time,
     reset_cache,
+    sync_status,
 )

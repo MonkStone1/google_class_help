@@ -218,17 +218,54 @@ class CourseWorkSubmission(Base):
     attachments: Mapped[list] = mapped_column(JSON, default=list)
 
 
-class SyncState(Base):
-    """Sync bookkeeping of one user ("last_sync", "last_sync_error").
+class SyncStatus(Base):
+    """Structured synchronization state of one user (migration stage 5, §18).
 
-    Was a global key/value table (audit M4); per-user keys now, so each
-    account's dashboard reports its own synchronization state.
+    Replaces the key/value ``sync_state`` table (audit M4) with one row per
+    user holding the fields the scheduler actually needs:
+
+        pending  — never synced, or not signed in to Google;
+        running  — a sync job currently holds this user;
+        ok       — the last finished run succeeded;
+        error    — the last run failed (retryable; backoff is applied);
+        needs_reauth — the Google grant is unusable, scheduling is paused
+                   until the next sign-in.
+
+    The ``running`` value doubles as the cross-process claim: a conditional
+    UPDATE flips it only when the previous run is not still in flight, so
+    several worker containers can scan simultaneously without submitting
+    the same user twice (stale rows older than the configured claim window
+    are treated as a crashed worker and may be re-claimed).
+
+    ``last_error`` holds a SHORT, user-facing sentence only — never an
+    exception trace, an HTTP response body or token material (§18); the
+    full stack trace stays in the server log.
+
+    Timestamps are naive UTC, the convention of every user-scoped table in
+    this schema (users/sessions/oauth_tokens), so the scheduler's due
+    arithmetic never mixes clocks.
     """
 
-    __tablename__ = "sync_state"
+    __tablename__ = "sync_status"
 
     user_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
-    key: Mapped[str] = mapped_column(String, primary_key=True)
-    value: Mapped[str | None] = mapped_column(String, nullable=True)
+    # One of "pending"/"running"/"ok"/"error"/"needs_reauth".
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    last_started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Set only by a successful run; what the dashboard shows as "last sync".
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    last_error_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Drives the retry backoff and stops a permanently broken grant from
+    # being retried on every scan ("avoid retry storms", §63).
+    consecutive_failures: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    # "Sync this user as soon as possible": set right after a successful
+    # sign-in, cleared when the job claims the user. A flag (not a
+    # timestamp) precisely because the sign-in happens in the web process
+    # and the job in the worker container — a flag needs no shared clock.
+    sync_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

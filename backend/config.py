@@ -31,30 +31,68 @@ CREDENTIALS_FILE = Path(
 # and 3000/min per client. 16 workers keeps a typical sync under the per-user
 # quota while still saturating network latency; raise via env only together
 # with quota monitoring (429s are retried with exponential backoff).
-def _sync_max_workers() -> int:
-    """Resolve the sync pool size; an invalid env value falls back to 16."""
-    raw = os.environ.get("GC_DASHBOARD_SYNC_WORKERS", "")
+def _int_env(name: str, default: int, *, minimum: int = 0) -> int:
+    """Read a non-negative integer env var; invalid values fall back."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
     try:
-        return max(1, int(raw)) if raw else 16
+        return max(minimum, int(raw))
     except ValueError:
-        return 16
+        return default
 
 
-SYNC_MAX_WORKERS = _sync_max_workers()
-
-
-def _sync_interval_minutes() -> int:
-    """Resolve the background sync interval in minutes; invalid values fall back to 10."""
-    raw = os.environ.get("GC_DASHBOARD_SYNC_INTERVAL_MINUTES", "")
-    try:
-        return max(0, int(raw)) if raw else 10
-    except ValueError:
-        return 10
-
+SYNC_MAX_WORKERS = _int_env("GC_DASHBOARD_SYNC_WORKERS", 16, minimum=1)
 
 # Background sync: runs once at startup, then every SYNC_INTERVAL_MINUTES.
 # 0 disables the schedule entirely (no startup sync, no repeats).
-SYNC_INTERVAL_MINUTES = _sync_interval_minutes()
+SYNC_INTERVAL_MINUTES = _int_env("GC_DASHBOARD_SYNC_INTERVAL_MINUTES", 10)
+
+
+# ------------------------------------------------- per-user sync (stage 5)
+#
+# The scheduler picks users up individually instead of running one global
+# loop (migration prompt §18/§19). These knobs bound the work it may create:
+#
+# - SYNC_MAX_CONCURRENT_USERS: how many users may sync at the same time
+#   across the whole worker. Each user's sync uses SYNC_MAX_WORKERS threads,
+#   so the total thread budget is the product of the two (and the Google
+#   per-project quota budget is shared by all of them).
+# - SYNC_SCAN_INTERVAL_SECONDS: how often the scheduler looks for due users;
+#   every found user is then staggered and bounded, so a short scan interval
+#   does not mean a sync storm.
+# - SYNC_STARTUP_STAGGER_SECONDS: upper bound of the deterministic first-run
+#   offset (migration prompt §64). A deployment restart must not sync every
+#   account at the same instant; each user's offset is derived from its id,
+#   so it is stable across restarts yet spread across the window.
+# - SYNC_CLAIM_STALE_SECONDS: a sync_status row left in "running" longer
+#   than this is treated as a crashed worker and may be re-claimed (§19).
+SYNC_MAX_CONCURRENT_USERS = _int_env(
+    "GC_DASHBOARD_SYNC_MAX_CONCURRENT_USERS", 2, minimum=1
+)
+SYNC_SCAN_INTERVAL_SECONDS = _int_env("GC_DASHBOARD_SYNC_SCAN_INTERVAL_SECONDS", 60)
+SYNC_STARTUP_STAGGER_SECONDS = _int_env(
+    "GC_DASHBOARD_SYNC_STARTUP_STAGGER_SECONDS", 300
+)
+SYNC_CLAIM_STALE_SECONDS = _int_env("GC_DASHBOARD_SYNC_CLAIM_STALE_SECONDS", 3600)
+
+
+# Opt-in only: run the per-user scheduler inside the web process. The
+# supported deployment is the dedicated worker container (ADR-0023); this
+# exists for a single-replica instance that cannot run a second process.
+# Duplicate jobs are impossible even then — the DB claim in sync_store
+# serializes users across processes.
+def _embedded_scheduler_enabled() -> bool:
+    return os.environ.get("GC_DASHBOARD_EMBEDDED_SCHEDULER", "").strip() in {
+        "1",
+        "true",
+        "TRUE",
+        "True",
+        "yes",
+    }
+
+
+EMBEDDED_SCHEDULER = _embedded_scheduler_enabled()
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 

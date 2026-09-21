@@ -859,12 +859,20 @@ def status(
     # per-user profile cache — never a global login state or profile.
     auth_state = _build_auth_status(user)
     owner_id = user.id
+    # Structured per-user sync state (migration stage 5, §18): the
+    # dashboard sees a short status plus the last successful time — never
+    # an exception trace (the stored message is already sanitized).
+    sync_state = sync.sync_status(db, owner_id)
     return SyncStatus(
         authenticated=auth_state.authenticated,
         user_name=auth_state.user_name,
         user_email=auth_state.user_email,
-        last_sync=sync.get_state_datetime(db, owner_id, "last_sync"),
-        last_sync_error=sync.get_state(db, owner_id, "last_sync_error"),
+        last_sync=sync_state.last_success_at if sync_state else None,
+        last_sync_error=sync_state.last_error if sync_state else None,
+        syncing=bool(sync_state and sync_state.status == sync.SYNC_RUNNING),
+        sync_status=sync_state.status if sync_state else sync.SYNC_PENDING,
+        last_sync_started_at=sync_state.last_started_at if sync_state else None,
+        last_sync_finished_at=sync_state.last_finished_at if sync_state else None,
         # Aggregated in SQL, not by loading every table: the frontend polls
         # this endpoint every ~1.5 s while signing in (review §2.1 / §1.3).
         **_student_totals_sql(db, owner_id),
@@ -877,8 +885,10 @@ def run_sync(user: User = Depends(ownership.get_current_user)) -> SyncResult:
 
     §12: /api/sync must never touch another user's data. Desktop: the local
     owner (token.json). Hosted: the session user's oauth_tokens — sync_now
-    resolves the cache owner and credentials from this user. One sync at a
-    time per process until the per-user scheduler lands (stage 5).
+    resolves the cache owner and credentials from this user. Since the
+    per-user scheduler (stage 5, §18) a manual sync only conflicts with
+    THIS user's own running sync (background or another manual call); any
+    other user syncs independently.
     """
     result = sync.sync_now(user=user)
     if not result.get("ok") and "already running" in str(result.get("error", "")):
@@ -1047,7 +1057,7 @@ def course_detail(
         course=stats[course.id],
         role=role,
         students=[_student_out(row) for row in _roster_rows(db, owner_id, course_id)],
-        last_sync=sync.get_state_datetime(db, owner_id, "last_sync"),
+        last_sync=sync.last_sync_time(db, owner_id),
     )
 
 
@@ -1153,7 +1163,7 @@ def course_grades(
             if class_percents
             else None
         ),
-        last_sync=sync.get_state_datetime(db, owner_id, "last_sync"),
+        last_sync=sync.last_sync_time(db, owner_id),
     )
 
 
@@ -1303,5 +1313,5 @@ def student_grades(
         student=student,
         average_percent=(round(sum(percents) / len(percents), 2) if percents else None),
         items=items,
-        last_sync=sync.get_state_datetime(db, owner_id, "last_sync"),
+        last_sync=sync.last_sync_time(db, owner_id),
     )

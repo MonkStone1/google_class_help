@@ -1,1 +1,1440 @@
-{"openapi": "3.1.0", "info": {"title": "Local Google Classroom Dashboard", "version": "1.0.0"}, "paths": {"/api/auth/status": {"get": {"summary": "Auth Status", "operationId": "auth_status_api_auth_status_get", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AuthStatus"}}}}}}}, "/api/auth/login": {"post": {"summary": "Login", "operationId": "login_api_auth_login_post", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AuthStatus"}}}}}}}, "/api/auth/logout": {"post": {"summary": "Logout", "operationId": "logout_api_auth_logout_post", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AuthStatus"}}}}}}}, "/api/courses": {"get": {"summary": "List Courses", "operationId": "list_courses_api_courses_get", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"items": {"$ref": "#/components/schemas/CourseOut"}, "type": "array", "title": "Response List Courses Api Courses Get"}}}}}}}, "/api/assignments": {"get": {"summary": "List Assignments", "operationId": "list_assignments_api_assignments_get", "parameters": [{"name": "course_id", "in": "query", "required": false, "schema": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Course Id"}}, {"name": "search", "in": "query", "required": false, "schema": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Search"}}, {"name": "status", "in": "query", "required": false, "schema": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Status"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/AssignmentOut"}, "title": "Response List Assignments Api Assignments Get"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/assignments/upcoming": {"get": {"summary": "Upcoming", "operationId": "upcoming_api_assignments_upcoming_get", "parameters": [{"name": "days", "in": "query", "required": false, "schema": {"type": "integer", "maximum": 60, "minimum": 1, "default": 7, "title": "Days"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/AssignmentOut"}, "title": "Response Upcoming Api Assignments Upcoming Get"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/assignments/overdue": {"get": {"summary": "Overdue", "operationId": "overdue_api_assignments_overdue_get", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"items": {"$ref": "#/components/schemas/AssignmentOut"}, "type": "array", "title": "Response Overdue Api Assignments Overdue Get"}}}}}}}, "/api/grades": {"get": {"summary": "Grades", "operationId": "grades_api_grades_get", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"items": {"$ref": "#/components/schemas/CourseGrades"}, "type": "array", "title": "Response Grades Api Grades Get"}}}}}}}, "/api/calendar": {"get": {"summary": "Calendar", "operationId": "calendar_api_calendar_get", "parameters": [{"name": "from", "in": "query", "required": false, "schema": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "From"}}, {"name": "to", "in": "query", "required": false, "schema": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "To"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"type": "object", "additionalProperties": true, "title": "Response Calendar Api Calendar Get"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/status": {"get": {"summary": "Status", "operationId": "status_api_status_get", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SyncStatus"}}}}}}}, "/api/sync": {"post": {"summary": "Run Sync", "operationId": "run_sync_api_sync_post", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SyncResult"}}}}}}}, "/api/cache": {"delete": {"summary": "Clear Cache", "operationId": "clear_cache_api_cache_delete", "parameters": [{"name": "confirm", "in": "query", "required": false, "schema": {"type": "boolean", "default": false, "title": "Confirm"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"type": "object", "additionalProperties": true, "title": "Response Clear Cache Api Cache Delete"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/courses/{course_id}": {"get": {"summary": "Course Detail", "operationId": "course_detail_api_courses__course_id__get", "parameters": [{"name": "course_id", "in": "path", "required": true, "schema": {"type": "string", "title": "Course Id"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CourseDetailOut"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/courses/{course_id}/coursework": {"get": {"summary": "Course Coursework", "description": "Coursework of one course: all of it for a teacher, own work for a student.", "operationId": "course_coursework_api_courses__course_id__coursework_get", "parameters": [{"name": "course_id", "in": "path", "required": true, "schema": {"type": "string", "title": "Course Id"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/AssignmentOut"}, "title": "Response Course Coursework Api Courses  Course Id  Coursework Get"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/courses/{course_id}/students": {"get": {"summary": "Course Students", "operationId": "course_students_api_courses__course_id__students_get", "parameters": [{"name": "course_id", "in": "path", "required": true, "schema": {"type": "string", "title": "Course Id"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/StudentOut"}, "title": "Response Course Students Api Courses  Course Id  Students Get"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/courses/{course_id}/grades": {"get": {"summary": "Course Grades", "description": "Spreadsheet-style grade matrix: every student × every assignment.", "operationId": "course_grades_api_courses__course_id__grades_get", "parameters": [{"name": "course_id", "in": "path", "required": true, "schema": {"type": "string", "title": "Course Id"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TeacherGradesOut"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/courses/{course_id}/coursework/{coursework_id}": {"get": {"summary": "Coursework Detail", "description": "Full assignment page: metadata, materials and the submission table.", "operationId": "coursework_detail_api_courses__course_id__coursework__coursework_id__get", "parameters": [{"name": "course_id", "in": "path", "required": true, "schema": {"type": "string", "title": "Course Id"}}, {"name": "coursework_id", "in": "path", "required": true, "schema": {"type": "string", "title": "Coursework Id"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AssignmentDetailOut"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/courses/{course_id}/coursework/{coursework_id}/submissions": {"get": {"summary": "Coursework Submissions", "operationId": "coursework_submissions_api_courses__course_id__coursework__coursework_id__submissions_get", "parameters": [{"name": "course_id", "in": "path", "required": true, "schema": {"type": "string", "title": "Course Id"}}, {"name": "coursework_id", "in": "path", "required": true, "schema": {"type": "string", "title": "Coursework Id"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/SubmissionOut"}, "title": "Response Coursework Submissions Api Courses  Course Id  Coursework  Coursework Id  Submissions Get"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/courses/{course_id}/students/{student_id}/grades": {"get": {"summary": "Student Grades", "description": "One student's coursework, submission state and grade for a course.", "operationId": "student_grades_api_courses__course_id__students__student_id__grades_get", "parameters": [{"name": "course_id", "in": "path", "required": true, "schema": {"type": "string", "title": "Course Id"}}, {"name": "student_id", "in": "path", "required": true, "schema": {"type": "string", "title": "Student Id"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/StudentGradesOut"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/health": {"get": {"summary": "Health", "operationId": "health_api_health_get", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"additionalProperties": true, "type": "object", "title": "Response Health Api Health Get"}}}}}}}}, "components": {"schemas": {"AssignmentDetailOut": {"properties": {"id": {"type": "string", "title": "Id"}, "course_id": {"type": "string", "title": "Course Id"}, "course_name": {"type": "string", "title": "Course Name"}, "title": {"type": "string", "title": "Title"}, "description": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Description"}, "due_at": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Due At"}, "max_points": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Max Points"}, "work_type": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Work Type"}, "state": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "State"}, "alternate_link": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Alternate Link"}, "materials": {"items": {"$ref": "#/components/schemas/MaterialOut"}, "type": "array", "title": "Materials"}, "created_at": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Created At"}, "updated_at": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Updated At"}, "submission_state": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Submission State"}, "submitted": {"type": "boolean", "title": "Submitted", "default": false}, "graded": {"type": "boolean", "title": "Graded", "default": false}, "points": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Points"}, "late": {"type": "boolean", "title": "Late", "default": false}, "is_overdue": {"type": "boolean", "title": "Is Overdue", "default": false}, "priority": {"type": "string", "title": "Priority", "default": "low"}, "role": {"type": "string", "title": "Role", "default": "STUDENT"}, "student_count": {"type": "integer", "title": "Student Count", "default": 0}, "submission_count": {"type": "integer", "title": "Submission Count", "default": 0}, "graded_count": {"type": "integer", "title": "Graded Count", "default": 0}, "average_percent": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Average Percent"}, "submissions": {"items": {"$ref": "#/components/schemas/SubmissionOut"}, "type": "array", "title": "Submissions"}, "status_counts": {"additionalProperties": {"type": "integer"}, "type": "object", "title": "Status Counts"}}, "type": "object", "required": ["id", "course_id", "course_name", "title"], "title": "AssignmentDetailOut"}, "AssignmentOut": {"properties": {"id": {"type": "string", "title": "Id"}, "course_id": {"type": "string", "title": "Course Id"}, "course_name": {"type": "string", "title": "Course Name"}, "title": {"type": "string", "title": "Title"}, "description": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Description"}, "due_at": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Due At"}, "max_points": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Max Points"}, "work_type": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Work Type"}, "state": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "State"}, "alternate_link": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Alternate Link"}, "materials": {"items": {"$ref": "#/components/schemas/MaterialOut"}, "type": "array", "title": "Materials"}, "created_at": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Created At"}, "updated_at": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Updated At"}, "submission_state": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Submission State"}, "submitted": {"type": "boolean", "title": "Submitted", "default": false}, "graded": {"type": "boolean", "title": "Graded", "default": false}, "points": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Points"}, "late": {"type": "boolean", "title": "Late", "default": false}, "is_overdue": {"type": "boolean", "title": "Is Overdue", "default": false}, "priority": {"type": "string", "title": "Priority", "default": "low"}, "role": {"type": "string", "title": "Role", "default": "STUDENT"}, "student_count": {"type": "integer", "title": "Student Count", "default": 0}, "submission_count": {"type": "integer", "title": "Submission Count", "default": 0}, "graded_count": {"type": "integer", "title": "Graded Count", "default": 0}, "average_percent": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Average Percent"}}, "type": "object", "required": ["id", "course_id", "course_name", "title"], "title": "AssignmentOut"}, "AuthStatus": {"properties": {"authenticated": {"type": "boolean", "title": "Authenticated"}, "login_in_progress": {"type": "boolean", "title": "Login In Progress", "default": false}, "error": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Error"}, "auth_url": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Auth Url"}, "user_name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "User Name"}, "user_email": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "User Email"}}, "type": "object", "required": ["authenticated"], "title": "AuthStatus"}, "CourseDetailOut": {"properties": {"course": {"$ref": "#/components/schemas/CourseOut"}, "role": {"type": "string", "title": "Role", "default": "STUDENT"}, "students": {"items": {"$ref": "#/components/schemas/StudentOut"}, "type": "array", "title": "Students"}, "last_sync": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Last Sync"}}, "type": "object", "required": ["course"], "title": "CourseDetailOut"}, "CourseGrades": {"properties": {"course_id": {"type": "string", "title": "Course Id"}, "course_name": {"type": "string", "title": "Course Name"}, "average": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Average"}, "items": {"items": {"$ref": "#/components/schemas/GradeItem"}, "type": "array", "title": "Items"}}, "type": "object", "required": ["course_id", "course_name"], "title": "CourseGrades"}, "CourseOut": {"properties": {"id": {"type": "string", "title": "Id"}, "name": {"type": "string", "title": "Name"}, "description": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Description"}, "section": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Section"}, "room": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Room"}, "course_state": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Course State"}, "teachers": {"items": {"type": "string"}, "type": "array", "title": "Teachers"}, "role": {"type": "string", "title": "Role", "default": "STUDENT"}, "student_count": {"type": "integer", "title": "Student Count", "default": 0}, "total_assignments": {"type": "integer", "title": "Total Assignments", "default": 0}, "todo_count": {"type": "integer", "title": "Todo Count", "default": 0}, "overdue_count": {"type": "integer", "title": "Overdue Count", "default": 0}, "graded_count": {"type": "integer", "title": "Graded Count", "default": 0}, "average_grade": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Average Grade"}}, "type": "object", "required": ["id", "name"], "title": "CourseOut"}, "GradeColumn": {"properties": {"assignment_id": {"type": "string", "title": "Assignment Id"}, "title": {"type": "string", "title": "Title"}, "max_points": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Max Points"}, "due_at": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Due At"}}, "type": "object", "required": ["assignment_id", "title"], "title": "GradeColumn"}, "GradeItem": {"properties": {"assignment_id": {"type": "string", "title": "Assignment Id"}, "title": {"type": "string", "title": "Title"}, "points": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Points"}, "max_points": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Max Points"}, "percent": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Percent"}, "graded_at": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Graded At"}, "due_at": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Due At"}}, "type": "object", "required": ["assignment_id", "title"], "title": "GradeItem"}, "HTTPValidationError": {"properties": {"detail": {"items": {"$ref": "#/components/schemas/ValidationError"}, "type": "array", "title": "Detail"}}, "type": "object", "title": "HTTPValidationError"}, "MaterialOut": {"properties": {"type": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Type"}, "title": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Title"}, "url": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Url"}}, "type": "object", "title": "MaterialOut"}, "StudentGradeItem": {"properties": {"assignment_id": {"type": "string", "title": "Assignment Id"}, "title": {"type": "string", "title": "Title"}, "due_at": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Due At"}, "max_points": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Max Points"}, "submission_state": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Submission State"}, "status": {"type": "string", "title": "Status", "default": "not_submitted"}, "submitted": {"type": "boolean", "title": "Submitted", "default": false}, "returned": {"type": "boolean", "title": "Returned", "default": false}, "graded": {"type": "boolean", "title": "Graded", "default": false}, "late": {"type": "boolean", "title": "Late", "default": false}, "points": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Points"}, "percent": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Percent"}, "submitted_at": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Submitted At"}, "updated_at": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Updated At"}, "attachments": {"items": {"$ref": "#/components/schemas/MaterialOut"}, "type": "array", "title": "Attachments"}, "alternate_link": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Alternate Link"}}, "type": "object", "required": ["assignment_id", "title"], "title": "StudentGradeItem"}, "StudentGradeRow": {"properties": {"student": {"$ref": "#/components/schemas/StudentOut"}, "cells": {"items": {"$ref": "#/components/schemas/SubmissionCell"}, "type": "array", "title": "Cells"}, "average_percent": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Average Percent"}}, "type": "object", "required": ["student"], "title": "StudentGradeRow"}, "StudentGradesOut": {"properties": {"course_id": {"type": "string", "title": "Course Id"}, "course_name": {"type": "string", "title": "Course Name"}, "student": {"$ref": "#/components/schemas/StudentOut"}, "average_percent": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Average Percent"}, "items": {"items": {"$ref": "#/components/schemas/StudentGradeItem"}, "type": "array", "title": "Items"}, "last_sync": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Last Sync"}}, "type": "object", "required": ["course_id", "course_name", "student"], "title": "StudentGradesOut"}, "StudentOut": {"properties": {"id": {"type": "string", "title": "Id"}, "full_name": {"type": "string", "title": "Full Name", "default": ""}, "email": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Email"}, "photo_url": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Photo Url"}}, "type": "object", "required": ["id"], "title": "StudentOut"}, "SubmissionCell": {"properties": {"coursework_id": {"type": "string", "title": "Coursework Id"}, "status": {"type": "string", "title": "Status", "default": "not_submitted"}, "submitted": {"type": "boolean", "title": "Submitted", "default": false}, "returned": {"type": "boolean", "title": "Returned", "default": false}, "graded": {"type": "boolean", "title": "Graded", "default": false}, "late": {"type": "boolean", "title": "Late", "default": false}, "points": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Points"}, "max_points": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Max Points"}, "percent": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Percent"}, "submitted_at": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Submitted At"}, "updated_at": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Updated At"}}, "type": "object", "required": ["coursework_id"], "title": "SubmissionCell"}, "SubmissionOut": {"properties": {"student_id": {"type": "string", "title": "Student Id"}, "student_name": {"type": "string", "title": "Student Name", "default": ""}, "coursework_id": {"type": "string", "title": "Coursework Id"}, "submission_state": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Submission State"}, "status": {"type": "string", "title": "Status", "default": "not_submitted"}, "submitted": {"type": "boolean", "title": "Submitted", "default": false}, "returned": {"type": "boolean", "title": "Returned", "default": false}, "graded": {"type": "boolean", "title": "Graded", "default": false}, "late": {"type": "boolean", "title": "Late", "default": false}, "points": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Points"}, "max_points": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Max Points"}, "percent": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Percent"}, "submitted_at": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Submitted At"}, "updated_at": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Updated At"}, "attachments": {"items": {"$ref": "#/components/schemas/MaterialOut"}, "type": "array", "title": "Attachments"}}, "type": "object", "required": ["student_id", "coursework_id"], "title": "SubmissionOut", "description": "One student's submission for a coursework item (teacher view).\n\n`status` collapses the API state + grade into one label\n(not_submitted | turned_in | returned | graded); the booleans stay\navailable for filtering. A missing grade is never rendered as 0."}, "SyncResult": {"properties": {"ok": {"type": "boolean", "title": "Ok"}, "last_sync": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Last Sync"}, "courses": {"type": "integer", "title": "Courses", "default": 0}, "assignments": {"type": "integer", "title": "Assignments", "default": 0}, "error": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Error"}}, "type": "object", "required": ["ok"], "title": "SyncResult"}, "SyncStatus": {"properties": {"authenticated": {"type": "boolean", "title": "Authenticated"}, "user_name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "User Name"}, "user_email": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "User Email"}, "last_sync": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Last Sync"}, "last_sync_error": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Last Sync Error"}, "syncing": {"type": "boolean", "title": "Syncing", "default": false}, "total_assignments": {"type": "integer", "title": "Total Assignments", "default": 0}, "completed": {"type": "integer", "title": "Completed", "default": 0}, "missing": {"type": "integer", "title": "Missing", "default": 0}, "overdue": {"type": "integer", "title": "Overdue", "default": 0}, "due_today": {"type": "integer", "title": "Due Today", "default": 0}, "average_grade": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Average Grade"}}, "type": "object", "required": ["authenticated"], "title": "SyncStatus"}, "TeacherGradesOut": {"properties": {"course_id": {"type": "string", "title": "Course Id"}, "course_name": {"type": "string", "title": "Course Name"}, "role": {"type": "string", "title": "Role", "default": "TEACHER"}, "assignments": {"items": {"$ref": "#/components/schemas/GradeColumn"}, "type": "array", "title": "Assignments"}, "rows": {"items": {"$ref": "#/components/schemas/StudentGradeRow"}, "type": "array", "title": "Rows"}, "class_average": {"anyOf": [{"type": "number"}, {"type": "null"}], "title": "Class Average"}, "last_sync": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Last Sync"}}, "type": "object", "required": ["course_id", "course_name"], "title": "TeacherGradesOut"}, "ValidationError": {"properties": {"loc": {"items": {"anyOf": [{"type": "string"}, {"type": "integer"}]}, "type": "array", "title": "Location"}, "msg": {"type": "string", "title": "Message"}, "type": {"type": "string", "title": "Error Type"}, "input": {"title": "Input"}, "ctx": {"type": "object", "title": "Context"}}, "type": "object", "required": ["loc", "msg", "type"], "title": "ValidationError"}}}}
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Local Google Classroom Dashboard", "version": "1.0.0" },
+  "paths": {
+    "/api/auth/status": {
+      "get": {
+        "summary": "Auth Status",
+        "operationId": "auth_status_api_auth_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AuthStatus" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "summary": "Login",
+        "operationId": "login_api_auth_login_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AuthStatus" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "summary": "Logout",
+        "operationId": "logout_api_auth_logout_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AuthStatus" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/courses": {
+      "get": {
+        "summary": "List Courses",
+        "operationId": "list_courses_api_courses_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/CourseOut" },
+                  "type": "array",
+                  "title": "Response List Courses Api Courses Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assignments": {
+      "get": {
+        "summary": "List Assignments",
+        "operationId": "list_assignments_api_assignments_get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/AssignmentOut" },
+                  "title": "Response List Assignments Api Assignments Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assignments/upcoming": {
+      "get": {
+        "summary": "Upcoming",
+        "operationId": "upcoming_api_assignments_upcoming_get",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 60,
+              "minimum": 1,
+              "default": 7,
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/AssignmentOut" },
+                  "title": "Response Upcoming Api Assignments Upcoming Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assignments/overdue": {
+      "get": {
+        "summary": "Overdue",
+        "operationId": "overdue_api_assignments_overdue_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/AssignmentOut" },
+                  "type": "array",
+                  "title": "Response Overdue Api Assignments Overdue Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/grades": {
+      "get": {
+        "summary": "Grades",
+        "operationId": "grades_api_grades_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/CourseGrades" },
+                  "type": "array",
+                  "title": "Response Grades Api Grades Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/calendar": {
+      "get": {
+        "summary": "Calendar",
+        "operationId": "calendar_api_calendar_get",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Calendar Api Calendar Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/status": {
+      "get": {
+        "summary": "Status",
+        "operationId": "status_api_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SyncStatus" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sync": {
+      "post": {
+        "summary": "Run Sync",
+        "description": "Synchronize the calling user's cache with THEIR Google credentials.\n\n§12: /api/sync must never touch another user's data. Desktop: the local\nowner (token.json). Hosted: the session user's oauth_tokens — sync_now\nresolves the cache owner and credentials from this user. Since the\nper-user scheduler (stage 5, §18) a manual sync only conflicts with\nTHIS user's own running sync (background or another manual call); any\nother user syncs independently.",
+        "operationId": "run_sync_api_sync_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SyncResult" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cache": {
+      "delete": {
+        "summary": "Clear Cache",
+        "operationId": "clear_cache_api_cache_delete",
+        "parameters": [
+          {
+            "name": "confirm",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Confirm"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Clear Cache Api Cache Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/courses/{course_id}": {
+      "get": {
+        "summary": "Course Detail",
+        "operationId": "course_detail_api_courses__course_id__get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Course Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CourseDetailOut" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/courses/{course_id}/coursework": {
+      "get": {
+        "summary": "Course Coursework",
+        "description": "Coursework of one course: all of it for a teacher, own work for a student.",
+        "operationId": "course_coursework_api_courses__course_id__coursework_get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Course Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/AssignmentOut" },
+                  "title": "Response Course Coursework Api Courses  Course Id  Coursework Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/courses/{course_id}/students": {
+      "get": {
+        "summary": "Course Students",
+        "operationId": "course_students_api_courses__course_id__students_get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Course Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/StudentOut" },
+                  "title": "Response Course Students Api Courses  Course Id  Students Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/courses/{course_id}/grades": {
+      "get": {
+        "summary": "Course Grades",
+        "description": "Spreadsheet-style grade matrix: every student × every assignment.",
+        "operationId": "course_grades_api_courses__course_id__grades_get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Course Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TeacherGradesOut" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/courses/{course_id}/coursework/{coursework_id}": {
+      "get": {
+        "summary": "Coursework Detail",
+        "description": "Full assignment page: metadata, materials and the submission table.",
+        "operationId": "coursework_detail_api_courses__course_id__coursework__coursework_id__get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Course Id" }
+          },
+          {
+            "name": "coursework_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Coursework Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AssignmentDetailOut" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/courses/{course_id}/coursework/{coursework_id}/submissions": {
+      "get": {
+        "summary": "Coursework Submissions",
+        "operationId": "coursework_submissions_api_courses__course_id__coursework__coursework_id__submissions_get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Course Id" }
+          },
+          {
+            "name": "coursework_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Coursework Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/SubmissionOut" },
+                  "title": "Response Coursework Submissions Api Courses  Course Id  Coursework  Coursework Id  Submissions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/courses/{course_id}/students/{student_id}/grades": {
+      "get": {
+        "summary": "Student Grades",
+        "description": "One student's coursework, submission state and grade for a course.",
+        "operationId": "student_grades_api_courses__course_id__students__student_id__grades_get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Course Id" }
+          },
+          {
+            "name": "student_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Student Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StudentGradesOut" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Api Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AssignmentDetailOut": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "course_id": { "type": "string", "title": "Course Id" },
+          "course_name": { "type": "string", "title": "Course Name" },
+          "title": { "type": "string", "title": "Title" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "due_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Due At"
+          },
+          "max_points": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Max Points"
+          },
+          "work_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Work Type"
+          },
+          "state": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "State"
+          },
+          "alternate_link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Alternate Link"
+          },
+          "materials": {
+            "items": { "$ref": "#/components/schemas/MaterialOut" },
+            "type": "array",
+            "title": "Materials"
+          },
+          "created_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Updated At"
+          },
+          "submission_state": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Submission State"
+          },
+          "submitted": {
+            "type": "boolean",
+            "title": "Submitted",
+            "default": false
+          },
+          "graded": { "type": "boolean", "title": "Graded", "default": false },
+          "points": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Points"
+          },
+          "late": { "type": "boolean", "title": "Late", "default": false },
+          "is_overdue": {
+            "type": "boolean",
+            "title": "Is Overdue",
+            "default": false
+          },
+          "priority": {
+            "type": "string",
+            "title": "Priority",
+            "default": "low"
+          },
+          "role": { "type": "string", "title": "Role", "default": "STUDENT" },
+          "student_count": {
+            "type": "integer",
+            "title": "Student Count",
+            "default": 0
+          },
+          "submission_count": {
+            "type": "integer",
+            "title": "Submission Count",
+            "default": 0
+          },
+          "graded_count": {
+            "type": "integer",
+            "title": "Graded Count",
+            "default": 0
+          },
+          "average_percent": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Average Percent"
+          },
+          "submissions": {
+            "items": { "$ref": "#/components/schemas/SubmissionOut" },
+            "type": "array",
+            "title": "Submissions"
+          },
+          "status_counts": {
+            "additionalProperties": { "type": "integer" },
+            "type": "object",
+            "title": "Status Counts"
+          }
+        },
+        "type": "object",
+        "required": ["id", "course_id", "course_name", "title"],
+        "title": "AssignmentDetailOut"
+      },
+      "AssignmentOut": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "course_id": { "type": "string", "title": "Course Id" },
+          "course_name": { "type": "string", "title": "Course Name" },
+          "title": { "type": "string", "title": "Title" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "due_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Due At"
+          },
+          "max_points": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Max Points"
+          },
+          "work_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Work Type"
+          },
+          "state": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "State"
+          },
+          "alternate_link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Alternate Link"
+          },
+          "materials": {
+            "items": { "$ref": "#/components/schemas/MaterialOut" },
+            "type": "array",
+            "title": "Materials"
+          },
+          "created_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Updated At"
+          },
+          "submission_state": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Submission State"
+          },
+          "submitted": {
+            "type": "boolean",
+            "title": "Submitted",
+            "default": false
+          },
+          "graded": { "type": "boolean", "title": "Graded", "default": false },
+          "points": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Points"
+          },
+          "late": { "type": "boolean", "title": "Late", "default": false },
+          "is_overdue": {
+            "type": "boolean",
+            "title": "Is Overdue",
+            "default": false
+          },
+          "priority": {
+            "type": "string",
+            "title": "Priority",
+            "default": "low"
+          },
+          "role": { "type": "string", "title": "Role", "default": "STUDENT" },
+          "student_count": {
+            "type": "integer",
+            "title": "Student Count",
+            "default": 0
+          },
+          "submission_count": {
+            "type": "integer",
+            "title": "Submission Count",
+            "default": 0
+          },
+          "graded_count": {
+            "type": "integer",
+            "title": "Graded Count",
+            "default": 0
+          },
+          "average_percent": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Average Percent"
+          }
+        },
+        "type": "object",
+        "required": ["id", "course_id", "course_name", "title"],
+        "title": "AssignmentOut"
+      },
+      "AuthStatus": {
+        "properties": {
+          "authenticated": { "type": "boolean", "title": "Authenticated" },
+          "login_in_progress": {
+            "type": "boolean",
+            "title": "Login In Progress",
+            "default": false
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          },
+          "auth_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Auth Url"
+          },
+          "user_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Name"
+          },
+          "user_email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Email"
+          }
+        },
+        "type": "object",
+        "required": ["authenticated"],
+        "title": "AuthStatus"
+      },
+      "CourseDetailOut": {
+        "properties": {
+          "course": { "$ref": "#/components/schemas/CourseOut" },
+          "role": { "type": "string", "title": "Role", "default": "STUDENT" },
+          "students": {
+            "items": { "$ref": "#/components/schemas/StudentOut" },
+            "type": "array",
+            "title": "Students"
+          },
+          "last_sync": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Last Sync"
+          }
+        },
+        "type": "object",
+        "required": ["course"],
+        "title": "CourseDetailOut"
+      },
+      "CourseGrades": {
+        "properties": {
+          "course_id": { "type": "string", "title": "Course Id" },
+          "course_name": { "type": "string", "title": "Course Name" },
+          "average": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Average"
+          },
+          "items": {
+            "items": { "$ref": "#/components/schemas/GradeItem" },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": ["course_id", "course_name"],
+        "title": "CourseGrades"
+      },
+      "CourseOut": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "section": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Section"
+          },
+          "room": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Room"
+          },
+          "course_state": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Course State"
+          },
+          "teachers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Teachers"
+          },
+          "role": { "type": "string", "title": "Role", "default": "STUDENT" },
+          "student_count": {
+            "type": "integer",
+            "title": "Student Count",
+            "default": 0
+          },
+          "total_assignments": {
+            "type": "integer",
+            "title": "Total Assignments",
+            "default": 0
+          },
+          "todo_count": {
+            "type": "integer",
+            "title": "Todo Count",
+            "default": 0
+          },
+          "overdue_count": {
+            "type": "integer",
+            "title": "Overdue Count",
+            "default": 0
+          },
+          "graded_count": {
+            "type": "integer",
+            "title": "Graded Count",
+            "default": 0
+          },
+          "average_grade": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Average Grade"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name"],
+        "title": "CourseOut"
+      },
+      "GradeColumn": {
+        "properties": {
+          "assignment_id": { "type": "string", "title": "Assignment Id" },
+          "title": { "type": "string", "title": "Title" },
+          "max_points": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Max Points"
+          },
+          "due_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Due At"
+          }
+        },
+        "type": "object",
+        "required": ["assignment_id", "title"],
+        "title": "GradeColumn"
+      },
+      "GradeItem": {
+        "properties": {
+          "assignment_id": { "type": "string", "title": "Assignment Id" },
+          "title": { "type": "string", "title": "Title" },
+          "points": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Points"
+          },
+          "max_points": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Max Points"
+          },
+          "percent": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Percent"
+          },
+          "graded_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Graded At"
+          },
+          "due_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Due At"
+          }
+        },
+        "type": "object",
+        "required": ["assignment_id", "title"],
+        "title": "GradeItem"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": { "$ref": "#/components/schemas/ValidationError" },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "MaterialOut": {
+        "properties": {
+          "type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Type"
+          },
+          "title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Title"
+          },
+          "url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "title": "MaterialOut"
+      },
+      "StudentGradeItem": {
+        "properties": {
+          "assignment_id": { "type": "string", "title": "Assignment Id" },
+          "title": { "type": "string", "title": "Title" },
+          "due_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Due At"
+          },
+          "max_points": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Max Points"
+          },
+          "submission_state": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Submission State"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "not_submitted"
+          },
+          "submitted": {
+            "type": "boolean",
+            "title": "Submitted",
+            "default": false
+          },
+          "returned": {
+            "type": "boolean",
+            "title": "Returned",
+            "default": false
+          },
+          "graded": { "type": "boolean", "title": "Graded", "default": false },
+          "late": { "type": "boolean", "title": "Late", "default": false },
+          "points": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Points"
+          },
+          "percent": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Percent"
+          },
+          "submitted_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Submitted At"
+          },
+          "updated_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Updated At"
+          },
+          "attachments": {
+            "items": { "$ref": "#/components/schemas/MaterialOut" },
+            "type": "array",
+            "title": "Attachments"
+          },
+          "alternate_link": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Alternate Link"
+          }
+        },
+        "type": "object",
+        "required": ["assignment_id", "title"],
+        "title": "StudentGradeItem"
+      },
+      "StudentGradeRow": {
+        "properties": {
+          "student": { "$ref": "#/components/schemas/StudentOut" },
+          "cells": {
+            "items": { "$ref": "#/components/schemas/SubmissionCell" },
+            "type": "array",
+            "title": "Cells"
+          },
+          "average_percent": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Average Percent"
+          }
+        },
+        "type": "object",
+        "required": ["student"],
+        "title": "StudentGradeRow"
+      },
+      "StudentGradesOut": {
+        "properties": {
+          "course_id": { "type": "string", "title": "Course Id" },
+          "course_name": { "type": "string", "title": "Course Name" },
+          "student": { "$ref": "#/components/schemas/StudentOut" },
+          "average_percent": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Average Percent"
+          },
+          "items": {
+            "items": { "$ref": "#/components/schemas/StudentGradeItem" },
+            "type": "array",
+            "title": "Items"
+          },
+          "last_sync": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Last Sync"
+          }
+        },
+        "type": "object",
+        "required": ["course_id", "course_name", "student"],
+        "title": "StudentGradesOut"
+      },
+      "StudentOut": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name",
+            "default": ""
+          },
+          "email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Email"
+          },
+          "photo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Photo Url"
+          }
+        },
+        "type": "object",
+        "required": ["id"],
+        "title": "StudentOut"
+      },
+      "SubmissionCell": {
+        "properties": {
+          "coursework_id": { "type": "string", "title": "Coursework Id" },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "not_submitted"
+          },
+          "submitted": {
+            "type": "boolean",
+            "title": "Submitted",
+            "default": false
+          },
+          "returned": {
+            "type": "boolean",
+            "title": "Returned",
+            "default": false
+          },
+          "graded": { "type": "boolean", "title": "Graded", "default": false },
+          "late": { "type": "boolean", "title": "Late", "default": false },
+          "points": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Points"
+          },
+          "max_points": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Max Points"
+          },
+          "percent": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Percent"
+          },
+          "submitted_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Submitted At"
+          },
+          "updated_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": ["coursework_id"],
+        "title": "SubmissionCell"
+      },
+      "SubmissionOut": {
+        "properties": {
+          "student_id": { "type": "string", "title": "Student Id" },
+          "student_name": {
+            "type": "string",
+            "title": "Student Name",
+            "default": ""
+          },
+          "coursework_id": { "type": "string", "title": "Coursework Id" },
+          "submission_state": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Submission State"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "not_submitted"
+          },
+          "submitted": {
+            "type": "boolean",
+            "title": "Submitted",
+            "default": false
+          },
+          "returned": {
+            "type": "boolean",
+            "title": "Returned",
+            "default": false
+          },
+          "graded": { "type": "boolean", "title": "Graded", "default": false },
+          "late": { "type": "boolean", "title": "Late", "default": false },
+          "points": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Points"
+          },
+          "max_points": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Max Points"
+          },
+          "percent": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Percent"
+          },
+          "submitted_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Submitted At"
+          },
+          "updated_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Updated At"
+          },
+          "attachments": {
+            "items": { "$ref": "#/components/schemas/MaterialOut" },
+            "type": "array",
+            "title": "Attachments"
+          }
+        },
+        "type": "object",
+        "required": ["student_id", "coursework_id"],
+        "title": "SubmissionOut",
+        "description": "One student's submission for a coursework item (teacher view).\n\n`status` collapses the API state + grade into one label\n(not_submitted | turned_in | returned | graded); the booleans stay\navailable for filtering. A missing grade is never rendered as 0."
+      },
+      "SyncResult": {
+        "properties": {
+          "ok": { "type": "boolean", "title": "Ok" },
+          "last_sync": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Last Sync"
+          },
+          "courses": { "type": "integer", "title": "Courses", "default": 0 },
+          "assignments": {
+            "type": "integer",
+            "title": "Assignments",
+            "default": 0
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": ["ok"],
+        "title": "SyncResult"
+      },
+      "SyncStatus": {
+        "properties": {
+          "authenticated": { "type": "boolean", "title": "Authenticated" },
+          "user_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Name"
+          },
+          "user_email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Email"
+          },
+          "last_sync": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Last Sync"
+          },
+          "last_sync_error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Last Sync Error"
+          },
+          "syncing": {
+            "type": "boolean",
+            "title": "Syncing",
+            "default": false
+          },
+          "sync_status": {
+            "type": "string",
+            "title": "Sync Status",
+            "default": "pending"
+          },
+          "last_sync_started_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Last Sync Started At"
+          },
+          "last_sync_finished_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Last Sync Finished At"
+          },
+          "total_assignments": {
+            "type": "integer",
+            "title": "Total Assignments",
+            "default": 0
+          },
+          "completed": {
+            "type": "integer",
+            "title": "Completed",
+            "default": 0
+          },
+          "missing": { "type": "integer", "title": "Missing", "default": 0 },
+          "overdue": { "type": "integer", "title": "Overdue", "default": 0 },
+          "due_today": {
+            "type": "integer",
+            "title": "Due Today",
+            "default": 0
+          },
+          "average_grade": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Average Grade"
+          }
+        },
+        "type": "object",
+        "required": ["authenticated"],
+        "title": "SyncStatus"
+      },
+      "TeacherGradesOut": {
+        "properties": {
+          "course_id": { "type": "string", "title": "Course Id" },
+          "course_name": { "type": "string", "title": "Course Name" },
+          "role": { "type": "string", "title": "Role", "default": "TEACHER" },
+          "assignments": {
+            "items": { "$ref": "#/components/schemas/GradeColumn" },
+            "type": "array",
+            "title": "Assignments"
+          },
+          "rows": {
+            "items": { "$ref": "#/components/schemas/StudentGradeRow" },
+            "type": "array",
+            "title": "Rows"
+          },
+          "class_average": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Class Average"
+          },
+          "last_sync": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Last Sync"
+          }
+        },
+        "type": "object",
+        "required": ["course_id", "course_name"],
+        "title": "TeacherGradesOut"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": { "anyOf": [{ "type": "string" }, { "type": "integer" }] },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": { "type": "string", "title": "Message" },
+          "type": { "type": "string", "title": "Error Type" },
+          "input": { "title": "Input" },
+          "ctx": { "type": "object", "title": "Context" }
+        },
+        "type": "object",
+        "required": ["loc", "msg", "type"],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

@@ -99,7 +99,7 @@ def _import_models() -> None:
         CourseWork,
         CourseWorkSubmission,
         StudentSubmission,
-        SyncState,
+        SyncStatus,
     )
     from models_auth import (  # noqa: F401
         OAuthLoginState,

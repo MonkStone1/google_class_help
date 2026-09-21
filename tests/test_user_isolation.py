@@ -26,12 +26,18 @@ from sqlalchemy.orm import Session
 import auth
 import hosted_auth
 import ownership
+import sync_store
 from models import Course
 from models_auth import OAuthToken, User, UserSession
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _utc(year: int, month: int, day: int) -> datetime:
+    """Naive UTC timestamp — the convention of the user-scoped tables."""
+    return datetime(year, month, day, tzinfo=timezone.utc).replace(tzinfo=None)
 
 
 def _make_user(db: Session, subject: str, name: str | None = None) -> User:
@@ -67,7 +73,7 @@ def _make_local_user(db: Session, subject: str) -> User:
 
 def _seed_course(db: Session, user_id: int, name: str, points: float = 70) -> None:
     """One course with one assignment — identical Google ids for everyone."""
-    from models import CourseRole, CourseWork, StudentSubmission, SyncState
+    from models import CourseRole, CourseWork, StudentSubmission
 
     db.add(Course(user_id=user_id, id="c1", name=name, course_state="ACTIVE"))
     db.add(CourseRole(user_id=user_id, course_id="c1", role="STUDENT"))
@@ -90,7 +96,8 @@ def _seed_course(db: Session, user_id: int, name: str, points: float = 70) -> No
             assigned_points=points,
         )
     )
-    db.add(SyncState(user_id=user_id, key="last_sync", value="2026-09-19T00:00:00"))
+    # Structured per-user sync state (stage 5) instead of the key/value row.
+    sync_store.mark_sync_succeeded(db, user_id, _utc(2026, 9, 19))
     db.commit()
 
 
@@ -221,10 +228,17 @@ def test_sync_targets_the_session_user_only(hosted_client, db, monkeypatch):
     # Exactly one credential resolution — the session user's, nobody else's.
     assert [user.id for user in calls] == [bob.id]
     # Alice's sync state was never touched.
-    from models import SyncState
+    from models import SyncStatus
 
-    alice_state = db.get(SyncState, (alice.id, "last_sync"))
-    assert alice_state is not None and alice_state.value == "2026-09-19T00:00:00"
+    alice_state = db.get(SyncStatus, alice.id)
+    assert alice_state is not None
+    assert alice_state.last_success_at == _utc(2026, 9, 19)
+    assert alice_state.status == sync_store.SYNC_OK
+    # Bob's run was recorded against HIS row only: it released his claim
+    # without reporting an error (he simply has no Google grant yet).
+    bob_state = db.get(SyncStatus, bob.id)
+    assert bob_state is not None and bob_state.status == sync_store.SYNC_PENDING
+    assert bob_state.last_error is None
 
 
 # ----------------------------------------------------- §16 per-session state
@@ -445,7 +459,7 @@ def test_every_cache_table_has_an_ownership_path():
         "course_roles",
         "course_students",
         "coursework_submissions",
-        "sync_state",
+        "sync_status",
     }
     cache_names = {table.name for table in cache_tables}
     for table in cache_tables:

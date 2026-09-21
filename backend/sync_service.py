@@ -6,51 +6,110 @@ Every sync belongs to ONE user (migration stage 4, §12): the owner is
 resolved from the authenticated user, and the Google credentials come
 from the user-scoped credential layer (google_credentials.py, §15) —
 never from a process-global token state.
+
+Multi-user scheduling (migration stage 5, §18): concurrency is controlled
+PER USER, not per process. Two different users may sync at the same time;
+the same user may not — an in-process per-user lock serializes threads of
+this process, and a conditional UPDATE on ``sync_status`` (sync_store
+.claim_sync) serializes whole worker containers. Every run records its
+start/finish/success/error into that user's ``sync_status`` row, and the
+error text kept there is a short user-facing sentence — raw exception
+text and stack traces stay in the server log (§18).
 """
 
 import logging
 import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timezone
 
 import google_credentials
 from sqlalchemy.orm import Session
 
 import ownership
 from classroom_api import ClassroomClient, build_service
-from config import SYNC_MAX_WORKERS
+from config import SYNC_CLAIM_STALE_SECONDS, SYNC_MAX_WORKERS
 from database import SessionLocal
 from models import Course, CourseRole
 from models_auth import User
 from sync_store import (
     _purge_stale_courses,
-    _set_state,
     _write_student_course,
     _write_teacher_course,
+    claim_sync,
+    mark_sync_failed,
+    mark_sync_needs_reauth,
+    mark_sync_pending,
+    mark_sync_succeeded,
 )
 
 logger = logging.getLogger(__name__)
 
-_SYNC_LOCK = threading.Lock()
+# Returned when this user already has a sync in flight. The exact wording
+# is part of the API contract: api.py maps it to HTTP 409 (review §3.9).
+ALREADY_RUNNING = "A synchronization is already running."
+NOT_SIGNED_IN = "Not signed in to Google."
+NEEDS_REAUTH = "Google authorization expired; please sign in again."
+COURSES_FAILED = "Classroom courses.list failed; cached data kept."
+
+# Per-user sync mutexes (stage 5, §18). A process-global lock would
+# serialize every user; keying by owner id lets independent accounts sync
+# in parallel while the same account is still protected from running
+# twice. The registry itself is guarded; entries are tiny and survive for
+# the process lifetime, which also keeps a lock object stable for callers.
+_sync_locks_guard = threading.Lock()
+_sync_locks: dict[int, threading.Lock] = {}
+
+
+def _sync_lock_for(user_id: int) -> threading.Lock:
+    with _sync_locks_guard:
+        return _sync_locks.setdefault(user_id, threading.Lock())
 
 
 def sync_now(user: User | None = None) -> dict:
-    """Pull the user's Classroom data into the user's cache scope (§12).
+    """Pull a user's Classroom data into that user's cache scope (§12/§18).
 
     ``user`` is the authenticated user whose cache to refresh — the
     session user on the hosted service, the local owner on desktop
     (``None`` keeps the desktop background path unchanged). Safe to call
-    concurrently: a second caller is told a sync is already running
-    instead of duplicating requests. The mutex is process-wide for now;
-    per-user scheduling and worker budgets arrive with stage 5.
+    concurrently: the same user's second caller is told a sync is already
+    running instead of duplicating requests, while another user's caller
+    proceeds independently.
     """
-    if not _SYNC_LOCK.acquire(blocking=False):
-        return {"ok": False, "error": "A synchronization is already running."}
+    if user is not None:
+        owner_id = user.id
+    else:
+        with SessionLocal() as db:
+            owner = ownership.ensure_local_owner(db)
+            owner_id = owner.id
+            # The synthetic owner is created by this very call on the first
+            # desktop run; committing here is what makes it survive the
+            # session close — otherwise _do_sync would reload nothing and
+            # every background run would report "Not signed in to Google".
+            db.commit()
+    lock = _sync_lock_for(owner_id)
+    if not lock.acquire(blocking=False):
+        return {"ok": False, "error": ALREADY_RUNNING}
     try:
-        return _do_sync(user)
+        return _do_sync(owner_id)
     finally:
-        _SYNC_LOCK.release()
+        lock.release()
+
+
+def sync_user_id(user_id: int) -> dict:
+    """Sync one user by id — the scheduler/worker entry point (stage 5).
+
+    The scheduler selects users from the database without loading their ORM
+    objects; this resolves the row for :func:`sync_now`, which then applies
+    the same per-user locking and state transitions as a manual sync.
+    """
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        if user is None or not user.is_active:
+            return {"ok": False, "error": NOT_SIGNED_IN}
+        # Detach before the session closes: sync_now only reads ``id``.
+        db.expunge(user)
+    return sync_now(user=user)
 
 
 def _thread_local_client(credentials) -> Callable[[], ClassroomClient]:
@@ -176,27 +235,59 @@ def _fetch_coursework(
     return results
 
 
-def _do_sync(user: User | None) -> dict:
+def _now() -> datetime:
+    """Naive UTC — the timestamp convention of every user-scoped table."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _public_error(exc: Exception) -> str:
+    """Short, user-safe description of a failed sync (§18).
+
+    Raw exception text (Google's HTTP error body, request URLs, payload
+    fragments) stays in the log; the dashboard only needs to know how to
+    react. The HTTP status is read defensively: ``googleapiclient`` errors
+    expose ``resp.status``, anything else falls back to a generic sentence
+    that carries no exception detail at all.
+    """
+    status = getattr(getattr(exc, "resp", None), "status", None)
+    if status == 401:
+        return NEEDS_REAUTH
+    if status == 403:
+        return "Google denied access to Classroom data; please sign in again."
+    if status == 429:
+        return "Google rate limit reached; the next sync will retry."
+    if isinstance(status, int):
+        return f"Google API error (HTTP {status}); the next sync will retry."
+    return "Sync failed; see the server log for details."
+
+
+def _do_sync(owner_id: int) -> dict:
     db: Session = SessionLocal()
-    owner_id: int | None = None
     pool = ThreadPoolExecutor(max_workers=SYNC_MAX_WORKERS)
     try:
-        if user is not None:
-            # The caller's ORM instance belongs to another session; reload
-            # the row here so ownership and credentials resolve within
-            # this session's transaction.
-            user = db.get(User, user.id)
-            if user is None or not user.is_active:
-                return {"ok": False, "error": "Not signed in to Google."}
-        else:
-            user = ownership.ensure_local_owner(db)
-        owner_id = user.id
+        user = db.get(User, owner_id)
+        if user is None or not user.is_active:
+            return {"ok": False, "error": NOT_SIGNED_IN}
+        # Claim this user's sync slot before any network work (stage 5, §18):
+        # the conditional UPDATE also excludes a job another worker container
+        # already started for the same account.
+        started_at = _now()
+        if not claim_sync(
+            db, owner_id, started_at, stale_after=SYNC_CLAIM_STALE_SECONDS
+        ):
+            return {"ok": False, "error": ALREADY_RUNNING}
         # The cache rows written by this sync belong to this user (§10);
         # the credentials are that same user's (§15) — hosted users read
         # their own oauth_tokens row, desktop its single token.json.
         creds = google_credentials.get_google_credentials(db, user)
         if creds is None:
-            return {"ok": False, "error": "Not signed in to Google."}
+            # Distinguish "never signed in" from "the stored grant is
+            # unusable": only the latter pauses scheduled sync (§63).
+            if google_credentials.has_google_grant(db, user):
+                mark_sync_needs_reauth(db, owner_id, NEEDS_REAUTH, _now())
+                return {"ok": False, "error": NEEDS_REAUTH}
+            mark_sync_pending(db, owner_id, _now())
+            return {"ok": False, "error": NOT_SIGNED_IN}
 
         service = build_service(creds)
         client = ClassroomClient(service)
@@ -212,11 +303,10 @@ def _do_sync(user: User | None) -> dict:
         if courses is None:
             # courses.list failed (HTTP error): keep the cache and record the
             # error instead of purging every course as "gone" (review §1.7).
-            message = "Classroom courses.list failed; cached data kept."
-            logger.warning(message)
+            logger.warning(COURSES_FAILED)
             db.rollback()
-            _set_state(db, owner_id, "last_sync_error", message)
-            return {"ok": False, "error": message}
+            mark_sync_failed(db, owner_id, COURSES_FAILED, _now())
+            return {"ok": False, "error": COURSES_FAILED}
         active_ids = {raw["id"] for raw, _ in courses}
 
         get_client = _thread_local_client(creds)
@@ -240,8 +330,7 @@ def _do_sync(user: User | None) -> dict:
         work_cache = _fetch_coursework(get_client, work_requests, pool)
 
         assignment_count = 0
-        now = datetime.now(  # noqa: DTZ005 - naive local time is intentional (cache stores naive datetimes)
-        )
+        now = _now()
 
         for raw_course, role in courses:
             course_id = raw_course["id"]
@@ -281,8 +370,7 @@ def _do_sync(user: User | None) -> dict:
         # return for THIS owner's cache on this sync is removed from it.
         _purge_stale_courses(db, owner_id, active_ids)
 
-        _set_state(db, owner_id, "last_sync", now.isoformat())
-        _set_state(db, owner_id, "last_sync_error", None)
+        mark_sync_succeeded(db, owner_id, _now())
         return {
             "ok": True,
             "last_sync": now,
@@ -291,17 +379,15 @@ def _do_sync(user: User | None) -> dict:
         }
     except (
         Exception
-    ) as exc:  # any Google/network error must land in sync_state, not crash the API
-        # The dashboard gets the short message below; the log keeps the whole
-        # stack, which is the only artifact a user can send from a build that
-        # fails on a platform we do not have (e.g. the exe under Wine).
+    ) as exc:  # any Google/network error must land in sync_status, not crash the API
+        # The dashboard gets the short, sanitized sentence below; the log
+        # keeps the whole stack, which is the only artifact a user can send
+        # from a build that fails on a platform we do not have (e.g. the exe
+        # under Wine). Raw exception text never reaches the frontend (§18).
         logger.exception("Classroom sync failed")
         db.rollback()
-        message = f"{exc.__class__.__name__}: {exc}"
-        # owner_id is None only if resolving the user itself failed; then
-        # there is no owner whose sync_state could record the error.
-        if owner_id is not None:
-            _set_state(db, owner_id, "last_sync_error", message)
+        message = _public_error(exc)
+        mark_sync_failed(db, owner_id, message, _now())
         return {"ok": False, "error": message}
     finally:
         pool.shutdown(wait=True)

@@ -228,6 +228,20 @@ def refresh_google_credentials(db: Session, user: User) -> Credentials | None:
         return creds
 
 
+def has_google_grant(db: Session, user: User) -> bool:
+    """Whether a Google authorization exists for this user, valid or not.
+
+    Used by the sync orchestrator to tell "this user never signed in" from
+    "the stored grant is unusable" (stage 5, §63): only the latter flips the
+    user's sync status to ``needs_reauth`` and pauses scheduled sync. This
+    reads no token material — it only checks that a credential record exists.
+    """
+    if user.provider == "google":
+        return db.get(OAuthToken, user.id) is not None
+    # Desktop local owner: the process's single token.json (ADR-0019).
+    return auth.load_credentials() is not None
+
+
 def delete_google_credentials(db: Session, user_id: int) -> None:
     """Forget one user's Google credentials (§15).
 

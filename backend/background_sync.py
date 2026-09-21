@@ -1,4 +1,4 @@
-"""Background synchronization schedule for the Classroom cache.
+"""Background synchronization schedule for the Classroom cache (desktop).
 
 - one sync right after application startup;
 - then a sync every SYNC_INTERVAL_MINUTES (default 10, env
@@ -6,11 +6,13 @@
 - a successful sign-in also triggers a one-off sync so the dashboard does
   not sit empty until the next tick.
 
-Every run goes through ``sync.sync_now()``, which is mutex-protected: a
-background run never duplicates a manual sync or another background run.
-Failures are recorded in ``sync_state.last_sync_error`` by the sync itself;
-while the user is not signed in, ``sync_now()`` returns early and the next
-tick simply retries.
+Every run goes through ``sync.sync_now()``, which now holds a PER-USER mutex
+(migration stage 5, §18): a background run never duplicates a manual sync or
+another background run. On desktop there is exactly one account, so this
+module is still the single-user schedule; the hosted service uses the
+per-user scheduler/worker instead (sync_scheduler.py). Failures are recorded
+in the user's ``sync_status`` row by the sync itself; while the user is not
+signed in, ``sync_now()`` returns early and the next tick simply retries.
 """
 
 import logging
