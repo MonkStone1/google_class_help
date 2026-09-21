@@ -441,12 +441,23 @@ def callback(request: Request, db: Session = Depends(get_db)) -> RedirectRespons
 
 @router.get("/status")
 def hosted_status(user: User = Depends(get_current_user)) -> dict:
-    """AuthStatus for the hosted UI (never any token material)."""
+    """AuthStatus for the hosted UI (§24): this browser's session only.
+
+    Never any token material: only the local user id and the profile the
+    UI renders. ``user`` is the canonical stage-6 shape; the flat
+    ``user_name``/``user_email`` fields are kept for the current frontend
+    and removed when stage 7 switches over.
+    """
     return {
         "authenticated": True,
         "login_in_progress": False,
         "error": None,
         "auth_url": None,
+        "user": {
+            "id": user.id,
+            "name": user.display_name,
+            "email": user.email,
+        },
         "user_name": user.display_name,
         "user_email": user.email,
     }

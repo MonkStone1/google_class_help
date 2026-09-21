@@ -30,3 +30,4 @@
 | [ADR-0021](adr-0021-postgresql-alembic-user-scoped-schema.md) | PostgreSQL + Alembic и user-scoped схема кэша | Accepted |
 | [ADR-0022](adr-0022-user-isolation-get-current-user.md) | User isolation — get_current_user и user-scoped Google-креденшелы | Accepted |
 | [ADR-0023](adr-0023-per-user-sync-scheduler.md) | Per-user синхронизация — планировщик/воркер, `sync_status`, needs_reauth | Accepted |
+| [ADR-0024](adr-0024-teacher-mode-api-surface.md) | Teacher-mode API surface — role gates, `/api/me`, identity shape и глобальный предел интерактивного синка | Accepted |

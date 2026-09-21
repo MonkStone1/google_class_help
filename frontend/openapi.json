@@ -18,6 +18,23 @@
         }
       }
     },
+    "/api/me": {
+      "get": {
+        "summary": "Me",
+        "description": "Identity of the signed-in user (§23/§24).\n\nSame identity source as ``/api/auth/status``: the validated session\nuser in hosted mode, the desktop local owner (with the Google profile\nresolved and cached per user) in desktop mode. A request without a\nvalid application session is rejected earlier with 401 (hosted session\ngate / dependency); this handler never sees an anonymous caller.",
+        "operationId": "me_api_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserOut" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/auth/login": {
       "post": {
         "summary": "Login",
@@ -276,7 +293,7 @@
     "/api/sync": {
       "post": {
         "summary": "Run Sync",
-        "description": "Synchronize the calling user's cache with THEIR Google credentials.\n\n§12: /api/sync must never touch another user's data. Desktop: the local\nowner (token.json). Hosted: the session user's oauth_tokens — sync_now\nresolves the cache owner and credentials from this user. Since the\nper-user scheduler (stage 5, §18) a manual sync only conflicts with\nTHIS user's own running sync (background or another manual call); any\nother user syncs independently.",
+        "description": "Synchronize the calling user's cache with THEIR Google credentials.\n\n§12: /api/sync must never touch another user's data. Desktop: the local\nowner (token.json). Hosted: the session user's oauth_tokens — sync_now\nresolves the cache owner and credentials from this user. Since the\nper-user scheduler (stage 5, §18) a manual sync only conflicts with\nTHIS user's own running sync (background or another manual call); any\nother user syncs independently.\n\n§65: a manual sync is interactive work and is bounded by the process's\nglobal concurrency ceiling (``SYNC_MAX_CONCURRENT_USERS``). When every\nslot is taken the request is answered with 503 and a Retry-Later-style\nphrase instead of queueing behind other users' syncs.",
         "operationId": "run_sync_api_sync_post",
         "responses": {
           "200": {
@@ -841,6 +858,12 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Auth Url"
           },
+          "user": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/UserOut" },
+              { "type": "null" }
+            ]
+          },
           "user_name": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Name"
@@ -852,7 +875,8 @@
         },
         "type": "object",
         "required": ["authenticated"],
-        "title": "AuthStatus"
+        "title": "AuthStatus",
+        "description": "Auth state of THIS browser's application session (§24).\n\n``user`` is the canonical stage-6 shape. ``user_name``/``user_email``\nand the desktop-only loopback fields (``auth_url``,\n``login_in_progress``) stay for backward compatibility with the current\nfrontend; stage 7 switches the UI over and the flat fields are dropped."
       },
       "CourseDetailOut": {
         "properties": {
@@ -1418,6 +1442,23 @@
         "type": "object",
         "required": ["course_id", "course_name"],
         "title": "TeacherGradesOut"
+      },
+      "UserOut": {
+        "properties": {
+          "id": { "type": "integer", "title": "Id" },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": ["id"],
+        "title": "UserOut",
+        "description": "Identity of the authenticated user (migration stage 6, §24).\n\nExactly the three fields the frontend needs to render \"signed in as\".\nNo Google credential material, no tokens, no OAuth state: the local\n``users.id`` is the only identifier and it is the caller's own."
       },
       "ValidationError": {
         "properties": {

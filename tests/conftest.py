@@ -67,10 +67,18 @@ def db(client):
 
 @pytest.fixture()
 def owner_id(db):
-    """The desktop cache owner (migration stage 3): seeds need its id."""
+    """The desktop cache owner (migration stage 3): seeds need its id.
+
+    Committed, not just flushed: the API under test opens its OWN SQLite
+    connection, and an uncommitted write transaction in this fixture would
+    make that connection fail with "database is locked" (or block it). The
+    real desktop path commits the synthetic owner too (sync_service).
+    """
     import ownership
 
-    return ownership.local_owner_id(db)
+    owner = ownership.local_owner_id(db)
+    db.commit()
+    return owner
 
 
 @pytest.fixture()

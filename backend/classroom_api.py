@@ -6,6 +6,7 @@ googleapiclient package directly.
 """
 
 from datetime import datetime
+from threading import Lock
 from typing import Any
 
 import httplib2
@@ -20,6 +21,25 @@ REQUEST_TIMEOUT_SECONDS = 30
 # which also self-throttles us under the per-user quota (20 QPS) when many
 # workers run in parallel.
 NUM_RETRIES = 3
+
+
+class RequestStats:
+    """Thread-safe counter of the Google requests one sync performs (§65).
+
+    Teacher mode fans out to far more requests than the student view (every
+    course's coursework, roster and all submissions). The counter makes that
+    volume observable in the sync log without putting anything into the
+    cached data or the API response. Clients are built per worker thread, so
+    the counter is shared across them and guards its own state.
+    """
+
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self.requests = 0
+
+    def record(self) -> None:
+        with self._lock:
+            self.requests += 1
 
 
 def build_service(credentials) -> Any:
@@ -83,8 +103,23 @@ class ClassroomClient:
     as ``Any``.
     """
 
-    def __init__(self, service: Any) -> None:
+    def __init__(self, service: Any, stats: RequestStats | None = None) -> None:
         self._service = service
+        # Optional observability counter shared by one sync's worker threads
+        # (§65); None keeps the client usable without instrumentation.
+        self._stats = stats
+
+    def _execute(self, request: Any) -> dict:
+        """Execute one prepared request with the shared retry policy (§65).
+
+        The single choke point for every Classroom call: it applies
+        googleapiclient's exponential backoff (``num_retries``) and, when a
+        :class:`RequestStats` was supplied, counts the request so a sync can
+        log its real API volume.
+        """
+        if self._stats is not None:
+            self._stats.record()
+        return request.execute(num_retries=NUM_RETRIES)
 
     def list_courses(
         self,
@@ -110,11 +145,8 @@ class ClassroomClient:
             if teacher_id:
                 kwargs["teacherId"] = teacher_id
             try:
-                response = (
-                    self._service.courses()
-                    .list(**kwargs)
-                    .execute(num_retries=NUM_RETRIES)
-                )
+                request = self._service.courses().list(**kwargs)
+                response = self._execute(request)
             except HttpError:
                 return None
             items.extend(response.get("courses", []))
@@ -144,12 +176,8 @@ class ClassroomClient:
             if course_work_states:
                 kwargs["courseWorkStates"] = course_work_states
             try:
-                response = (
-                    self._service.courses()
-                    .courseWork()
-                    .list(**kwargs)
-                    .execute(num_retries=NUM_RETRIES)
-                )
+                request = self._service.courses().courseWork().list(**kwargs)
+                response = self._execute(request)
             except HttpError:
                 return None
             items.extend(response.get("courseWork", []))
@@ -168,12 +196,12 @@ class ClassroomClient:
         page_token: str | None = None
         while True:
             try:
-                response = (
+                request = (
                     self._service.courses()
                     .teachers()
                     .list(courseId=course_id, pageSize=100, pageToken=page_token)
-                    .execute(num_retries=NUM_RETRIES)
                 )
+                response = self._execute(request)
             except HttpError:
                 return items
             for teacher in response.get("teachers", []):
@@ -204,12 +232,12 @@ class ClassroomClient:
         page_token: str | None = None
         while True:
             try:
-                response = (
+                request = (
                     self._service.courses()
                     .students()
                     .list(courseId=course_id, pageSize=100, pageToken=page_token)
-                    .execute(num_retries=NUM_RETRIES)
                 )
+                response = self._execute(request)
             except HttpError:
                 return None
             for student in response.get("students", []):
@@ -241,7 +269,7 @@ class ClassroomClient:
         page_token: str | None = None
         while True:
             try:
-                response = (
+                request = (
                     self._service.courses()
                     .courseWork()
                     .studentSubmissions()
@@ -251,8 +279,8 @@ class ClassroomClient:
                         pageSize=100,
                         pageToken=page_token,
                     )
-                    .execute(num_retries=NUM_RETRIES)
                 )
+                response = self._execute(request)
             except HttpError:
                 return None
             items.extend(response.get("studentSubmissions", []))
@@ -273,7 +301,7 @@ class ClassroomClient:
         page_token: str | None = None
         while True:
             try:
-                response = (
+                request = (
                     self._service.courses()
                     .courseWork()
                     .studentSubmissions()
@@ -284,8 +312,8 @@ class ClassroomClient:
                         pageSize=100,
                         pageToken=page_token,
                     )
-                    .execute(num_retries=NUM_RETRIES)
                 )
+                response = self._execute(request)
             except HttpError:
                 return items
             items.extend(response.get("studentSubmissions", []))
@@ -297,21 +325,18 @@ class ClassroomClient:
     def get_coursework(self, course_id: str, course_work_id: str) -> dict:
         """Point lookup of one assignment (allowed for students)."""
         try:
-            return (
+            request = (
                 self._service.courses()
                 .courseWork()
                 .get(courseId=course_id, id=course_work_id)
-                .execute(num_retries=NUM_RETRIES)
             )
+            return self._execute(request)
         except HttpError:
             return {}
 
     def get_user_profile(self) -> dict:
         try:
-            return (
-                self._service.userProfiles()
-                .get(userId="me")
-                .execute(num_retries=NUM_RETRIES)
-            )
+            request = self._service.userProfiles().get(userId="me")
+            return self._execute(request)
         except HttpError:
             return {}

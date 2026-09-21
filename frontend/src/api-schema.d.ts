@@ -21,6 +21,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Me
+         * @description Identity of the signed-in user (§23/§24).
+         *
+         *     Same identity source as ``/api/auth/status``: the validated session
+         *     user in hosted mode, the desktop local owner (with the Google profile
+         *     resolved and cached per user) in desktop mode. A request without a
+         *     valid application session is rejected earlier with 401 (hosted session
+         *     gate / dependency); this handler never sees an anonymous caller.
+         */
+        get: operations["me_api_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -193,6 +219,11 @@ export interface paths {
          *     per-user scheduler (stage 5, §18) a manual sync only conflicts with
          *     THIS user's own running sync (background or another manual call); any
          *     other user syncs independently.
+         *
+         *     §65: a manual sync is interactive work and is bounded by the process's
+         *     global concurrency ceiling (``SYNC_MAX_CONCURRENT_USERS``). When every
+         *     slot is taken the request is answered with 503 and a Retry-Later-style
+         *     phrase instead of queueing behind other users' syncs.
          */
         post: operations["run_sync_api_sync_post"];
         delete?: never;
@@ -536,7 +567,15 @@ export interface components {
             /** Average Percent */
             average_percent?: number | null;
         };
-        /** AuthStatus */
+        /**
+         * AuthStatus
+         * @description Auth state of THIS browser's application session (§24).
+         *
+         *     ``user`` is the canonical stage-6 shape. ``user_name``/``user_email``
+         *     and the desktop-only loopback fields (``auth_url``,
+         *     ``login_in_progress``) stay for backward compatibility with the current
+         *     frontend; stage 7 switches the UI over and the flat fields are dropped.
+         */
         AuthStatus: {
             /** Authenticated */
             authenticated: boolean;
@@ -549,6 +588,7 @@ export interface components {
             error?: string | null;
             /** Auth Url */
             auth_url?: string | null;
+            user?: components["schemas"]["UserOut"] | null;
             /** User Name */
             user_name?: string | null;
             /** User Email */
@@ -946,6 +986,22 @@ export interface components {
             /** Last Sync */
             last_sync?: string | null;
         };
+        /**
+         * UserOut
+         * @description Identity of the authenticated user (migration stage 6, §24).
+         *
+         *     Exactly the three fields the frontend needs to render "signed in as".
+         *     No Google credential material, no tokens, no OAuth state: the local
+         *     ``users.id`` is the only identifier and it is the caller's own.
+         */
+        UserOut: {
+            /** Id */
+            id: number;
+            /** Name */
+            name?: string | null;
+            /** Email */
+            email?: string | null;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -984,6 +1040,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthStatus"];
+                };
+            };
+        };
+    };
+    me_api_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserOut"];
                 };
             };
         };

@@ -5,13 +5,37 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
+class UserOut(BaseModel):
+    """Identity of the authenticated user (migration stage 6, §24).
+
+    Exactly the three fields the frontend needs to render "signed in as".
+    No Google credential material, no tokens, no OAuth state: the local
+    ``users.id`` is the only identifier and it is the caller's own.
+    """
+
+    id: int
+    name: str | None = None
+    email: str | None = None
+
+
 class AuthStatus(BaseModel):
+    """Auth state of THIS browser's application session (§24).
+
+    ``user`` is the canonical stage-6 shape. ``user_name``/``user_email``
+    and the desktop-only loopback fields (``auth_url``,
+    ``login_in_progress``) stay for backward compatibility with the current
+    frontend; stage 7 switches the UI over and the flat fields are dropped.
+    """
+
     authenticated: bool
     login_in_progress: bool = False
     error: str | None = None
     # Consent URL, exposed while the sign-in waits for the redirect: a build
     # whose shell cannot open a browser (Wine) must still be signable (ADR-0019).
     auth_url: str | None = None
+    # Identity of the signed-in user; None while unauthenticated.
+    user: UserOut | None = None
+    # Deprecated flat mirror of ``user`` (stage 7 removes them).
     user_name: str | None = None
     user_email: str | None = None
 

@@ -34,6 +34,16 @@ its primary key with an ownership FK (models.py, §10), so a row without an
 owner cannot exist and a same-named Google id is unique only within one
 user's scope. ``tests/test_user_isolation.py`` guards both the schema
 shape and the aggregates.
+
+Teacher mode and API surface (migration stage 6, §21–§24): roles stay
+per-course and per-user (ADR-0017), every teacher-only view is gated on
+BOTH the authenticated user and ``role == TEACHER``, and every response
+keeps the stage-4 ownership path. ``GET /api/me`` exposes the caller's own
+identity, and ``AuthStatus.user`` replaces the Google-shaped flat profile
+fields (kept until the stage-7 frontend switch-over). Status codes are
+checked per §23: 401 for a missing application session, 403 for an
+authenticated user without the course role, 404 for a resource outside the
+caller's scope (never disclosing whether another user's row exists).
 """
 
 # ruff: noqa: B008, DTZ005, DTZ901
@@ -84,6 +94,7 @@ from schemas import (
     SyncResult,
     SyncStatus,
     TeacherGradesOut,
+    UserOut,
 )
 from sync_store import SubmissionRow, get_submission
 
@@ -142,6 +153,16 @@ def _reset_profile_cache(user_id: int | None = None) -> None:
             _profile_cache.pop(user_id, None)
 
 
+def _user_out(user: User) -> UserOut:
+    """The three identity fields of the caller (§24).
+
+    Built from the local ``users`` row only — never from a Google
+    credential, token or OAuth object, none of which may appear in any
+    response.
+    """
+    return UserOut(id=user.id, name=user.display_name, email=user.email)
+
+
 def _build_auth_status(user: User) -> AuthStatus:
     """AuthStatus of ONE user (§16) with their own profile (§17).
 
@@ -149,6 +170,10 @@ def _build_auth_status(user: User) -> AuthStatus:
     Google at every login, §7) and there is no loopback login state.
     Desktop: the loopback flow's single-account state, plus the Google
     userinfo profile cached under the local owner's id.
+
+    §24: the payload describes THIS browser's application session and
+    carries no OAuth internals — no access/refresh token, no client
+    secret, no authorization code, no full Google credential object.
     """
     if user.provider == "google":
         return AuthStatus(
@@ -156,6 +181,7 @@ def _build_auth_status(user: User) -> AuthStatus:
             login_in_progress=False,
             error=None,
             auth_url=None,
+            user=_user_out(user),
             user_name=user.display_name,
             user_email=user.email,
         )
@@ -165,12 +191,33 @@ def _build_auth_status(user: User) -> AuthStatus:
     creds = auth.get_valid_credentials()
     if creds is not None:
         user_name, user_email = _cached_profile(user, creds)
-    return AuthStatus(**status, user_name=user_name, user_email=user_email)
+    return AuthStatus(
+        **status,
+        user=UserOut(id=user.id, name=user_name, email=user_email),
+        user_name=user_name,
+        user_email=user_email,
+    )
 
 
 @router.get("/auth/status", response_model=AuthStatus)
 def auth_status(user: User = Depends(ownership.get_current_user)) -> AuthStatus:
     return _build_auth_status(user)
+
+
+@router.get("/me", response_model=UserOut)
+def me(user: User = Depends(ownership.get_current_user)) -> UserOut:
+    """Identity of the signed-in user (§23/§24).
+
+    Same identity source as ``/api/auth/status``: the validated session
+    user in hosted mode, the desktop local owner (with the Google profile
+    resolved and cached per user) in desktop mode. A request without a
+    valid application session is rejected earlier with 401 (hosted session
+    gate / dependency); this handler never sees an anonymous caller.
+    """
+    status = _build_auth_status(user)
+    # ``user`` is always populated by _build_auth_status; the fallback keeps
+    # the type honest without inventing a second identity source.
+    return status.user or _user_out(user)
 
 
 @router.post("/auth/login", response_model=AuthStatus)
@@ -889,14 +936,23 @@ def run_sync(user: User = Depends(ownership.get_current_user)) -> SyncResult:
     per-user scheduler (stage 5, §18) a manual sync only conflicts with
     THIS user's own running sync (background or another manual call); any
     other user syncs independently.
+
+    §65: a manual sync is interactive work and is bounded by the process's
+    global concurrency ceiling (``SYNC_MAX_CONCURRENT_USERS``). When every
+    slot is taken the request is answered with 503 and a Retry-Later-style
+    phrase instead of queueing behind other users' syncs.
     """
-    result = sync.sync_now(user=user)
-    if not result.get("ok") and "already running" in str(result.get("error", "")):
-        # A running sync is not an error: 409 tells the client to keep
-        # showing its spinner instead of surfacing a failure (review §3.9).
-        raise HTTPException(
-            status_code=409, detail="A synchronization is already running."
-        )
+    result = sync.sync_now(user=user, interactive=True)
+    if not result.get("ok"):
+        error = str(result.get("error", ""))
+        if "already running" in error:
+            # A running sync is not an error: 409 tells the client to keep
+            # showing its spinner instead of surfacing a failure (§3.9).
+            raise HTTPException(
+                status_code=409, detail="A synchronization is already running."
+            )
+        if error == sync.SERVER_BUSY:
+            raise HTTPException(status_code=503, detail=error)
     return SyncResult(**result)
 
 
@@ -1053,10 +1109,18 @@ def course_detail(
     course = _get_course(db, owner_id, course_id)
     stats = _course_stats_sql(db, owner_id)
     role = _course_role(db, owner_id, course)
+    # §21: the roster is teacher-only data. A student course has no roster
+    # rows to begin with; gating on the role also keeps rows left over from
+    # a former teaching period out of the response.
+    students = (
+        [_student_out(row) for row in _roster_rows(db, owner_id, course_id)]
+        if role == "TEACHER"
+        else []
+    )
     return CourseDetailOut(
         course=stats[course.id],
         role=role,
-        students=[_student_out(row) for row in _roster_rows(db, owner_id, course_id)],
+        students=students,
         last_sync=sync.last_sync_time(db, owner_id),
     )
 
@@ -1256,12 +1320,16 @@ def student_grades(
             status_code=403,
             detail="Students can only view their own grades.",
         )
+    # §23: a teacher asking for a student who is not enrolled in this course
+    # gets 404, not a fabricated empty student row. The student route keeps
+    # the "me" sentinel (ADR-0010).
+    roster_row = None
+    if is_teacher:
+        roster_row = db.get(CourseStudent, (owner_id, course_id, student_id))
+        if roster_row is None:
+            raise HTTPException(status_code=404, detail="Student not found.")
     student = (
-        _student_out(
-            db.get(CourseStudent, (owner_id, course_id, student_id)), student_id
-        )
-        if is_teacher
-        else StudentOut(id="me")
+        _student_out(roster_row, student_id) if is_teacher else StudentOut(id="me")
     )
     works = sorted(
         db.query(CourseWork).filter_by(user_id=owner_id, course_id=course_id).all(),

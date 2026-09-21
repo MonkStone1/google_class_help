@@ -19,6 +19,7 @@ text and stack traces stay in the server log (§18).
 
 import logging
 import threading
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -27,8 +28,12 @@ import google_credentials
 from sqlalchemy.orm import Session
 
 import ownership
-from classroom_api import ClassroomClient, build_service
-from config import SYNC_CLAIM_STALE_SECONDS, SYNC_MAX_WORKERS
+from classroom_api import ClassroomClient, RequestStats, build_service
+from config import (
+    SYNC_CLAIM_STALE_SECONDS,
+    SYNC_MAX_CONCURRENT_USERS,
+    SYNC_MAX_WORKERS,
+)
 from database import SessionLocal
 from models import Course, CourseRole
 from models_auth import User
@@ -51,6 +56,8 @@ ALREADY_RUNNING = "A synchronization is already running."
 NOT_SIGNED_IN = "Not signed in to Google."
 NEEDS_REAUTH = "Google authorization expired; please sign in again."
 COURSES_FAILED = "Classroom courses.list failed; cached data kept."
+# Returned when every global sync slot is taken (§65). api.py maps it to 503.
+SERVER_BUSY = "The server is busy synchronizing other accounts; try again shortly."
 
 # Per-user sync mutexes (stage 5, §18). A process-global lock would
 # serialize every user; keying by owner id lets independent accounts sync
@@ -61,12 +68,39 @@ _sync_locks_guard = threading.Lock()
 _sync_locks: dict[int, threading.Lock] = {}
 
 
+# Global concurrency of INTERACTIVE (user-triggered) syncs (§65). The
+# per-user pool bounds one account's request fan-out (SYNC_MAX_WORKERS);
+# this bounds how many accounts run at once so a burst of "Sync now" clicks
+# after a deploy cannot open N pools of workers. Scheduled/background syncs
+# are already bounded by the scheduler's own pool (stage 5) and are not
+# counted here. The counter is per process; the supported deployment runs a
+# single worker plus the web replicas, each with this ceiling.
+_slots_lock = threading.Lock()
+_active_interactive = 0
+
+
+def _acquire_interactive_slot() -> bool:
+    """Take one global interactive slot, or fail immediately (§65)."""
+    global _active_interactive
+    with _slots_lock:
+        if _active_interactive >= SYNC_MAX_CONCURRENT_USERS:
+            return False
+        _active_interactive += 1
+        return True
+
+
+def _release_interactive_slot() -> None:
+    global _active_interactive
+    with _slots_lock:
+        _active_interactive -= 1
+
+
 def _sync_lock_for(user_id: int) -> threading.Lock:
     with _sync_locks_guard:
         return _sync_locks.setdefault(user_id, threading.Lock())
 
 
-def sync_now(user: User | None = None) -> dict:
+def sync_now(user: User | None = None, *, interactive: bool = False) -> dict:
     """Pull a user's Classroom data into that user's cache scope (§12/§18).
 
     ``user`` is the authenticated user whose cache to refresh — the
@@ -75,25 +109,37 @@ def sync_now(user: User | None = None) -> dict:
     concurrently: the same user's second caller is told a sync is already
     running instead of duplicating requests, while another user's caller
     proceeds independently.
+
+    ``interactive=True`` (the user-triggered ``POST /api/sync``) also takes
+    one of the process's global slots (§65): when ``SYNC_MAX_CONCURRENT_USERS``
+    interactive syncs are already running the call returns SERVER_BUSY
+    instead of stacking another pool of workers. Scheduled and background
+    syncs pass the default — the scheduler already bounds them.
     """
-    if user is not None:
-        owner_id = user.id
-    else:
-        with SessionLocal() as db:
-            owner = ownership.ensure_local_owner(db)
-            owner_id = owner.id
-            # The synthetic owner is created by this very call on the first
-            # desktop run; committing here is what makes it survive the
-            # session close — otherwise _do_sync would reload nothing and
-            # every background run would report "Not signed in to Google".
-            db.commit()
-    lock = _sync_lock_for(owner_id)
-    if not lock.acquire(blocking=False):
-        return {"ok": False, "error": ALREADY_RUNNING}
+    if interactive and not _acquire_interactive_slot():
+        return {"ok": False, "error": SERVER_BUSY}
     try:
-        return _do_sync(owner_id)
+        if user is not None:
+            owner_id = user.id
+        else:
+            with SessionLocal() as db:
+                owner = ownership.ensure_local_owner(db)
+                owner_id = owner.id
+                # The synthetic owner is created by this very call on the first
+                # desktop run; committing here is what makes it survive the
+                # session close — otherwise _do_sync would reload nothing and
+                # every background run would report "Not signed in to Google".
+                db.commit()
+        lock = _sync_lock_for(owner_id)
+        if not lock.acquire(blocking=False):
+            return {"ok": False, "error": ALREADY_RUNNING}
+        try:
+            return _do_sync(owner_id)
+        finally:
+            lock.release()
     finally:
-        lock.release()
+        if interactive:
+            _release_interactive_slot()
 
 
 def sync_user_id(user_id: int) -> dict:
@@ -112,7 +158,9 @@ def sync_user_id(user_id: int) -> dict:
     return sync_now(user=user)
 
 
-def _thread_local_client(credentials) -> Callable[[], ClassroomClient]:
+def _thread_local_client(
+    credentials, stats: RequestStats | None = None
+) -> Callable[[], ClassroomClient]:
     """Return a getter that builds one ClassroomClient per worker thread.
 
     httplib2 and the discovery service are not thread-safe, so workers must
@@ -124,7 +172,7 @@ def _thread_local_client(credentials) -> Callable[[], ClassroomClient]:
     def get_client() -> ClassroomClient:
         client = getattr(local, "client", None)
         if client is None:
-            client = ClassroomClient(build_service(credentials))
+            client = ClassroomClient(build_service(credentials), stats=stats)
             local.client = client
         return client
 
@@ -264,6 +312,11 @@ def _public_error(exc: Exception) -> str:
 def _do_sync(owner_id: int) -> dict:
     db: Session = SessionLocal()
     pool = ThreadPoolExecutor(max_workers=SYNC_MAX_WORKERS)
+    # One per-run counter shared by every worker thread's client (§65): it
+    # makes the real Google request volume of a sync (much higher for a
+    # teacher account) visible in the log for capacity planning (stage 9).
+    stats = RequestStats()
+    started_monotonic = time.monotonic()
     try:
         user = db.get(User, owner_id)
         if user is None or not user.is_active:
@@ -290,7 +343,7 @@ def _do_sync(owner_id: int) -> dict:
             return {"ok": False, "error": NOT_SIGNED_IN}
 
         service = build_service(creds)
-        client = ClassroomClient(service)
+        client = ClassroomClient(service, stats=stats)
 
         # One shared pool for every network stage (per-course lists and the
         # point courseWork.get lookups): threads and their per-thread API
@@ -309,7 +362,7 @@ def _do_sync(owner_id: int) -> dict:
             return {"ok": False, "error": COURSES_FAILED}
         active_ids = {raw["id"] for raw, _ in courses}
 
-        get_client = _thread_local_client(creds)
+        get_client = _thread_local_client(creds, stats)
         teacher_names, payloads = _fetch_course_payloads(get_client, courses, pool)
 
         # Student courses discover coursework via their submissions and then
@@ -371,6 +424,16 @@ def _do_sync(owner_id: int) -> dict:
         _purge_stale_courses(db, owner_id, active_ids)
 
         mark_sync_succeeded(db, owner_id, _now())
+        elapsed = time.monotonic() - started_monotonic
+        logger.info(
+            "Sync ok user=%s courses=%d assignments=%d google_requests=%d "
+            "duration=%.1fs",
+            owner_id,
+            len(courses),
+            assignment_count,
+            stats.requests,
+            elapsed,
+        )
         return {
             "ok": True,
             "last_sync": now,
@@ -384,7 +447,9 @@ def _do_sync(owner_id: int) -> dict:
         # keeps the whole stack, which is the only artifact a user can send
         # from a build that fails on a platform we do not have (e.g. the exe
         # under Wine). Raw exception text never reaches the frontend (§18).
-        logger.exception("Classroom sync failed")
+        logger.exception(
+            "Classroom sync failed after %d Google requests", stats.requests
+        )
         db.rollback()
         message = _public_error(exc)
         mark_sync_failed(db, owner_id, message, _now())

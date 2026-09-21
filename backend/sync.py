@@ -18,7 +18,7 @@ from grading import (  # noqa: F401
     grade_percent,
     is_submitted_state,
 )
-from sync_service import sync_now, sync_user_id  # noqa: F401
+from sync_service import SERVER_BUSY, sync_now, sync_user_id  # noqa: F401
 from sync_store import (  # noqa: F401
     SYNC_ERROR,
     SYNC_NEEDS_REAUTH,
