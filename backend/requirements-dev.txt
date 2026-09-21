@@ -3,3 +3,7 @@
 -r requirements.txt
 pytest>=8
 ruff>=0.9
+# starlette.testclient (fastapi TestClient) uses httpx2 as its HTTP backend;
+# older versions fell back to httpx. Neither is a runtime dependency of the
+# app, so it must be declared here — CI installs only these two files.
+httpx2>=2.0
