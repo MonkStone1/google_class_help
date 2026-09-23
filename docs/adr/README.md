@@ -32,3 +32,4 @@
 | [ADR-0023](adr-0023-per-user-sync-scheduler.md) | Per-user синхронизация — планировщик/воркер, `sync_status`, needs_reauth | Accepted |
 | [ADR-0024](adr-0024-teacher-mode-api-surface.md) | Teacher-mode API surface — role gates, `/api/me`, identity shape и глобальный предел интерактивного синка | Accepted |
 | [ADR-0025](adr-0025-frontend-config-production.md) | Production frontend и session boundary — env-Host/CORS/trusted proxy, cookie-флаги и `/data` | Accepted |
+| [ADR-0026](adr-0026-desktop-hosted-coexistence-production-edge.md) | Desktop/hosted coexistence и production edge — разделение модулей, Option A, HTTPS/CSRF/headers, privacy/terms | Accepted |

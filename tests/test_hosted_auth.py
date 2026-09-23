@@ -13,6 +13,7 @@ import urllib.parse
 from datetime import datetime, timedelta, timezone
 
 import google_credentials
+import oauth_transport
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -51,7 +52,9 @@ def fake_google(monkeypatch):
 
     identity = {"sub": "google-sub-1", "email": "alice@example.com", "name": "Alice"}
 
-    monkeypatch.setattr(auth_module, "post_token_request", fake_post_token_request)
+    # Stage 8 (§32): the transport lives in oauth_transport — patch the
+    # module the production code actually calls, not the desktop re-export.
+    monkeypatch.setattr(oauth_transport, "post_token_request", fake_post_token_request)
     monkeypatch.setattr(hosted_auth, "_fetch_identity", lambda token: dict(identity))
     return identity
 
@@ -336,7 +339,7 @@ def test_expired_token_is_refreshed_and_persisted_encrypted(db: Session, monkeyp
         creds.token = "at-new"
         creds.expiry = _now() + timedelta(hours=1)
 
-    monkeypatch.setattr(auth_module, "refresh_credentials", fake_refresh)
+    monkeypatch.setattr(oauth_transport, "refresh_credentials", fake_refresh)
 
     creds = google_credentials.get_google_credentials(db, user)
     assert creds is not None
@@ -354,7 +357,7 @@ def test_failed_refresh_reports_signed_out(db: Session, monkeypatch):
     def boom(creds):
         raise RuntimeError("invalid_grant")
 
-    monkeypatch.setattr(auth_module, "refresh_credentials", boom)
+    monkeypatch.setattr(oauth_transport, "refresh_credentials", boom)
     assert google_credentials.get_google_credentials(db, user) is None
 
 
@@ -373,7 +376,7 @@ def test_valid_token_is_returned_without_a_refresh(db: Session, monkeypatch):
     def unexpected(creds):  # pragma: no cover - must never run
         raise AssertionError("a valid token must not be refreshed")
 
-    monkeypatch.setattr(auth_module, "refresh_credentials", unexpected)
+    monkeypatch.setattr(oauth_transport, "refresh_credentials", unexpected)
     creds = google_credentials.get_google_credentials(db, user)
     assert creds is not None and creds.token == "at-old"
 

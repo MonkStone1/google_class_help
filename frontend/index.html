@@ -4,22 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Classroom Dashboard</title>
-    <script>
-      // Apply the stored (or system) theme before first paint to avoid flicker.
-      (function () {
-        try {
-          var s = JSON.parse(localStorage.getItem("gc-settings") || "{}");
-          var mode = s.theme || "system";
-          var dark =
-            mode === "dark" ||
-            (mode === "system" &&
-              window.matchMedia("(prefers-color-scheme: dark)").matches);
-          document.documentElement.dataset.theme = dark ? "dark" : "light";
-        } catch (e) {
-          document.documentElement.dataset.theme = "light";
-        }
-      })();
-    </script>
+    <!-- External (not inline) so the hosted CSP can stay script-src 'self'
+         without hashes (migration stage 8, §48). Synchronous on purpose:
+         it must run before first paint. -->
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

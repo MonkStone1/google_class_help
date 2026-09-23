@@ -61,7 +61,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
-import auth
 import ownership
 import sync
 from classroom_api import ClassroomClient, build_service
@@ -184,6 +183,10 @@ def _build_auth_status(user: User) -> AuthStatus:
             auth_url=None,
             user=_user_out(user),
         )
+    # Desktop-only branch: auth (the loopback flow) is imported here so the
+    # hosted service never loads the desktop module (migration stage 8, §32).
+    import auth
+
     status = auth.login_status()
     identity: UserOut | None = None
     if status["authenticated"]:
@@ -202,6 +205,8 @@ def _is_authenticated(user: User) -> bool:
     """
     if user.provider == "google":
         return True
+    import auth
+
     return bool(auth.login_status().get("authenticated"))
 
 
@@ -228,6 +233,8 @@ def me(user: User = Depends(ownership.get_current_user)) -> UserOut:
 
 @router.post("/auth/login", response_model=AuthStatus)
 def login(user: User = Depends(ownership.get_current_user)) -> AuthStatus:
+    import auth
+
     result = auth.start_login()
     if not result.get("started"):
         raise HTTPException(
@@ -238,6 +245,8 @@ def login(user: User = Depends(ownership.get_current_user)) -> AuthStatus:
 
 @router.post("/auth/logout", response_model=AuthStatus)
 def logout(user: User = Depends(ownership.get_current_user)) -> AuthStatus:
+    import auth
+
     auth.logout()
     # Only the caller's cached profile is dropped (§17); the next sign-in on
     # this browser may be another account, but other users' entries stay.

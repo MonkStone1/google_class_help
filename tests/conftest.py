@@ -39,6 +39,13 @@ os.environ.setdefault("GOOGLE_REDIRECT_URI", "https://gch.test/api/auth/callback
 # desktop fixtures and Starlette's default "testserver" stay covered too.
 os.environ["GC_DASHBOARD_ALLOWED_HOSTS"] = "gch.test,testserver,localhost,127.0.0.1"
 
+# Stage-8 edge flags (§37/§48): a stray value in the developer's shell must
+# not change the session-cookie name or enable HSTS under the suite. Popped,
+# not defaulted — the assertions pin both to "off" (before config/main are
+# imported below).
+os.environ.pop("GC_DASHBOARD_COOKIE_HOST_PREFIX", None)
+os.environ.pop("GC_DASHBOARD_HSTS_MAX_AGE", None)
+
 from fastapi.testclient import TestClient
 
 from database import Base, SessionLocal, engine

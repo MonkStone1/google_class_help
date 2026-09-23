@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="index" />
+    <title>Privacy Policy — Classroom Dashboard</title>
+    <!-- Static page: intentionally no scripts and no external origins, so
+         it renders under the app's strict CSP (script-src 'self'). -->
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, sans-serif;
+        line-height: 1.55;
+      }
+      body {
+        max-width: 46rem;
+        margin: 2rem auto;
+        padding: 0 1.25rem;
+      }
+      h1 {
+        font-size: 1.6rem;
+      }
+      h2 {
+        font-size: 1.15rem;
+        margin-top: 1.75rem;
+      }
+      li {
+        margin: 0.3rem 0;
+      }
+      footer {
+        margin-top: 2.5rem;
+        font-size: 0.85rem;
+        opacity: 0.75;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Privacy Policy</h1>
+    <p>Service: Classroom Dashboard (https://monkstonecor.pp.ua/)</p>
+    <p>Effective date: 2026-09-23</p>
+
+    <h2>What this service is</h2>
+    <p>
+      Classroom Dashboard is a personal dashboard for Google Classroom. It is
+      served from this website and reads your Classroom data to show it to you
+      in one place. It is not affiliated with, endorsed by, or developed by
+      Google.
+    </p>
+
+    <h2>Google account access (read-only)</h2>
+    <p>
+      When you sign in with Google, the app requests only these read-only
+      permissions:
+    </p>
+    <ul>
+      <li>See your courses, course work and your own submissions</li>
+      <li>See course work and submissions for courses you teach</li>
+      <li>See the roster of courses you teach</li>
+    </ul>
+    <p>
+      The app never creates, edits or deletes anything in Google Classroom, and
+      it never posts on your behalf. The requested scopes are documented in
+      ADR-0002 of this project.
+    </p>
+
+    <h2>What is stored and where</h2>
+    <ul>
+      <li>
+        Your Google profile basics (name and email address) and a record of
+        your sign-in sessions, stored in the application database on the
+        server that runs this site.
+      </li>
+      <li>
+        Your Google OAuth tokens (access/refresh), stored encrypted at rest in
+        the same database. They are never shown in the interface, never put in
+        browser storage and never logged.
+      </li>
+      <li>
+        A cache of the Classroom content described above (courses, assignments,
+        grades, roster), scoped to your account.
+      </li>
+      <li>
+        Your dashboard preferences (theme, filters, language) in the
+        localStorage of your browser — they never leave your device.
+      </li>
+    </ul>
+
+    <h2>Cookies</h2>
+    <p>
+      The site uses one session cookie (<code>gch_session</code>) to keep you
+      signed in. It is HttpOnly (not readable by scripts), carries the Secure
+      and SameSite attributes, expires automatically (14 days) and is deleted
+      when you sign out. No advertising or tracking cookies are used.
+    </p>
+
+    <h2>Sharing</h2>
+    <p>
+      Your data is not sold and is not shared with third parties. It is only
+      read by the application itself in order to display it back to you. Logs
+      of the service do not contain your tokens or Google authorization codes.
+    </p>
+
+    <h2>Retention and deletion</h2>
+    <p>
+      Data is kept while your account exists. You can clear the application's
+      Classroom cache at any time from Settings, revoke the app's access in
+      your Google Account settings (which stops all access immediately), or
+      sign out to end your session. To have your account and server-side data
+      deleted entirely, contact the addresses below.
+    </p>
+
+    <h2>Security</h2>
+    <p>
+      The service is served over HTTPS. Sessions are opaque server-side
+      tokens; Google tokens are encrypted at rest. If you believe you have
+      found a security issue, please report it instead of exploiting it.
+    </p>
+
+    <h2>Changes</h2>
+    <p>
+      This policy may be updated; the effective date above shows the current
+      version. Continued use after a change means acceptance of the new
+      version.
+    </p>
+
+    <h2>Contact</h2>
+    <p>
+      Privacy questions and deletion requests: open an issue at the project
+      repository
+      (<a href="https://github.com/MonkStone1/google_class_help"
+        >github.com/MonkStone1/google_class_help</a
+      >). Terms of use: <a href="/terms/">Terms of Service</a>.
+    </p>
+
+    <footer>
+      Google Classroom is a trademark of Google LLC. This service is not
+      affiliated with Google LLC.
+    </footer>
+  </body>
+</html>

@@ -42,11 +42,11 @@ import logging
 import threading
 from datetime import datetime, timezone
 
+import oauth_transport
 from fastapi import Depends, HTTPException
 from google.oauth2.credentials import Credentials
 from sqlalchemy.orm import Session
 
-import auth
 import ownership
 import token_crypto
 from config import hosted_oauth_client_config
@@ -128,7 +128,7 @@ def save_google_credentials(db: Session, user_id: int, creds: Credentials) -> No
         token_crypto.encrypt(creds.refresh_token) if creds.refresh_token else None
     )
     row.token_uri = creds.token_uri or "https://oauth2.googleapis.com/token"
-    row.scopes = list(creds.scopes or auth.SCOPES)
+    row.scopes = list(creds.scopes or oauth_transport.SCOPES)
     row.expires_at = creds.expiry
     row.updated_at = _utcnow()
     db.commit()
@@ -140,7 +140,7 @@ def _hosted_credentials(db: Session, user: User) -> Credentials | None:
     row = db.get(OAuthToken, user.id)
     if row is None:
         return None
-    if not set(auth.SCOPES).issubset(set(row.scopes or [])):
+    if not set(oauth_transport.SCOPES).issubset(set(row.scopes or [])):
         # Token predates a scope change: force a new consent (same policy
         # as the desktop flow, auth.get_valid_credentials).
         db.delete(row)
@@ -172,7 +172,7 @@ def _hosted_credentials(db: Session, user: User) -> Credentials | None:
         if creds.valid:
             return creds
         try:
-            auth.refresh_credentials(creds)
+            oauth_transport.refresh_credentials(creds)
         except Exception:  # noqa: BLE001 - a failed refresh means signed out
             logger.warning(
                 "Google authorization refresh failed for user id=%s; sign-in required.",
@@ -192,12 +192,15 @@ def refresh_google_credentials(db: Session, user: User) -> Credentials | None:
     Returns None when there is nothing to refresh.
     """
     if user.provider != "google":
-        # Desktop: token.json of the single local user.
+        # Desktop: token.json of the single local user. auth is imported
+        # here so the hosted service never loads the desktop module (§32).
+        import auth
+
         creds = auth.load_credentials()
         if creds is None or not creds.refresh_token:
             return None
         try:
-            auth.refresh_credentials(creds)
+            oauth_transport.refresh_credentials(creds)
         except Exception:  # noqa: BLE001 - a failed refresh means signed out
             return None
         auth.save_credentials(creds)
@@ -217,7 +220,7 @@ def refresh_google_credentials(db: Session, user: User) -> Credentials | None:
     )
     with _refresh_lock_for(user.id):
         try:
-            auth.refresh_credentials(creds)
+            oauth_transport.refresh_credentials(creds)
         except Exception:  # noqa: BLE001 - a failed refresh means signed out
             logger.warning(
                 "Google authorization refresh failed for user id=%s; sign-in required.",
@@ -239,6 +242,8 @@ def has_google_grant(db: Session, user: User) -> bool:
     if user.provider == "google":
         return db.get(OAuthToken, user.id) is not None
     # Desktop local owner: the process's single token.json (ADR-0019).
+    import auth
+
     return auth.load_credentials() is not None
 
 
@@ -251,6 +256,8 @@ def delete_google_credentials(db: Session, user_id: int) -> None:
     """
     user = db.get(User, user_id)
     if user is not None and user.provider != "google":
+        import auth
+
         auth.logout()
         return
     row = db.get(OAuthToken, user_id)
@@ -272,6 +279,8 @@ def get_google_credentials(db: Session, user: User) -> Credentials | None:
     if user.provider == "google":
         return _hosted_credentials(db, user)
     # Desktop local owner: the process's single token.json (ADR-0019).
+    import auth
+
     return auth.get_valid_credentials()
 
 

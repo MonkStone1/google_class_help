@@ -16,6 +16,14 @@ The OAuth client configuration comes from, in order:
    The blob is base64, not encrypted: it keeps the plaintext out of the
    shipped build, nothing more (review §2.5).
 
+Migration stage 8 (§32/§33/§75): the mode-agnostic token-endpoint
+transport (scopes, code exchange, refresh) moved to
+``oauth_transport.py`` — the shared module hosted_auth.py imports too.
+This module keeps only the desktop loopback flow (ADR-0019) and the
+desktop single-user token file; its redirect URI is the loopback
+``http://127.0.0.1:<free port>/`` of the callback server below, which is
+never reused by the hosted fixed-URI web flow (§75).
+
 The issued token is cached per user in ``DATA_DIR/token.json``
 (``%LOCALAPPDATA%\\GoogleClassHelp\\token.json`` in a compiled build)
 and refreshed automatically. No secrets are stored in source code.
@@ -42,49 +50,29 @@ import threading
 import time
 import urllib.parse
 import webbrowser
-from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import cast
 
-import google_auth_httplib2
-import httplib2
 from fastapi import HTTPException
-from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
+
+# Re-exported for existing callers (tools/tests); the implementation lives
+# in the shared transport both modes use (migration stage 8, §32/§33).
+from oauth_transport import (
+    SCOPES,
+    credentials_from_payload,
+    post_token_request,
+    refresh_credentials,
+)
 
 from config import CREDENTIALS_FILE, TOKEN_FILE
 
 logger = logging.getLogger(__name__)
 
-# Read-only scopes for both modes. The student route needs courses.readonly
-# plus student-submissions.me.readonly. Teacher mode adds two read-only
-# scopes:
-#
-# - classroom.student-submissions.students.readonly lets a teacher list ALL
-#   coursework of a course (courses.courseWork.list) and read every
-#   student's submissions (studentSubmissions.list). This is the scope
-#   Google actually grants for the teacher view: requesting the older
-#   coursework.students.readonly makes the consent screen swap it for this
-#   one ("Scope has changed" warning) — the `.students.` coursework and
-#   submissions scopes were merged, the same way `.me.` ones were in
-#   ADR-0002. Requesting coursework.students.readonly would therefore be
-#   granted never, and the token subset check in
-#   get_valid_credentials() would sign the user out on every launch.
-# - classroom.rosters.readonly lists the students enrolled in a course.
-#
-# Every scope stays read-only — the app never writes to Google Classroom.
-SCOPES = [
-    "https://www.googleapis.com/auth/classroom.courses.readonly",
-    "https://www.googleapis.com/auth/classroom.student-submissions.me.readonly",
-    "https://www.googleapis.com/auth/classroom.student-submissions.students.readonly",
-    "https://www.googleapis.com/auth/classroom.rosters.readonly",
-]
-
 # Seconds the user has to finish the consent screen before the callback
-# server gives up, and the socket timeout for the token endpoint.
+# server gives up (the token-endpoint timeout lives in oauth_transport).
 CONSENT_TIMEOUT_SECONDS = 300
-TOKEN_TIMEOUT_SECONDS = 30
 # Never block the callback wait on a silent socket (browsers preconnect).
 CALLBACK_POLL_SECONDS = 0.5
 CALLBACK_SOCKET_TIMEOUT_SECONDS = 10
@@ -148,37 +136,6 @@ def save_credentials(creds: Credentials) -> None:
     """
     TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
     TOKEN_FILE.write_text(creds.to_json(), encoding="utf-8")
-
-
-def _httplib2_request() -> google_auth_httplib2.Request:
-    """Google API request adapter over httplib2 (the app's transport)."""
-    return google_auth_httplib2.Request(httplib2.Http(timeout=TOKEN_TIMEOUT_SECONDS))
-
-
-def refresh_credentials(creds: Credentials) -> None:
-    """Refresh the access token, preferring the httplib2 transport.
-
-    Public so the hosted web flow (hosted_auth.py, migration stage 2) can
-    reuse the same transport stack instead of importing requests just for
-    a token refresh.
-
-    requests/urllib3 is not used anywhere else in this application, so a
-    broken urllib3 stack must not be able to sign the user out while the
-    Classroom calls themselves would still work (ADR-0019).
-    """
-    attempts = (("httplib2", _httplib2_request), ("requests", Request))
-    errors: list[str] = []
-    for name, make_request in attempts:
-        try:
-            creds.refresh(make_request())
-            logger.info("Google credentials refreshed via %s.", name)
-            return
-        except Exception as exc:  # noqa: BLE001 - try the next transport
-            errors.append(f"{name}: {exc!r}")
-            logger.warning("Refreshing via %s failed: %r", name, exc)
-    raise RuntimeError(
-        "Could not refresh the Google credentials (" + "; ".join(errors) + ")"
-    )
 
 
 def get_valid_credentials() -> Credentials | None:
@@ -286,85 +243,6 @@ class _CallbackServer(HTTPServer):
         connection is routine browser behaviour.
         """
         logger.debug("Callback connection from %s ended early.", client_address)
-
-
-def post_token_request(
-    client_config: dict, code: str, redirect_uri: str, code_verifier: str | None
-) -> dict:
-    """Redeem the authorization code over httplib2; returns the token payload.
-
-    Public: the hosted web OAuth flow (hosted_auth.py) redeems its codes
-    through the same transport instead of duplicating it.
-    """
-    fields = {
-        "code": code,
-        "client_id": client_config["client_id"],
-        "client_secret": client_config["client_secret"],
-        "redirect_uri": redirect_uri,
-        "grant_type": "authorization_code",
-    }
-    if code_verifier:
-        fields["code_verifier"] = code_verifier
-    http = httplib2.Http(timeout=TOKEN_TIMEOUT_SECONDS)
-    try:
-        response, content = http.request(
-            client_config["token_uri"],
-            "POST",
-            body=urllib.parse.urlencode(fields),
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-        )
-    except Exception as exc:  # report the transport, not a bare socket error
-        logger.exception("Token exchange over httplib2 failed")
-        raise RuntimeError(f"Token exchange over httplib2 failed: {exc!r}") from exc
-    try:
-        payload = json.loads(content.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError(
-            f"Token endpoint answered with status {response.status} and unreadable body."
-        ) from exc
-    if response.status != 200:
-        detail = payload.get("error_description") or payload.get("error") or payload
-        raise RuntimeError(
-            f"Token endpoint rejected the sign-in ({response.status}): {detail}"
-        )
-    return payload
-
-
-def credentials_from_payload(client_config: dict, payload: dict) -> Credentials:
-    """Build credentials from the token endpoint's answer (untrusted input).
-
-    Public: the hosted web OAuth flow (hosted_auth.py) builds its
-    Credentials from the same payload shape instead of duplicating the
-    parsing/validation rules.
-    """
-    token = payload.get("access_token")
-    if not token:
-        raise RuntimeError("The Google token endpoint returned no access token.")
-    expiry = None
-    expires_in = payload.get("expires_in")
-    if isinstance(expires_in, (int, str)):
-        try:
-            expiry = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(
-                seconds=int(expires_in)
-            )
-        except ValueError:
-            # No usable lifetime in the answer: google-auth then treats the
-            # token as valid until Google rejects it, which is still better
-            # than failing a sign-in that did work.
-            logger.warning(
-                "Token endpoint returned an unusable expires_in: %r", expires_in
-            )
-    elif expires_in is not None:
-        logger.warning("Token endpoint returned an unusable expires_in: %r", expires_in)
-    return Credentials(
-        token=token,
-        refresh_token=payload.get("refresh_token"),
-        token_uri=client_config["token_uri"],
-        client_id=client_config["client_id"],
-        client_secret=client_config["client_secret"],
-        scopes=SCOPES,
-        expiry=expiry,
-    )
 
 
 def _exchange_code(flow: InstalledAppFlow, code: str, redirect_uri: str) -> Credentials:

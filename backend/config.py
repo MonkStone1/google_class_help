@@ -257,6 +257,28 @@ GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI", "").strip() or (
     f"{APP_BASE_URL}/api/auth/callback" if APP_BASE_URL else ""
 )
 
+# Migration stage 8 (§36): production OAuth never runs over plain HTTP —
+# the callback redirect URI (and the base URL it is derived from) must be
+# https, or the deployment fails at startup instead of silently issuing
+# codes over an insecure channel. Desktop mode is unaffected: its redirect
+# is the loopback http://127.0.0.1:<port>/ of auth._CallbackServer (§75).
+if IS_PRODUCTION and HOSTED_MODE:
+    _bad_scheme_urls = [
+        f"{name}={value!r}"
+        for name, value in (
+            ("APP_BASE_URL", APP_BASE_URL),
+            ("GOOGLE_REDIRECT_URI", GOOGLE_REDIRECT_URI),
+        )
+        if value and not value.startswith("https://")
+    ]
+    if _bad_scheme_urls:
+        raise RuntimeError(
+            "Production hosted mode requires HTTPS: "
+            + ", ".join(_bad_scheme_urls)
+            + ". Terminate TLS at the reverse proxy (Caddy) and set APP_BASE_URL "
+            "to the https:// origin (§36)."
+        )
+
 
 # ------------------------------------------------- public-origin config (§27/§28)
 #
@@ -338,6 +360,27 @@ else:
         _raw_samesite,
         ", ".join(_COOKIE_SAMESITE_ALLOWED),
     )
+
+# §37: the optional __Host- prefix is exactly the constraint set this app
+# already enforces for the session cookie (Secure + Path=/ + no Domain).
+# Off by default so development over plain http keeps working; enabling it
+# without a Secure cookie makes browsers REJECT the cookie (login breaks),
+# which is warned about here rather than discovered at runtime.
+COOKIE_HOST_PREFIX: str = (
+    "__Host-" if bool(_bool_env("GC_DASHBOARD_COOKIE_HOST_PREFIX")) else ""
+)
+if COOKIE_HOST_PREFIX and COOKIE_SECURE is not True and not IS_PRODUCTION:
+    logger.warning(
+        "GC_DASHBOARD_COOKIE_HOST_PREFIX is set but COOKIE_SECURE is not "
+        "true outside production: browsers reject __Host- cookies without "
+        "the Secure attribute, so sign-in will fail on plain-http origins."
+    )
+
+# §36/§48: HSTS is opt-in. Send it only after HTTPS behaviour is confirmed
+# (migration stage 10); the value is max-age seconds, 0 = header off.
+# The reverse proxy may set the header instead — then keep this at 0 to
+# avoid duplicates.
+HSTS_MAX_AGE = _int_env("GC_DASHBOARD_HSTS_MAX_AGE", 0)
 
 
 def hosted_oauth_client_config() -> dict | None:

@@ -59,6 +59,26 @@ Vite dev-сервер: <http://localhost:5173> — проксирует `/api` �
 production web-клиент (`APP_ENV` и `GC_DASHBOARD_ALLOWED_HOSTS`/
 `GC_DASHBOARD_CORS_ORIGINS` не задаются — дефолты development-режима).
 
+### Hosted production edge (миграция на хостинг, этап 8, ADR-0026)
+
+- Статика — Option A: FastAPI раздаёт `frontend/dist` (Caddy → FastAPI);
+  session-gate закрывает только `/api/*`, оболочка SPA и публичные
+  страницы доступны без сессии.
+- HTTPS обязателен: Caddy терминирует TLS и редиректит HTTP→HTTPS;
+  production hosted без `https://` в `APP_BASE_URL` не стартует.
+- Security headers (только hosted): `nosniff`, `Referrer-Policy`,
+  `X-Frame-Options`, same-origin CSP, `no-store` на `/api`; HSTS — opt-in
+  `GC_DASHBOARD_HSTS_MAX_AGE` после подтверждения HTTPS (этап 10).
+- Cookie `gch_session`: HttpOnly/Secure/Lax, `Path=/`, без Domain, TTL 14
+  суток; opt-in `__Host-`-префикс (`GC_DASHBOARD_COOKIE_HOST_PREFIX=1`).
+- CSRF: SameSite=Lax + точный Origin + Fetch Metadata на unsafe-методах
+  (`POST /api/auth/logout`, `POST /api/sync`, `DELETE /api/cache`); CORS
+  защитой не считается, подписанный токен не требуется (см. ADR-0026).
+- Публичные страницы для Google OAuth verification: `/privacy/`, `/terms/`.
+- Секреты: desktop-клиент встраивается в exe (base64 — обфускация, не
+  защита); hosted-секрет (`GOOGLE_CLIENT_SECRET`, ключ Fernet) — только
+  env сервера, никогда в браузере, `frontend/dist`, Nuitka-артефактах и Git.
+
 ---
 
 ## PRODUCTION BUILD

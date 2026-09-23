@@ -35,7 +35,11 @@ Security invariants enforced here (§5, §8, §9):
   token endpoint with the same attempt);
 - sessions are opaque random tokens, stored hashed (SHA-256), revocable
   independently of the Google grant; logout keeps the refresh token
-  server-side (decision documented in ADR-0020).
+  server-side (decision documented in ADR-0020);
+- the redirect URI is the FIXED https endpoint of this flow
+  (``GOOGLE_REDIRECT_URI`` from ``APP_BASE_URL``); the desktop loopback
+  redirect is built dynamically in ``auth._CallbackServer`` and the two
+  implementations are never shared (§75).
 
 Since migration stage 4 the user-scoped credential operations (§15) live
 in ``google_credentials.py``; this module owns the OAuth flow and the
@@ -53,13 +57,13 @@ from urllib.parse import urlencode
 
 import google_credentials
 import httplib2
+import oauth_transport
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
-import auth
 import sync_store
-from config import COOKIE_SAMESITE, COOKIE_SECURE
+from config import COOKIE_HOST_PREFIX, COOKIE_SAMESITE, COOKIE_SECURE
 from database import get_db
 from models_auth import OAuthLoginState, User, UserSession
 from proxy import external_scheme, peer_is_trusted_proxy
@@ -73,8 +77,12 @@ router = APIRouter(prefix="/api/auth")
 STATE_TTL_SECONDS = 15 * 60
 # Explicit expiry, no permanent sessions (migration prompt §37).
 SESSION_TTL_SECONDS = 14 * 24 * 60 * 60
-SESSION_COOKIE_NAME = "gch_session"
-NONCE_COOKIE_NAME = "gch_oauth_nonce"
+# §37: HttpOnly + Secure + SameSite=Lax + Path=/ + no Domain — which is
+# exactly the constraint set of the optional ``__Host-`` prefix; the
+# deployment opts in with GC_DASHBOARD_COOKIE_HOST_PREFIX=1 (see config,
+# validated there against COOKIE_SECURE).
+SESSION_COOKIE_NAME = f"{COOKIE_HOST_PREFIX}gch_session"
+NONCE_COOKIE_NAME = f"{COOKIE_HOST_PREFIX}gch_oauth_nonce"
 NONCE_TTL_SECONDS = STATE_TTL_SECONDS
 
 # Google endpoints (stable OIDC values; deliberately not configuration: a
@@ -95,7 +103,7 @@ def _utcnow() -> datetime:
 
 def _http_get_json(url: str, headers: dict[str, str] | None = None) -> dict:
     """GET over httplib2 — the app's single transport (ADR-0019)."""
-    http = httplib2.Http(timeout=auth.TOKEN_TIMEOUT_SECONDS)
+    http = httplib2.Http(timeout=oauth_transport.TOKEN_TIMEOUT_SECONDS)
     response, content = http.request(url, "GET", headers=headers or {})
     if response.status != 200:
         raise RuntimeError(f"Google endpoint answered with status {response.status}.")
@@ -168,7 +176,7 @@ def _build_authorization_url(
         "client_id": client_config["client_id"],
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": " ".join(auth.SCOPES),
+        "scope": " ".join(oauth_transport.SCOPES),
         "state": state,
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
@@ -419,10 +427,10 @@ def callback(request: Request, db: Session = Depends(get_db)) -> RedirectRespons
     # the PKCE verifier from the stored state goes with it. Failures are
     # logged without the code/token values.
     try:
-        payload = auth.post_token_request(
+        payload = oauth_transport.post_token_request(
             client_config, code, client_config["redirect_uri"], code_verifier
         )
-        creds = auth.credentials_from_payload(client_config, payload)
+        creds = oauth_transport.credentials_from_payload(client_config, payload)
     except RuntimeError as exc:
         logger.warning("OAuth code exchange failed: %s", exc)
         return _fail("authorization code exchange failed", 502)
