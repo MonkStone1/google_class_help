@@ -21,6 +21,7 @@ known-first-party = [
     "models_auth",
     "ownership",
     "path_config",
+    "proxy",
     "schemas",
     "sync",
     "sync_scheduler",

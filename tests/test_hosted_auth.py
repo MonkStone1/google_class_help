@@ -208,8 +208,10 @@ def test_full_login_creates_user_session_and_encrypted_tokens(
     assert status.status_code == 200
     body = status.json()
     assert body["authenticated"] is True
-    assert body["user_name"] == "Alice"
-    assert body["user_email"] == "alice@example.com"
+    # §26: identity is nested, never flat and never a token.
+    assert body["user"]["name"] == "Alice"
+    assert body["user"]["email"] == "alice@example.com"
+    assert "user_name" not in body and "user_email" not in body
     assert "at-123" not in status.text and "rt-456" not in status.text
 
     # The session gate now lets data endpoints through.

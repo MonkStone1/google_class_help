@@ -245,7 +245,7 @@ def test_sync_targets_the_session_user_only(hosted_client, db, monkeypatch):
 
 
 def test_status_reports_the_session_user_not_a_global_state(hosted_client, db):
-    """§16: no user may see another user's profile or login state."""
+    """§16/§26: identity comes from THIS session, sync state from THIS user."""
     alice = _make_user(db, "sub-alice", "Alice")
     bob = _make_user(db, "sub-bob", "Bob")
     _seed_course(db, alice.id, "Alice's course")
@@ -254,18 +254,21 @@ def test_status_reports_the_session_user_not_a_global_state(hosted_client, db):
     _add_session(db, bob, "raw-bob-token")
 
     hosted_client.cookies.set("gch_session", "raw-alice-token")
+    identity = hosted_client.get("/api/auth/status").json()
+    assert identity["user"]["name"] == "Alice"
+    assert identity["user"]["email"] == "sub-alice@example.com"
     status = hosted_client.get("/api/status").json()
-    assert status["user_name"] == "Alice"
-    assert status["user_email"] == "sub-alice@example.com"
+    # §26: /api/status carries no identity at all — only the sync state.
+    assert "user_name" not in status and "user_email" not in status
     assert status["last_sync"] == "2026-09-19T00:00:00"
 
     hosted_client.cookies.set("gch_session", "raw-bob-token")
-    status = hosted_client.get("/api/status").json()
-    assert status["user_name"] == "Bob"
-    assert status["user_email"] == "sub-bob@example.com"
+    identity = hosted_client.get("/api/auth/status").json()
+    assert identity["user"]["name"] == "Bob"
+    assert identity["user"]["email"] == "sub-bob@example.com"
     # Bob sees his own sync state (seeded for him too) — not Alice's rows
     # and not a process-global "last account".
-    assert status["last_sync"] == "2026-09-19T00:00:00"
+    assert hosted_client.get("/api/status").json()["last_sync"] == "2026-09-19T00:00:00"
 
 
 # ------------------------------------------- §15 user-scoped credentials
@@ -436,7 +439,11 @@ def test_auth_status_never_reads_a_global_profile_cache(db: Session):
     api._reset_profile_cache()
     alice = _make_user(db, "sub-alice", "Alice")
     state = api._build_auth_status(alice)
-    assert (state.user_name, state.user_email) == ("Alice", "sub-alice@example.com")
+    assert state.user is not None
+    assert (state.user.name, state.user.email) == (
+        "Alice",
+        "sub-alice@example.com",
+    )
     # The per-user Google lookup cache was not touched at all.
     assert api._profile_cache == {}
 

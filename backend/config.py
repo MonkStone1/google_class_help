@@ -6,10 +6,15 @@ are kept outside the source code: they live in files that are git-ignored
 and can be relocated with environment variables.
 """
 
+import logging
 import os
+import urllib.parse
 from pathlib import Path
+from typing import Literal
 
 from path_config import DATA_DIR, PROJECT_DIR, ensure_data_dirs
+
+logger = logging.getLogger(__name__)
 
 ensure_data_dirs()
 
@@ -40,6 +45,140 @@ def _int_env(name: str, default: int, *, minimum: int = 0) -> int:
         return max(minimum, int(raw))
     except ValueError:
         return default
+
+
+def _bool_env(name: str) -> bool | None:
+    """Read a tri-state boolean env var; unset/invalid means "not set"."""
+    raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return None
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    logger.warning("Ignoring invalid boolean value %r for %s.", raw, name)
+    return None
+
+
+def _csv_env(name: str) -> list[str]:
+    """Read a comma-separated list env var (empty items dropped)."""
+    raw = os.environ.get(name, "")
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def canonical_origin(scheme: str, hostname: str, port: int | None) -> str | None:
+    """Return a normalized ``scheme://host[:port]`` origin.
+
+    Invalid schemes/hosts and non-default ports that cannot be represented are
+    rejected. Default ports are omitted so ``https://host:443`` and
+    ``https://host`` compare equal.
+    """
+    scheme = scheme.strip().lower()
+    hostname = hostname.strip().lower().rstrip(".")
+    if scheme not in {"http", "https"} or not hostname:
+        return None
+    try:
+        normalized_port = int(port) if port is not None else None
+    except (TypeError, ValueError):
+        return None
+    if normalized_port is not None and not 1 <= normalized_port <= 65535:
+        return None
+    if ":" in hostname and not hostname.startswith("["):
+        hostname = f"[{hostname}]"
+    if normalized_port is not None and not (
+        (scheme == "http" and normalized_port == 80)
+        or (scheme == "https" and normalized_port == 443)
+    ):
+        hostname = f"{hostname}:{normalized_port}"
+    return f"{scheme}://{hostname}"
+
+
+def _origin_from_value(value: str) -> str | None:
+    """Normalize an origin value, rejecting paths, credentials and fragments."""
+    try:
+        parsed = urllib.parse.urlsplit(value.strip())
+        port = parsed.port
+    except ValueError:
+        return None
+    if (
+        parsed.scheme not in {"http", "https"}
+        or parsed.hostname is None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+    ):
+        return None
+    return canonical_origin(parsed.scheme, parsed.hostname, port)
+
+
+def _host_from_value(value: str) -> str | None:
+    """Normalize a host or URL authority to a hostname only."""
+    authority = host_and_port_from_value(value)
+    return authority[0] if authority is not None else None
+
+
+def host_and_port_from_value(value: str) -> tuple[str, int | None] | None:
+    """Return a normalized ``(host, port)`` authority.
+
+    This is shared by the Host guard and trusted-proxy handling so both use
+    the same IPv6, port and malformed-input rules.
+    """
+    raw = value.strip()
+    if not raw or any(character in raw for character in (",", "\r", "\n")):
+        return None
+    try:
+        if "://" in raw:
+            parsed = urllib.parse.urlsplit(raw)
+            if parsed.path or parsed.query or parsed.fragment:
+                return None
+        else:
+            parsed = urllib.parse.urlsplit(f"//{raw}")
+        port = parsed.port
+    except ValueError:
+        return None
+    if (
+        parsed.hostname is None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        return None
+    if port is not None and not 1 <= port <= 65535:
+        return None
+    return parsed.hostname.strip().lower().rstrip("."), port
+
+
+def normalize_host(value: str) -> str | None:
+    """Public host-normalization helper used by middleware and tests."""
+    authority = host_and_port_from_value(value)
+    return authority[0] if authority is not None else None
+
+
+def normalize_origin(value: str) -> str | None:
+    """Public origin-normalization helper used by middleware and tests."""
+    return _origin_from_value(value)
+
+
+def _normalize_origins(values: list[str]) -> tuple[str, ...]:
+    """Normalize an origin allow-list and remove the credentialed wildcard."""
+    normalized: list[str] = []
+    wildcard = False
+    for value in values:
+        if value == "*":
+            wildcard = True
+            continue
+        origin = _origin_from_value(value)
+        if origin is not None:
+            normalized.append(origin)
+    if wildcard:
+        logger.warning(
+            "An origin allow-list contained '*'; ignoring it — a wildcard "
+            "origin is never combined with credentialed cookies (§27)."
+        )
+    return tuple(dict.fromkeys(normalized))
 
 
 SYNC_MAX_WORKERS = _int_env("GC_DASHBOARD_SYNC_WORKERS", 16, minimum=1)
@@ -82,26 +221,19 @@ SYNC_CLAIM_STALE_SECONDS = _int_env("GC_DASHBOARD_SYNC_CLAIM_STALE_SECONDS", 360
 # exists for a single-replica instance that cannot run a second process.
 # Duplicate jobs are impossible even then — the DB claim in sync_store
 # serializes users across processes.
-def _embedded_scheduler_enabled() -> bool:
-    return os.environ.get("GC_DASHBOARD_EMBEDDED_SCHEDULER", "").strip() in {
-        "1",
-        "true",
-        "TRUE",
-        "True",
-        "yes",
-    }
-
-
-EMBEDDED_SCHEDULER = _embedded_scheduler_enabled()
+EMBEDDED_SCHEDULER = bool(_bool_env("GC_DASHBOARD_EMBEDDED_SCHEDULER"))
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-# Local app: the frontend dev server origin is the only browser origin.
-FRONTEND_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
 
+# ---------------------------------------------------------- environment layer
+#
+# Explicit configuration layers (migration stage 7, §30/§51): one variable
+# names the environment, and every environment-sensitive value below derives
+# its default from it. Development and production therefore cannot silently
+# share a host allow-list or a CORS list.
+APP_ENV = os.environ.get("APP_ENV", "development").strip().lower() or "development"
+IS_PRODUCTION = APP_ENV == "production"
 
 # --------------------------------------------------------------- hosted mode
 
@@ -109,17 +241,7 @@ FRONTEND_ORIGINS = [
 # Hosted service switch (migration stage 2, ADR-0020): GC_DASHBOARD_HOSTED=1
 # replaces the desktop loopback OAuth with the web OAuth flow, sessions and
 # DB-stored tokens. Desktop builds never set it and keep their ADR-0019 flow.
-def _hosted_enabled() -> bool:
-    return os.environ.get("GC_DASHBOARD_HOSTED", "").strip() in {
-        "1",
-        "true",
-        "TRUE",
-        "True",
-        "yes",
-    }
-
-
-HOSTED_MODE = _hosted_enabled()
+HOSTED_MODE = bool(_bool_env("GC_DASHBOARD_HOSTED"))
 
 # Google web OAuth client of the hosted service (migration prompt §4/§9):
 # a client of type "Web application" in the same GCP project, whose
@@ -130,9 +252,92 @@ HOSTED_MODE = _hosted_enabled()
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
 APP_BASE_URL = os.environ.get("APP_BASE_URL", "").strip().rstrip("/")
+APP_ORIGIN = normalize_origin(APP_BASE_URL) if APP_BASE_URL else None
 GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI", "").strip() or (
     f"{APP_BASE_URL}/api/auth/callback" if APP_BASE_URL else ""
 )
+
+
+# ------------------------------------------------- public-origin config (§27/§28)
+#
+# Hosted deployment: browser and API share one public origin, so the values
+# below are about validating THAT origin, not about enabling cross-origin
+# access. The production hostname is never hard-coded: it comes from
+# GC_DASHBOARD_ALLOWED_HOSTS or, when that is unset, from the host of
+# APP_BASE_URL — one place, the same one the OAuth redirect already uses.
+
+
+FRONTEND_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
+
+def _default_allowed_hosts() -> list[str]:
+    """Hosts accepted in the Host header when none are configured.
+
+    Production: only the public host of APP_BASE_URL. Development adds the
+    loopback names so the local workflow keeps working unchanged.
+    """
+    hosts: list[str] = []
+    if APP_ORIGIN:
+        hosts.append(normalize_host(APP_ORIGIN) or "")
+    if not IS_PRODUCTION:
+        hosts.extend(["localhost", "127.0.0.1"])
+    return [host for host in hosts if host]
+
+
+_raw_allowed_hosts = os.environ.get("GC_DASHBOARD_ALLOWED_HOSTS")
+ALLOWED_HOSTS: tuple[str, ...] = (
+    tuple(
+        dict.fromkeys(
+            host
+            for item in _csv_env("GC_DASHBOARD_ALLOWED_HOSTS")
+            if (host := normalize_host(item)) is not None
+        )
+    )
+    if _raw_allowed_hosts is not None
+    else tuple(_default_allowed_hosts())
+)
+
+# CORS (§27). Same-origin production traffic needs no permissive CORS, so the
+# list is empty there and the middleware never echoes a foreign Origin.
+# Development keeps the Vite dev-server origins; an intentional cross-origin
+# frontend lists its exact origins in GC_DASHBOARD_CORS_ORIGINS. "*" is never
+# valid — it is rejected below rather than combined with credentials.
+_raw_cors_origins = os.environ.get("GC_DASHBOARD_CORS_ORIGINS")
+CORS_ORIGINS: tuple[str, ...] = (
+    _normalize_origins(_csv_env("GC_DASHBOARD_CORS_ORIGINS"))
+    if _raw_cors_origins is not None
+    else (() if IS_PRODUCTION else tuple(FRONTEND_ORIGINS))
+)
+
+# Trusted reverse proxies (§29). ``X-Forwarded-Proto`` is honoured only when
+# the direct peer is in this list, so a client reaching the app directly can
+# never change the scheme the session cookie is issued for. Empty means "no
+# proxy in front": the request's own scheme is authoritative.
+TRUSTED_PROXIES: tuple[str, ...] = tuple(_csv_env("GC_DASHBOARD_TRUSTED_PROXIES"))
+
+# Session cookie (§30/ADR-0020). Secure follows the request scheme unless
+# COOKIE_SECURE is set explicitly; SameSite stays Lax because the OAuth
+# callback arrives as a cross-site top-level redirect.
+COOKIE_SECURE: bool | None = _bool_env("COOKIE_SECURE")
+_COOKIE_SAMESITE_ALLOWED = ("lax", "strict", "none")
+COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "lax"
+_raw_samesite = os.environ.get("COOKIE_SAMESITE", "lax").strip().lower() or "lax"
+if _raw_samesite in _COOKIE_SAMESITE_ALLOWED:
+    COOKIE_SAMESITE = _raw_samesite  # type: ignore[assignment]
+    if _raw_samesite == "none" and not COOKIE_SECURE:
+        logger.warning(
+            "COOKIE_SAMESITE=none requires a Secure cookie; setting COOKIE_SECURE=true."
+        )
+        COOKIE_SECURE = True
+else:
+    logger.warning(
+        "COOKIE_SAMESITE=%r is not one of %s; falling back to 'lax'.",
+        _raw_samesite,
+        ", ".join(_COOKIE_SAMESITE_ALLOWED),
+    )
 
 
 def hosted_oauth_client_config() -> dict | None:

@@ -59,8 +59,10 @@ from sqlalchemy.orm import Session
 
 import auth
 import sync_store
+from config import COOKIE_SAMESITE, COOKIE_SECURE
 from database import get_db
 from models_auth import OAuthLoginState, User, UserSession
+from proxy import external_scheme, peer_is_trusted_proxy
 
 logger = logging.getLogger(__name__)
 
@@ -135,11 +137,25 @@ def _safe_relative(path: str) -> str:
     return path
 
 
+def _peer_is_trusted_proxy(request: Request) -> bool:
+    """Compatibility wrapper around the shared proxy trust decision (§29)."""
+    return peer_is_trusted_proxy(request)
+
+
+def _external_scheme(request: Request) -> str:
+    """Compatibility wrapper around the shared external-scheme helper (§29)."""
+    return external_scheme(request)
+
+
 def _session_cookie_secure(request: Request) -> bool:
-    """Secure flag follows the scheme (behind Caddy: X-Forwarded-Proto)."""
-    forwarded = request.headers.get("x-forwarded-proto", "")
-    scheme = forwarded.split(",")[0].strip() if forwarded else request.url.scheme
-    return scheme == "https"
+    """Secure flag of the session/nonce cookies (§29/§30).
+
+    An explicit ``COOKIE_SECURE`` wins; otherwise it follows the external
+    scheme, which is only trusted when it comes through a trusted proxy.
+    """
+    if COOKIE_SECURE is not None:
+        return COOKIE_SECURE
+    return _external_scheme(request) == "https"
 
 
 # --------------------------------------------------------- Google identity
@@ -234,6 +250,8 @@ def _create_session(
 
 def _set_session_cookie(response: RedirectResponse, token: str, secure: bool) -> None:
     # §37: HttpOnly + Secure + SameSite=Lax + Path=/, no Domain attribute.
+    # SameSite is configurable (§30) but stays Lax by default: the OAuth
+    # callback arrives as a cross-site top-level redirect.
     response.set_cookie(
         SESSION_COOKIE_NAME,
         token,
@@ -242,7 +260,7 @@ def _set_session_cookie(response: RedirectResponse, token: str, secure: bool) ->
         domain=None,
         secure=secure,
         httponly=True,
-        samesite="lax",
+        samesite=COOKIE_SAMESITE,
     )
 
 
@@ -318,6 +336,9 @@ def login(request: Request, db: Session = Depends(get_db)) -> RedirectResponse:
     response = RedirectResponse(auth_url, status_code=302)
     # Binds the OAuth attempt to this browser: the callback must present
     # the same nonce (migration prompt §5: state bound to the initiator).
+    # The nonce cookie must survive the cross-site redirect back from
+    # Google, so it always stays SameSite=Lax — COOKIE_SAMESITE applies to
+    # the session cookie, not to this one.
     response.set_cookie(
         NONCE_COOKIE_NAME,
         nonce,
@@ -444,9 +465,8 @@ def hosted_status(user: User = Depends(get_current_user)) -> dict:
     """AuthStatus for the hosted UI (§24): this browser's session only.
 
     Never any token material: only the local user id and the profile the
-    UI renders. ``user`` is the canonical stage-6 shape; the flat
-    ``user_name``/``user_email`` fields are kept for the current frontend
-    and removed when stage 7 switches over.
+    UI renders, in the canonical ``user`` shape (§24). The flat
+    ``user_name``/``user_email`` mirrors were removed in stage 7 (§26).
     """
     return {
         "authenticated": True,
@@ -458,8 +478,6 @@ def hosted_status(user: User = Depends(get_current_user)) -> dict:
             "name": user.display_name,
             "email": user.email,
         },
-        "user_name": user.display_name,
-        "user_email": user.email,
     }
 
 

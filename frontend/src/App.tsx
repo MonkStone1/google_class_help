@@ -3,7 +3,8 @@ import { Route, Routes, useSearchParams } from "react-router-dom";
 
 import { Sidebar } from "./components/Sidebar.tsx";
 import { TopBar } from "./components/TopBar.tsx";
-import { DataProvider } from "./context/DataContext.tsx";
+import { SignIn } from "./components/SignIn.tsx";
+import { DataProvider, useAuth } from "./context/DataContext.tsx";
 import { SettingsProvider } from "./context/SettingsContext.tsx";
 import { DuplicateTabNotice } from "./components/DuplicateTabNotice.tsx";
 import { DashboardBoundary } from "./components/ErrorBoundary.tsx";
@@ -31,10 +32,24 @@ export default function App() {
 
 function AppShell() {
   const { t } = useI18n();
+  const { auth, sessionRequired } = useAuth();
   // Search lives in the URL: a reload keeps the query, the link is shareable
   // and the browser Back button cancels it — same contract as the filters.
   const [searchParams, setSearchParams] = useSearchParams();
   const search = searchParams.get("q") ?? "";
+
+  // Hooks must run on every render, so the sign-in gate below returns only
+  // after all of them.
+  useEffect(() => {
+    document.title = t("app.title");
+  }, [t]);
+
+  // §26: a 401 means this browser has no application session — route back to
+  // the login state instead of rendering pages that can only 401 again. The
+  // desktop build never sets `sessionRequired`, so its workflow is untouched.
+  if (sessionRequired && !auth?.authenticated) {
+    return <SignIn />;
+  }
 
   const onSearch = (value: string) => {
     setSearchParams(
@@ -50,10 +65,6 @@ function AppShell() {
       { replace: true },
     );
   };
-
-  useEffect(() => {
-    document.title = t("app.title");
-  }, [t]);
 
   return (
     <div className="app-layout">

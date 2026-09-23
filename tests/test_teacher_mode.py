@@ -279,12 +279,35 @@ def test_desktop_me_returns_the_local_owner(client, owner_id):
     assert body["email"] is None
 
 
-def test_auth_status_carries_a_nested_user_and_no_oauth_material(client, owner_id):
+def test_auth_status_reports_no_identity_until_signed_in(client, owner_id):
+    """§26: an unauthenticated desktop session carries no identity at all."""
     body = client.get("/api/auth/status").json()
-    assert body["user"]["id"] == owner_id
-    # The canonical shape and the deprecated flat mirror agree.
-    assert body["user"]["name"] == body["user_name"]
-    assert body["user"]["email"] == body["user_email"]
+    assert body["authenticated"] is False
+    assert body["user"] is None
+    assert "user_name" not in body and "user_email" not in body
+    _assert_no_oauth_material(body)
+
+
+def test_auth_status_carries_a_nested_user_and_no_oauth_material(
+    client, owner_id, monkeypatch
+):
+    """§26: ``user`` is the only identity shape — the stage-6 flat mirrors
+    were dropped once the frontend switched over."""
+    import auth
+
+    monkeypatch.setattr(auth, "get_valid_credentials", lambda: object())
+    monkeypatch.setattr(
+        "api._cached_profile",
+        lambda user, creds: ("Desk Owner", "owner@example.com"),
+    )
+    body = client.get("/api/auth/status").json()
+    assert body["authenticated"] is True
+    assert body["user"] == {
+        "id": owner_id,
+        "name": "Desk Owner",
+        "email": "owner@example.com",
+    }
+    assert "user_name" not in body and "user_email" not in body
     _assert_no_oauth_material(body)
 
 

@@ -9,7 +9,8 @@ import {
   type ReactNode,
 } from "react";
 
-import { api } from "../api.ts";
+import { api, LOGIN_URL, setUnauthorizedHandler } from "../api.ts";
+import type { ApiError } from "../api.ts";
 import { invalidateAllResources } from "../lib/resource.ts";
 import type {
   AppStatus,
@@ -21,9 +22,16 @@ import type {
 
 /**
  * Sign-in state: who is logged in and how to change it.
+ *
+ * `sessionRequired` is the stage-7 signal (§26): it becomes true only when a
+ * request answered 401, i.e. this browser holds no application session. The
+ * desktop build never sets it (its `/auth/status` always answers 200, with
+ * `authenticated: false` until the loopback consent completes), so the
+ * desktop workflow is unchanged.
  */
 type AuthState = {
   auth: AuthStatus | null;
+  sessionRequired: boolean;
   login: () => Promise<void>;
   logout: () => Promise<void>;
 };
@@ -56,21 +64,44 @@ const AuthContext = createContext<AuthState | null>(null);
 const SyncContext = createContext<SyncState | null>(null);
 const CoursesContext = createContext<CoursesState | null>(null);
 
+/**
+ * The signed-out shape of `AuthStatus` (all fields, no invented data). A 401
+ * replaces the current value with it so every consumer of `auth` — the
+ * settings card, the sign-in gate, the dashboard hint — switches to the login
+ * state without waiting for another round trip.
+ */
+const SIGNED_OUT: AuthStatus = {
+  authenticated: false,
+  login_in_progress: false,
+  error: null,
+  auth_url: null,
+  user: null,
+};
+
+/** A 401 is a session problem, not a transport problem (§26). */
+function isUnauthorized(reason: unknown): boolean {
+  return reason instanceof Error && (reason as ApiError).status === 401;
+}
+
 /** Human-readable reason of the first failed request, or null when all passed. */
 function describeFailure(
-  result: PromiseSettledResult<unknown> | undefined,
+  results: readonly PromiseSettledResult<unknown>[],
 ): string | null {
-  if (!result || result.status !== "rejected") {
+  const failure = results.find(
+    (result) => result.status === "rejected" && !isUnauthorized(result.reason),
+  );
+  if (!failure || failure.status !== "rejected") {
     return null;
   }
-  if (result.reason instanceof Error) {
-    return result.reason.message;
+  if (failure.reason instanceof Error) {
+    return failure.reason.message;
   }
   return "Google Classroom could not be reached. Showing your last synchronized data.";
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const [auth, setAuth] = useState<AuthStatus | null>(null);
+  const [sessionRequired, setSessionRequired] = useState(false);
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -90,21 +121,42 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     const [authRes, statusRes, coursesRes, assignmentsRes] = results;
 
-    if (authRes.status === "fulfilled") setAuth(authRes.value);
+    if (authRes.status === "fulfilled") {
+      setAuth(authRes.value);
+      // A readable status means this browser HAS a session (hosted) or is on
+      // the desktop build; either way the sign-in gate can stand down.
+      if (authRes.value.authenticated) {
+        setSessionRequired(false);
+      }
+    }
     if (statusRes.status === "fulfilled") setStatus(statusRes.value);
     if (coursesRes.status === "fulfilled") setCourses(coursesRes.value);
     if (assignmentsRes.status === "fulfilled") {
       setAssignments(assignmentsRes.value);
     }
 
-    const firstError = results.find((result) => result.status === "rejected");
-    setError(describeFailure(firstError));
+    setError(describeFailure(results));
     setLoading(false);
   }, []);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  // §26: a 401 from ANY request means the application session is gone. Drop
+  // the cached view (it may belong to a session that just ended) and let the
+  // sign-in gate take over. Registered once for the whole app.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      setAuth(SIGNED_OUT);
+      setSessionRequired(true);
+      setStatus(null);
+      setCourses([]);
+      setAssignments([]);
+      invalidateAllResources();
+    });
+    return () => setUnauthorizedHandler(null);
+  }, []);
 
   // Poll while an OAuth login flow is running in the browser. Only the light
   // /auth/status endpoint is hit per tick; the full dataset reloads once, when
@@ -134,11 +186,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [auth?.login_in_progress, loadData]);
 
   const login = useCallback(async () => {
+    invalidateAllResources();
+    setError(null);
     try {
-      invalidateAllResources();
       await api.login();
       await loadData();
     } catch (err) {
+      // Hosted mode deliberately disables POST /auth/login (405): the only
+      // way in is a full-page navigation into the server-owned OAuth flow,
+      // where the browser never touches the Google token (§25/§26).
+      if (err instanceof Error && (err as ApiError).status === 405) {
+        window.location.assign(LOGIN_URL);
+        return;
+      }
       setError(
         err instanceof Error
           ? err.message
@@ -191,14 +251,25 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // Three independent values instead of one: a sync tick now re-renders only
   // the components subscribed to SyncState, not every list on the screen.
   const authValue = useMemo(
-    () => ({ auth, login, logout }),
-    [auth, login, logout],
+    () => ({ auth, sessionRequired, login, logout }),
+    [auth, sessionRequired, login, logout],
   );
 
-  const syncValue = useMemo(
-    () => ({ status, loading, syncing, error, syncNow, refresh }),
-    [status, loading, syncing, error, syncNow, refresh],
-  );
+  // `syncing` covers BOTH this browser's POST /api/sync and a sync the
+  // background worker is running for this user (sync_status === "running",
+  // migration stage 5/§18): the spinner must not depend on which of the two
+  // triggered the refresh.
+  const syncValue = useMemo(() => {
+    const serverRunning = status?.sync_status === "running";
+    return {
+      status,
+      loading,
+      syncing: syncing || serverRunning,
+      error,
+      syncNow,
+      refresh,
+    };
+  }, [status, loading, syncing, error, syncNow, refresh]);
 
   const coursesValue = useMemo(
     () => ({ courses, assignments }),

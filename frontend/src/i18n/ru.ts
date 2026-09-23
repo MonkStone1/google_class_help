@@ -25,6 +25,9 @@ export const ru = {
  "topbar.cachedData": "Кешированные данные",
  "topbar.sync": "Синхронизировать",
  "topbar.syncing": "Синхронизация…",
+ "topbar.signInAgain": "Войти снова",
+ "topbar.needsReauthHint":
+  "Доступ к Google истёк. Войдите снова, чтобы возобновить синхронизацию.",
  "topbar.notifications": "Уведомления",
  "topbar.toggleTheme": "Сменить тему",
 

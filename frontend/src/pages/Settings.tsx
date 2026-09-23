@@ -4,6 +4,7 @@ import { useState } from "react";
 import { api } from "../api.ts";
 import { useAuth, useSync } from "../context/DataContext.tsx";
 import { useSettings } from "../context/SettingsContext.tsx";
+import { toLocalDate } from "../dates.ts";
 import { useI18n } from "../i18n.ts";
 import type { I18nKey } from "../i18n.ts";
 import type { AppSettings, Language, ThemeMode } from "../types.ts";
@@ -53,8 +54,8 @@ export function Settings() {
             <div className="settings-label">{t("settings.connection")}</div>
             <div className="settings-value">
               {auth?.authenticated
-                ? auth.user_name
-                  ? t("settings.signedIn", { name: auth.user_name })
+                ? auth.user?.name
+                  ? t("settings.signedIn", { name: auth.user.name })
                   : t("settings.signedInNoName")
                 : t("settings.notSignedIn")}
             </div>
@@ -120,10 +121,19 @@ export function Settings() {
           <div>
             <div className="settings-label">{t("settings.lastSync")}</div>
             <div className="settings-value">
-              {status?.last_sync
-                ? new Date(status.last_sync).toLocaleString()
-                : t("settings.never")}
+              {/* Backend timestamps are naive UTC; render them in the local
+                  zone (migration stage 5/§18, finished in stage 7). */}
+              {(() => {
+                const parsed = toLocalDate(status?.last_sync ?? null);
+                if (parsed) {
+                  return parsed.toLocaleString();
+                }
+                return status?.last_sync ?? t("settings.never");
+              })()}
             </div>
+            {status?.sync_status === "needs_reauth" ? (
+              <div className="settings-hint">{t("topbar.needsReauthHint")}</div>
+            ) : null}
             {status?.last_sync_error ? (
               <div className="settings-error">{status.last_sync_error}</div>
             ) : null}

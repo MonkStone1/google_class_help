@@ -39,8 +39,9 @@ Teacher mode and API surface (migration stage 6, §21–§24): roles stay
 per-course and per-user (ADR-0017), every teacher-only view is gated on
 BOTH the authenticated user and ``role == TEACHER``, and every response
 keeps the stage-4 ownership path. ``GET /api/me`` exposes the caller's own
-identity, and ``AuthStatus.user`` replaces the Google-shaped flat profile
-fields (kept until the stage-7 frontend switch-over). Status codes are
+identity, and ``AuthStatus.user`` is the only identity shape — the flat
+``user_name``/``user_email`` mirrors were removed in stage 7 (§26).
+Status codes are
 checked per §23: 401 for a missing application session, 403 for an
 authenticated user without the course role, 404 for a resource outside the
 caller's scope (never disclosing whether another user's row exists).
@@ -171,9 +172,9 @@ def _build_auth_status(user: User) -> AuthStatus:
     Desktop: the loopback flow's single-account state, plus the Google
     userinfo profile cached under the local owner's id.
 
-    §24: the payload describes THIS browser's application session and
-    carries no OAuth internals — no access/refresh token, no client
-    secret, no authorization code, no full Google credential object.
+    §24/§26: the payload describes THIS browser's application session,
+    carries no OAuth internals (no access/refresh token, no client secret,
+    no authorization code), and exposes identity only through ``user``.
     """
     if user.provider == "google":
         return AuthStatus(
@@ -182,21 +183,26 @@ def _build_auth_status(user: User) -> AuthStatus:
             error=None,
             auth_url=None,
             user=_user_out(user),
-            user_name=user.display_name,
-            user_email=user.email,
         )
     status = auth.login_status()
-    user_name = None
-    user_email = None
-    creds = auth.get_valid_credentials()
-    if creds is not None:
-        user_name, user_email = _cached_profile(user, creds)
-    return AuthStatus(
-        **status,
-        user=UserOut(id=user.id, name=user_name, email=user_email),
-        user_name=user_name,
-        user_email=user_email,
-    )
+    identity: UserOut | None = None
+    if status["authenticated"]:
+        creds = auth.get_valid_credentials()
+        if creds is not None:
+            user_name, user_email = _cached_profile(user, creds)
+            identity = UserOut(id=user.id, name=user_name, email=user_email)
+    return AuthStatus(**status, user=identity)
+
+
+def _is_authenticated(user: User) -> bool:
+    """Signed-in state alone — no profile lookup (§17/§26).
+
+    ``/api/status`` is polled every ~1.5 s while a sign-in is in flight, so
+    it must not reach Google for identity fields it no longer exposes.
+    """
+    if user.provider == "google":
+        return True
+    return bool(auth.login_status().get("authenticated"))
 
 
 @router.get("/auth/status", response_model=AuthStatus)
@@ -901,19 +907,17 @@ def status(
     user: User = Depends(ownership.get_current_user),
     db: Session = Depends(get_db),
 ) -> SyncStatus:
-    # Auth status and profile of the CALLING user (§16/§17): hosted reads
-    # the session user's row, desktop the loopback account with its
-    # per-user profile cache — never a global login state or profile.
-    auth_state = _build_auth_status(user)
+    # Signed-in state of the CALLING user (§16): hosted reads the session
+    # user, desktop the loopback account — never a global login state, and
+    # never a Google profile lookup (identity is exposed via /auth/status
+    # and /api/me only, §26).
     owner_id = user.id
     # Structured per-user sync state (migration stage 5, §18): the
     # dashboard sees a short status plus the last successful time — never
     # an exception trace (the stored message is already sanitized).
     sync_state = sync.sync_status(db, owner_id)
     return SyncStatus(
-        authenticated=auth_state.authenticated,
-        user_name=auth_state.user_name,
-        user_email=auth_state.user_email,
+        authenticated=_is_authenticated(user),
         last_sync=sync_state.last_success_at if sync_state else None,
         last_sync_error=sync_state.last_error if sync_state else None,
         syncing=bool(sync_state and sync_state.status == sync.SYNC_RUNNING),

@@ -36,6 +36,39 @@
   margin-top: -10px;
   margin-bottom: 12px;
 }
+/* Login state of the hosted service (stage 7, §26) */
+.signin-gate {
+  min-height: 60vh;
+  display: grid;
+  place-items: center;
+}
+.signin-card {
+  max-width: 380px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 28px 24px;
+  text-align: center;
+}
+.signin-card h1 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+.signin-card p {
+  margin: 0;
+  color: var(--text-muted);
+}
+.signin-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
 /* Sidebar ---------------------------------------------------------------- */
 
 .sidebar {

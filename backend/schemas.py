@@ -21,10 +21,10 @@ class UserOut(BaseModel):
 class AuthStatus(BaseModel):
     """Auth state of THIS browser's application session (§24).
 
-    ``user`` is the canonical stage-6 shape. ``user_name``/``user_email``
-    and the desktop-only loopback fields (``auth_url``,
-    ``login_in_progress``) stay for backward compatibility with the current
-    frontend; stage 7 switches the UI over and the flat fields are dropped.
+    ``user`` is the only identity shape (migration stage 7, §26): the flat
+    ``user_name``/``user_email`` mirrors were dropped once the frontend
+    switched over. ``auth_url``/``login_in_progress`` remain because the
+    desktop loopback flow still publishes its single-use consent URL.
     """
 
     authenticated: bool
@@ -35,9 +35,6 @@ class AuthStatus(BaseModel):
     auth_url: str | None = None
     # Identity of the signed-in user; None while unauthenticated.
     user: UserOut | None = None
-    # Deprecated flat mirror of ``user`` (stage 7 removes them).
-    user_name: str | None = None
-    user_email: str | None = None
 
 
 class MaterialOut(BaseModel):
@@ -228,8 +225,6 @@ class StudentGradesOut(BaseModel):
 
 class SyncStatus(BaseModel):
     authenticated: bool
-    user_name: str | None = None
-    user_email: str | None = None
     last_sync: datetime | None = None
     last_sync_error: str | None = None
     syncing: bool = False

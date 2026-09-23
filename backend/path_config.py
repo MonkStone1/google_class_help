@@ -13,7 +13,13 @@ logs). In a compiled build this lives under
 ``%LOCALAPPDATA%\\GoogleClassHelp`` so the application works when installed
 into a read-only location such as ``C:\\Program Files\\GoogleClassHelp``.
 In development it stays in the project tree (``<project>/data``) so the
-existing workflow is untouched.
+existing workflow is untouched. The hosted service is neither: it has no
+per-machine desktop state, so it uses an explicit container path
+(``/data``, a mounted volume) instead of any Windows location (§31).
+
+The hosted application must not depend on the process working directory:
+every path here is absolute and derived from this file's location or an
+explicit environment variable.
 
 No code outside this module may use ``Path.cwd()`` or hard-coded paths:
 the application must run from any install directory.
@@ -27,6 +33,17 @@ from pathlib import Path
 # sys.frozen is set for standalone/onefile builds. Under plain CPython
 # neither exists, so this is a reliable dev/production switch.
 IS_FROZEN = "__compiled__" in globals() or hasattr(sys, "frozen")
+
+# Hosted container path (§31, §51): the deploy mounts a volume here. Read
+# straight from the environment, not from config, because config imports
+# this module (a config import here would be a cycle).
+HOSTED_MODE = os.environ.get("GC_DASHBOARD_HOSTED", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+HOSTED_DATA_DIR = Path("/data")
 
 BACKEND_DIR = Path(__file__).resolve().parent
 
@@ -45,10 +62,21 @@ else:
 
 
 def _resolve_data_dir() -> Path:
-    """User-writable data directory; env override wins over everything."""
+    """Writable data directory for this deployment (§31).
+
+    Precedence:
+
+    1. ``GC_DASHBOARD_DATA_DIR`` — explicit override, any environment;
+    2. hosted mode — the container volume ``/data`` (never
+       ``%LOCALAPPDATA%``, never the working directory);
+    3. compiled desktop build — ``%LOCALAPPDATA%\\GoogleClassHelp``;
+    4. development — ``<project>/data``.
+    """
     override = os.environ.get("GC_DASHBOARD_DATA_DIR")
     if override:
         return Path(override).expanduser()
+    if HOSTED_MODE and os.name == "posix":
+        return HOSTED_DATA_DIR
     if IS_FROZEN:
         local_appdata = os.environ.get("LOCALAPPDATA")
         base = (

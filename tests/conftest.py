@@ -33,6 +33,12 @@ os.environ.setdefault("GOOGLE_CLIENT_ID", "test-web-client.apps.googleuserconten
 os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-web-client-secret")
 os.environ.setdefault("GOOGLE_REDIRECT_URI", "https://gch.test/api/auth/callback")
 
+# Host/Origin allow-list (migration stage 7, §28). Set, not setdefault: a
+# stray value from the developer's shell must not silently change which Host
+# names the app under test accepts. The hosted fixture serves gch.test; the
+# desktop fixtures and Starlette's default "testserver" stay covered too.
+os.environ["GC_DASHBOARD_ALLOWED_HOSTS"] = "gch.test,testserver,localhost,127.0.0.1"
+
 from fastapi.testclient import TestClient
 
 from database import Base, SessionLocal, engine

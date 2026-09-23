@@ -17,7 +17,8 @@ def test_auth_status_is_unauthenticated_without_token(client):
     assert response.status_code == 200
     body = response.json()
     assert body["authenticated"] is False
-    assert body["user_name"] is None
+    # §26: identity lives in `user` alone; the flat mirrors are gone.
+    assert body["user"] is None
 
 
 def test_foreign_host_is_forbidden(client):
@@ -32,8 +33,8 @@ def test_foreign_origin_is_forbidden(client):
 
 
 def test_same_origin_post_is_allowed(client, monkeypatch):
-    # Production frontend and API share 127.0.0.1: the origin guard must not
-    # block the dashboard's own POSTs.
+    # Production frontend and API share one origin (§27): the origin guard
+    # must not block the dashboard's own POSTs, whatever host it runs on.
     monkeypatch.setattr(
         sync, "sync_now", lambda user=None, **kwargs: {"ok": True, "courses": 0}
     )

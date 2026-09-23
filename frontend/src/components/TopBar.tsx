@@ -1,11 +1,11 @@
-import { Bell, Moon, RefreshCw, Sun } from "lucide-react";
+import { Bell, KeyRound, Moon, RefreshCw, Sun } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { useSync, useCourses } from "../context/DataContext.tsx";
+import { useAuth, useSync, useCourses } from "../context/DataContext.tsx";
 import { useSettings } from "../context/SettingsContext.tsx";
-import { parseDue } from "../dates.ts";
+import { parseDue, toLocalDate } from "../dates.ts";
 import { useI18n } from "../i18n.ts";
 import { cn } from "../lib/cn.ts";
 import { searchAll } from "../lib/search.ts";
@@ -19,9 +19,14 @@ function SyncTime({ lastSync }: { lastSync: string | null }) {
   if (!lastSync) {
     return <span className="sync-time">{t("topbar.neverSynced")}</span>;
   }
+  // The backend serializes sync timestamps as naive UTC; render them in the
+  // browser's local zone (migration stage 5/§18, finished in stage 7).
+  const parsed = toLocalDate(lastSync);
   return (
     <span className="sync-time">
-      {t("topbar.lastSync", { time: new Date(lastSync).toLocaleString() })}
+      {t("topbar.lastSync", {
+        time: parsed ? parsed.toLocaleString() : lastSync,
+      })}
     </span>
   );
 }
@@ -34,6 +39,7 @@ export function TopBar({
   onSearch: (value: string) => void;
 }) {
   const { status, syncing, syncNow, error } = useSync();
+  const { login } = useAuth();
   const { assignments, courses } = useCourses();
   const {
     dismissedNotifications,
@@ -177,10 +183,27 @@ export function TopBar({
       </div>
 
       <div className="topbar-actions">
-        {error ? (
-          <span className="topbar-error" title={error}>
+        {/* Retry hint (stage 5/§18): the server's sanitized reason wins over
+            the generic client-side one when the last scheduled sync failed. */}
+        {error || status?.sync_status === "error" ? (
+          <span
+            className="topbar-error"
+            title={status?.last_sync_error ?? error ?? undefined}
+          >
             {t("topbar.cachedData")}
           </span>
+        ) : null}
+        {/* Re-auth prompt: the Google grant is broken, the schedule is
+            paused until this browser signs in again (stage 5/§63). */}
+        {status?.sync_status === "needs_reauth" ? (
+          <button
+            type="button"
+            className="button"
+            title={t("topbar.needsReauthHint")}
+            onClick={() => void login()}
+          >
+            <KeyRound size={15} /> {t("topbar.signInAgain")}
+          </button>
         ) : null}
         <SyncTime lastSync={status?.last_sync ?? null} />
         <button

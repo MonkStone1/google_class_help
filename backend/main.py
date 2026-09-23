@@ -16,8 +16,11 @@ of the API and every data endpoint is gated on an application session. The
 desktop build keeps its exact pre-migration behaviour.
 """
 
+# isort: off
+# Grouped per ruff.toml's known-first-party list.  The isort: off/on pair
+# keeps that project grouping authoritative even for tools that run
+# `ruff --isolated` and therefore cannot see the same first-party list.
 import logging
-import urllib.parse
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -29,9 +32,20 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from api import router
 from background_sync import start as start_background_sync
 from background_sync import stop as stop_background_sync
-from config import EMBEDDED_SCHEDULER, FRONTEND_ORIGINS, HOSTED_MODE
+from config import (
+    ALLOWED_HOSTS,
+    APP_ORIGIN,
+    CORS_ORIGINS,
+    EMBEDDED_SCHEDULER,
+    FRONTEND_ORIGINS,
+    HOSTED_MODE,
+    IS_PRODUCTION,
+    normalize_origin,
+)
 from database import SessionLocal, init_db
 from path_config import FRONTEND_DIST_DIR
+from proxy import effective_authority, host_and_port_from_value, public_origin
+# isort: on
 
 logger = logging.getLogger(__name__)
 
@@ -66,34 +80,54 @@ async def lifespan(app: FastAPI):
         user_scheduler.stop()
 
 
-# ----------------------------------------------------- desktop local guard
+# ------------------------------------------------------- Host/Origin guard
+#
+# Migration stage 7 (§27/§28): the accepted Host names are configuration, not
+# code. Desktop development keeps localhost/127.0.0.1 (the default), the
+# hosted service answers on its public domain (from
+# GC_DASHBOARD_ALLOWED_HOSTS or the host of APP_BASE_URL). The guard runs in
+# BOTH modes: hosted mode has real authentication, but a correct Host check is
+# still the first line of defence against DNS-rebinding style requests.
 
 
-# The server binds to 127.0.0.1 only (launcher); the middleware below is the
-# second line of defence against DNS rebinding / foreign pages (review §2.4).
-TRUSTED_HOSTS = ("127.0.0.1", "localhost")
+def _host_allowed(host_header: str) -> bool:
+    """Return whether a Host-header authority is on the configured allow-list."""
+    authority = host_and_port_from_value(host_header)
+    return authority is not None and authority[0] in ALLOWED_HOSTS
 
 
-def _origin_allowed(origin: str) -> bool:
-    """The Vite dev origin, or the dashboard's own same-origin POSTs.
+def _request_host_allowed(request: Request) -> bool:
+    """Validate the effective public authority, including trusted proxies."""
+    authority = effective_authority(request)
+    return authority is not None and authority[0] in ALLOWED_HOSTS
 
-    A same-origin fetch sends its own origin (e.g. http://127.0.0.1:8000),
-    which is trusted by construction — the check only needs to reject
-    origins from foreign pages, whose host is not ours.
+
+def _origin_allowed(origin: str, request: Request | None = None) -> bool:
+    """Allow only exact configured origins or the request's own origin.
+
+    Hostname-only matching is deliberately not enough: scheme and port are
+    part of origin identity.  Development keeps the Vite origins; production
+    requires an explicit CORS entry for a cross-origin frontend.
     """
-    if origin in FRONTEND_ORIGINS:
-        return True
-    try:
-        return urllib.parse.urlparse(origin).hostname in TRUSTED_HOSTS
-    except ValueError:
+    normalized = normalize_origin(origin)
+    if normalized is None:
         return False
+    if normalized in CORS_ORIGINS:
+        return True
+    if not IS_PRODUCTION and normalized in FRONTEND_ORIGINS:
+        return True
+    if request is None:
+        return APP_ORIGIN is not None and normalized == APP_ORIGIN
+    request_origin = public_origin(request)
+    return request_origin is not None and normalized == request_origin
 
 
 def create_app(hosted: bool = False) -> FastAPI:
     """Build the FastAPI app for one deployment mode.
 
-    Desktop (default): loopback OAuth (ADR-0019), 127.0.0.1 guards, global
-    background sync — byte-for-byte the pre-migration behaviour.
+    Desktop (default): loopback OAuth (ADR-0019), env-driven Host/Origin
+    guard, global background sync — byte-for-byte the pre-migration
+    behaviour.
 
     Hosted: web OAuth + sessions (ADR-0020). The hosted /api/auth/* router
     is included BEFORE the api router so its GET /auth/status, GET+POST
@@ -102,6 +136,10 @@ def create_app(hosted: bool = False) -> FastAPI:
     endpoint additionally resolves its user through the
     ``ownership.get_current_user`` dependency (§13) — the gate is the
     outermost check, the dependency is the authoritative one.
+
+    Middleware order (last added is outermost): session gate → Host/Origin
+    guard → CORS. CORS is outermost so error responses (401/403) still
+    carry the headers a browser needs to read them.
     """
     app = FastAPI(
         title="Local Google Classroom Dashboard", version="1.0.0", lifespan=lifespan
@@ -141,29 +179,29 @@ def create_app(hosted: bool = False) -> FastAPI:
 
         app.include_router(hosted_router)
 
+    # CORS is intentionally inside the Host/Origin guard: a foreign Host or
+    # Origin never reaches Starlette's preflight responder.  For an allowed
+    # cross-origin request, CORS remains outside the session gate so 401/403
+    # responses are readable by the browser (§27).
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=FRONTEND_ORIGINS,
+        allow_origins=list(CORS_ORIGINS),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
-    if not hosted:
-        # Desktop only: the local-only Host/Origin guard. Hosted replaces
-        # it with real authentication; env-driven trusted hosts for the
-        # production domain arrive with stage 7.
-        @app.middleware("http")
-        async def enforce_local_only(request: Request, call_next):
-            host = request.headers.get("host", "").split(":")[0].lower()
-            origin = request.headers.get("origin")
-            if host not in TRUSTED_HOSTS:
-                return JSONResponse({"detail": "Forbidden"}, status_code=403)
-            # Browser requests from foreign pages are cut by Origin; non-browser
-            # requests (curl) send no Origin and are limited by the 127.0.0.1 bind.
-            if origin is not None and not _origin_allowed(origin):
-                return JSONResponse({"detail": "Forbidden origin"}, status_code=403)
-            return await call_next(request)
+    @app.middleware("http")
+    async def enforce_allowed_host(request: Request, call_next):
+        if not _request_host_allowed(request):
+            return JSONResponse({"detail": "Forbidden"}, status_code=403)
+        # Browser requests from foreign pages are cut by exact Origin matching;
+        # non-browser requests send no Origin and remain limited by the session
+        # gate (hosted) or the loopback bind (desktop).
+        origin = request.headers.get("origin")
+        if origin is not None and not _origin_allowed(origin, request):
+            return JSONResponse({"detail": "Forbidden origin"}, status_code=403)
+        return await call_next(request)
 
     app.include_router(router)
 

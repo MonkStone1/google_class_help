@@ -571,10 +571,10 @@ export interface components {
          * AuthStatus
          * @description Auth state of THIS browser's application session (§24).
          *
-         *     ``user`` is the canonical stage-6 shape. ``user_name``/``user_email``
-         *     and the desktop-only loopback fields (``auth_url``,
-         *     ``login_in_progress``) stay for backward compatibility with the current
-         *     frontend; stage 7 switches the UI over and the flat fields are dropped.
+         *     ``user`` is the only identity shape (migration stage 7, §26): the flat
+         *     ``user_name``/``user_email`` mirrors were dropped once the frontend
+         *     switched over. ``auth_url``/``login_in_progress`` remain because the
+         *     desktop loopback flow still publishes its single-use consent URL.
          */
         AuthStatus: {
             /** Authenticated */
@@ -589,10 +589,6 @@ export interface components {
             /** Auth Url */
             auth_url?: string | null;
             user?: components["schemas"]["UserOut"] | null;
-            /** User Name */
-            user_name?: string | null;
-            /** User Email */
-            user_email?: string | null;
         };
         /** CourseDetailOut */
         CourseDetailOut: {
@@ -916,10 +912,6 @@ export interface components {
         SyncStatus: {
             /** Authenticated */
             authenticated: boolean;
-            /** User Name */
-            user_name?: string | null;
-            /** User Email */
-            user_email?: string | null;
             /** Last Sync */
             last_sync?: string | null;
             /** Last Sync Error */

@@ -42,6 +42,23 @@ Vite dev-сервер: <http://localhost:5173> — проксирует `/api` �
 - токен после первой авторизации появится в `data/token.json`
   (git-ignored; каталог можно переопределить через `GC_DASHBOARD_DATA_DIR`).
 
+### Конфигурация окружений (миграция на хостинг, §51)
+
+Три слоя конфигурации разделены; прод-секреты не нужны ни для
+разработки, ни для тестов:
+
+| Слой | Запуск | Конфигурация |
+| --- | --- | --- |
+| **Local development** | `uvicorn main:app --reload` + `npm run dev` (как выше) | по умолчанию `APP_ENV=development`: Host-список — `localhost`/`127.0.0.1`, CORS — Vite-origins, БД — SQLite в `<проект>\data\`. Прод-переменные (`DATABASE_URL`, секреты Google) не читаются |
+| **Hosted-разработка** (опционально) | те же команды + `GC_DASHBOARD_HOSTED=1` и `APP_BASE_URL=http://localhost:5173` | отдельный **development web OAuth-клиент** Google с redirect `http://localhost:5173/api/auth/callback` (Vite проксирует `/api` на бэкенд); локальный PostgreSQL или `DATABASE_URL` локального инстанса — прод-база не используется |
+| **CI / тесты** | `pytest`, `ruff`, `pyright`, `npm run lint`, `npx vitest run` | герметично: `tests/conftest.py` поднимает свой `GC_DASHBOARD_DATA_DIR` и подставляет фейковые значения env; фронтенд-тесты (vitest) секретов не требуют вообще |
+| **Production** | Docker/Compose (этап 10) | `.env` по `.env.example`: `APP_ENV=production`, `APP_BASE_URL`, web-клиент Google, `DATABASE_URL` (PostgreSQL), ключи шифрования. Секреты — только в env, никогда в Git и в ассетах |
+
+Правила: локальная разработка **не зависит** от прод-базы и прод-секретов;
+для Google OAuth в разработке используйте отдельный dev-клиент, а не
+production web-клиент (`APP_ENV` и `GC_DASHBOARD_ALLOWED_HOSTS`/
+`GC_DASHBOARD_CORS_ORIGINS` не задаются — дефолты development-режима).
+
 ---
 
 ## PRODUCTION BUILD
@@ -164,5 +181,5 @@ build.bat
 Ярлык в Пуск/на рабочий стол создаётся вручную из
 `release\GoogleClassHelp.exe`; автозапуск и установщик намеренно не
 настраиваются без отдельного запроса.
-#   g o o g l e - c l a s s - h e l p  
+#   g o o g l e - c l a s s - h e l p 
  
