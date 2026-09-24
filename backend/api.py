@@ -57,10 +57,12 @@ import threading
 import time
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
+import maintenance
 import ownership
 import sync
 from classroom_api import ClassroomClient, build_service
@@ -940,7 +942,9 @@ def status(
 
 
 @router.post("/sync", response_model=SyncResult)
-def run_sync(user: User = Depends(ownership.get_current_user)) -> SyncResult:
+def run_sync(
+    request: Request, user: User = Depends(ownership.get_current_user)
+) -> SyncResult:
     """Synchronize the calling user's cache with THEIR Google credentials.
 
     §12: /api/sync must never touch another user's data. Desktop: the local
@@ -954,7 +958,38 @@ def run_sync(user: User = Depends(ownership.get_current_user)) -> SyncResult:
     global concurrency ceiling (``SYNC_MAX_CONCURRENT_USERS``). When every
     slot is taken the request is answered with 503 and a Retry-Later-style
     phrase instead of queueing behind other users' syncs.
+
+    Stage 9 (§39): hosted manual syncs additionally carry a per-user
+    cooldown (``SYNC_MANUAL_COOLDOWN_SECONDS``). Holding the Sync button
+    reuses the in-flight run (409) or gets 429 instead of launching a
+    second full Classroom fan-out; one user cannot eat the whole Google
+    quota this way. The background scheduler bypasses the cooldown.
     """
+    if request.app.state.hosted:
+        from config import SYNC_MANUAL_COOLDOWN_SECONDS
+
+        if SYNC_MANUAL_COOLDOWN_SECONDS > 0:
+            from datetime import datetime, timezone
+
+            # A fresh per-request session: the endpoint dependency owns its
+            # own session and must not be reused here (short transactions,
+            # stage 9 §45).
+            from database import SessionLocal as _SessionLocal
+            from sync_store import sync_status as _sync_row
+
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            with _SessionLocal() as _db:
+                row = _sync_row(_db, user.id)
+                started = row.last_started_at if row is not None else None
+            if (
+                started is not None
+                and (now - started).total_seconds() < SYNC_MANUAL_COOLDOWN_SECONDS
+            ):
+                raise HTTPException(
+                    status_code=429,
+                    detail="A sync just ran for this account; try again shortly.",
+                    headers={"Retry-After": str(SYNC_MANUAL_COOLDOWN_SECONDS)},
+                )
     result = sync.sync_now(user=user, interactive=True)
     if not result.get("ok"):
         error = str(result.get("error", ""))
@@ -983,6 +1018,102 @@ def clear_cache(
     # Deletes only the calling user's cache rows (stage 3; audit P4/Y4).
     sync.reset_cache(db, owner_id)
     return {"ok": True, "cleared": True}
+
+
+@router.delete("/me/cache")
+def clear_own_cache(
+    confirm: bool = Query(default=False),
+    owner_id: int = Depends(current_user_id),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Explicit alias of ``DELETE /api/cache`` (stage 9, §66).
+
+    Same handler shape, same per-user scope, same ``confirm=true`` gate —
+    the path only says what the code already does: delete the CALLER's
+    cache, never anyone else's. Kept side by side with ``/api/cache`` so
+    existing desktop clients keep working while new clients can use the
+    unambiguous name.
+    """
+    if not confirm:
+        raise HTTPException(
+            status_code=400,
+            detail="Pass confirm=true to clear all locally cached data.",
+        )
+    sync.reset_cache(db, owner_id)
+    return {"ok": True, "cleared": True}
+
+
+@router.delete("/me/google")
+def disconnect_google_account(
+    confirm: bool = Query(default=False),
+    user: User = Depends(ownership.get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Disconnect the caller's Google account, keep the local account (§44).
+
+    Removes the stored OAuth credentials and resets the caller's sync state
+    of THIS user only; the application session stays valid (the caller
+    stays signed in to the dashboard and its cached data remains visible,
+    with its last-sync timestamp). ``confirm=true`` is required because the
+    action forces a fresh consent screen on the next sync.
+    """
+    if not confirm:
+        raise HTTPException(
+            status_code=400,
+            detail="Pass confirm=true to disconnect the Google account.",
+        )
+    # Desktop has no application account: this is exactly /api/auth/logout.
+    if user.provider != "google":
+        import auth
+
+        auth.logout()
+        _reset_profile_cache(user.id)
+        return {"ok": True, "disconnected": True}
+    maintenance.disconnect_google(db, user.id)
+    _reset_profile_cache(user.id)
+    return {"ok": True, "disconnected": True}
+
+
+@router.delete("/me")
+def delete_own_account(
+    request: Request,
+    confirm: bool = Query(default=False),
+    user: User = Depends(ownership.get_current_user),
+    db: Session = Depends(get_db),
+) -> JSONResponse:
+    """Delete everything stored for the CALLER (§44).
+
+    The explicit "delete my account" path: sessions, OAuth credentials,
+    sync state and the whole Classroom cache of this user are removed, and
+    the local ``users`` row goes with them. Other users' rows are never
+    touched — there is deliberately no global variant of this operation.
+
+    Desktop builds have no server-side account (single local user, data in
+    ``%LOCALAPPDATA%``): the endpoint is hosted-only and answers 400 there
+    with a pointer to ``DELETE /api/cache`` + logout.
+    """
+    if not confirm:
+        raise HTTPException(
+            status_code=400,
+            detail="Pass confirm=true to delete the account and all cached data.",
+        )
+    if not request.app.state.hosted:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Desktop builds have no server-side account; use "
+                "DELETE /api/cache and sign out instead."
+            ),
+        )
+    removed = maintenance.delete_user_data(db, user)
+    _reset_profile_cache(user.id)
+    response = JSONResponse({"ok": True, "deleted": True, **removed})
+    # The session no longer exists server-side; drop the cookie too so the
+    # browser does not keep presenting a dead token (§37).
+    from hosted_auth import SESSION_COOKIE_NAME
+
+    response.delete_cookie(SESSION_COOKIE_NAME, path="/")
+    return response
 
 
 # ------------------------------------------------------- teacher-mode views

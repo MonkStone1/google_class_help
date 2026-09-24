@@ -55,6 +55,13 @@ def _now() -> datetime:
 
 def run_once() -> list[dict]:
     """One synchronous scan: sync every due user now and wait for the batch."""
+    # Stage 9 (§44): a one-shot invocation also does housekeeping, so a
+    # cron-style deployment gets retention without a second command.
+    scheduler = SyncScheduler()
+    try:
+        scheduler.run_maintenance()
+    finally:
+        scheduler.stop()
     with SessionLocal() as db:
         due = select_due_users(
             db,
@@ -120,7 +127,13 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(
         level=args.log_level.upper(),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        # Stage 9 (§42): stdout, not a file — the container runtime captures
+        # the stream (same rule as the web process in main.py).
+        stream=sys.stdout,
     )
+    from access_log import install_secret_redaction
+
+    install_secret_redaction()
     if not HOSTED_MODE:
         # The desktop build has background_sync.py and a single account;
         # running this worker there would be a no-op (no google users) at

@@ -190,6 +190,12 @@ def refresh_google_credentials(db: Session, user: User) -> Credentials | None:
     token), this always contacts the token endpoint when a refresh token
     exists — e.g. after learning the access token was revoked server-side.
     Returns None when there is nothing to refresh.
+
+    Stage 9 (§41): a refresh that fails with ``invalid_grant`` (revoked or
+    rotated grant) deletes ONLY this user's ``oauth_tokens`` row — User B's
+    grant is never touched — so the next sync reports ``needs_reauth``
+    instead of retrying a dead grant forever. Transient failures leave the
+    row alone for the backoff to retry.
     """
     if user.provider != "google":
         # Desktop: token.json of the single local user. auth is imported
@@ -221,14 +227,34 @@ def refresh_google_credentials(db: Session, user: User) -> Credentials | None:
     with _refresh_lock_for(user.id):
         try:
             oauth_transport.refresh_credentials(creds)
-        except Exception:  # noqa: BLE001 - a failed refresh means signed out
-            logger.warning(
-                "Google authorization refresh failed for user id=%s; sign-in required.",
-                user.id,
-            )
+        except Exception as exc:  # noqa: BLE001 - see docstring
+            if _is_invalid_grant(exc):
+                logger.warning(
+                    "Google grant revoked for user id=%s; grant row removed.",
+                    user.id,
+                )
+                db.delete(row)
+                db.commit()
+            else:
+                logger.warning(
+                    "Google authorization refresh failed for user id=%s; sign-in required.",
+                    user.id,
+                )
             return None
         save_google_credentials(db, user.id, creds)
         return creds
+
+
+def _is_invalid_grant(exc: Exception) -> bool:
+    """Whether a refresh failure means the grant itself is dead (§41).
+
+    google-auth surfaces ``RefreshError`` whose message carries the token
+    endpoint's ``error`` field (``invalid_grant`` for revoked/rotated
+    grants). Matching is substring-based and case-insensitive on purpose:
+    the exact wrapper text is a library detail, the error code is stable.
+    """
+    text = f"{type(exc).__name__}: {exc}".lower()
+    return "invalid_grant" in text
 
 
 def has_google_grant(db: Session, user: User) -> bool:

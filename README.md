@@ -79,6 +79,31 @@ production web-клиент (`APP_ENV` и `GC_DASHBOARD_ALLOWED_HOSTS`/
   защита); hosted-секрет (`GOOGLE_CLIENT_SECRET`, ключ Fernet) — только
   env сервера, никогда в браузере, `frontend/dist`, Nuitka-артефактах и Git.
 
+### Rate limits, capacity и retention (миграция на хостинг, этап 9, ADR-0027)
+
+- **Лимиты (только hosted):** токен-бакеты по (поверхность, client IP) —
+  логин 30/мин, отклонённые OAuth-callback'и 20/мин, ручной синк 60/мин
+  **плюс cooldown 60 с на пользователя**, очистка кэша 10/мин; превышение
+  → 429 + `Retry-After`. IP из `X-Forwarded-For` верится только от
+  доверенного прокси. Desktop не лимитируется.
+- **Бюджет синка:** `SYNC_MAX_WORKERS=4` × `SYNC_MAX_CONCURRENT_USERS=2`
+  = 8 потоков на воркер; для ~1000 пользователей и 25 учителей при
+  интервале 10 мин — ~600 запросов Google/мин (~10 QPS, порядок ниже
+  квоты проекта). Арифметика в `backend/capacity.py`; рост лимитов —
+  только вместе со счётчиками `quota_errors`/`server_errors` в логе синка.
+- **Токены Google:** `invalid_grant` удаляет грант только этого
+  пользователя и ставит `needs_reauth`; остальные аккаунты не затрагиваются.
+- **Логи hosted:** stdout (Docker/systemd), с редакцией query-строк и
+  redaction-фильтром токенов/куки/секретов; desktop — `%LOCALAPPDATA%` как
+  раньше.
+- **Retention и удаление:** воркер вычищает просроченные сессии и
+  OAuth-попытки (`GC_DASHBOARD_RETENTION_SWEEP_SECONDS`); пути удаления —
+  `DELETE /api/me/google` (отвязать Google) и `DELETE /api/me` (аккаунт со
+  всем кэшем), оба с `confirm=true` и только про вызывающего;
+  `DELETE /api/me/cache` — явный алиас очистки кэша.
+- **Транзакции:** синк не держит соединение PostgreSQL через сетевой фетч
+  (короткие транзакции на фазы); пул `5+5` соединений под 1 vCPU / 1 GB.
+
 ---
 
 ## PRODUCTION BUILD

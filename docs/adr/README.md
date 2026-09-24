@@ -33,3 +33,4 @@
 | [ADR-0024](adr-0024-teacher-mode-api-surface.md) | Teacher-mode API surface — role gates, `/api/me`, identity shape и глобальный предел интерактивного синка | Accepted |
 | [ADR-0025](adr-0025-frontend-config-production.md) | Production frontend и session boundary — env-Host/CORS/trusted proxy, cookie-флаги и `/data` | Accepted |
 | [ADR-0026](adr-0026-desktop-hosted-coexistence-production-edge.md) | Desktop/hosted coexistence и production edge — разделение модулей, Option A, HTTPS/CSRF/headers, privacy/terms | Accepted |
+| [ADR-0027](adr-0027-rate-limits-capacity-retention.md) | Rate limits, capacity и retention — токен-бакеты, бюджет синка 4×2, retention/удаление, короткие транзакции | Accepted |

@@ -25,8 +25,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 import google_credentials
-from sqlalchemy.orm import Session
 
+import metrics
 import ownership
 from classroom_api import ClassroomClient, RequestStats, build_service
 from config import (
@@ -310,15 +310,22 @@ def _public_error(exc: Exception) -> str:
 
 
 def _do_sync(owner_id: int) -> dict:
-    db: Session = SessionLocal()
+    # Stage 9 (§45): short transactions, one session per phase — never hold a
+    # transaction open across the Google fetch. Each block below opens its
+    # own SessionLocal scope and closes it before the next phase starts: a
+    # stalled Classroom round-trip pins no pooled PostgreSQL connection,
+    # and worker threads never share a Session (they never touch one —
+    # threads only call Google, all DB work stays on this thread).
+    from models_auth import User as _User
+
     pool = ThreadPoolExecutor(max_workers=SYNC_MAX_WORKERS)
     # One per-run counter shared by every worker thread's client (§65): it
     # makes the real Google request volume of a sync (much higher for a
     # teacher account) visible in the log for capacity planning (stage 9).
     stats = RequestStats()
     started_monotonic = time.monotonic()
-    try:
-        user = db.get(User, owner_id)
+    with SessionLocal() as db:
+        user = db.get(_User, owner_id)
         if user is None or not user.is_active:
             return {"ok": False, "error": NOT_SIGNED_IN}
         # Claim this user's sync slot before any network work (stage 5, §18):
@@ -332,6 +339,10 @@ def _do_sync(owner_id: int) -> dict:
         # The cache rows written by this sync belong to this user (§10);
         # the credentials are that same user's (§15) — hosted users read
         # their own oauth_tokens row, desktop its single token.json.
+        # NOTE: get_google_credentials may refresh the token over the
+        # network; the surrounding transaction only holds the claim row and
+        # the token row, and commits (inside save_google_credentials)
+        # before the Classroom fetch starts.
         creds = google_credentials.get_google_credentials(db, user)
         if creds is None:
             # Distinguish "never signed in" from "the stored grant is
@@ -341,7 +352,10 @@ def _do_sync(owner_id: int) -> dict:
                 return {"ok": False, "error": NEEDS_REAUTH}
             mark_sync_pending(db, owner_id, _now())
             return {"ok": False, "error": NOT_SIGNED_IN}
-
+    # The db session above is closed here: everything below until the write
+    # phase is pure Google I/O on ``creds`` (a detached Credentials object),
+    # holding no database transaction at all (§45).
+    try:
         service = build_service(creds)
         client = ClassroomClient(service, stats=stats)
 
@@ -357,8 +371,8 @@ def _do_sync(owner_id: int) -> dict:
             # courses.list failed (HTTP error): keep the cache and record the
             # error instead of purging every course as "gone" (review §1.7).
             logger.warning(COURSES_FAILED)
-            db.rollback()
-            mark_sync_failed(db, owner_id, COURSES_FAILED, _now())
+            with SessionLocal() as db:
+                mark_sync_failed(db, owner_id, COURSES_FAILED, _now())
             return {"ok": False, "error": COURSES_FAILED}
         active_ids = {raw["id"] for raw, _ in courses}
 
@@ -381,79 +395,147 @@ def _do_sync(owner_id: int) -> dict:
                     seen.add(work_id)
                     work_requests.append((course_id, work_id))
         work_cache = _fetch_coursework(get_client, work_requests, pool)
-
-        assignment_count = 0
-        now = _now()
-
-        for raw_course, role in courses:
-            course_id = raw_course["id"]
-            course = db.get(Course, (owner_id, course_id))
-            if course is None:
-                course = Course(user_id=owner_id, id=course_id)
-                db.add(course)
-            course.name = raw_course.get("name", "Untitled course")
-            course.description = raw_course.get("descriptionHeading") or raw_course.get(
-                "description"
-            )
-            course.section = raw_course.get("section")
-            course.room = raw_course.get("room")
-            course.enrollment_state = raw_course.get("enrollmentState")
-            course.course_state = raw_course.get("courseState")
-            course_role = db.get(CourseRole, (owner_id, course_id))
-            if course_role is None:
-                course_role = CourseRole(user_id=owner_id, course_id=course_id)
-                db.add(course_role)
-            course_role.role = role
-            course.teacher_names = teacher_names.get(course_id, [])
-            course.synced_at = now
-
-            payload = payloads[course_id]
-            if role == "TEACHER":
-                assignment_count += _write_teacher_course(
-                    db, owner_id, course_id, payload
-                )
-            else:
-                assignment_count += _write_student_course(
-                    db, owner_id, course_id, payload["submissions"], work_cache
-                )
-            db.commit()
-
-        # Mirror cleanup: archived, deleted and unenrolled courses are no
-        # longer part of the student dashboard. Anything the API did not
-        # return for THIS owner's cache on this sync is removed from it.
-        _purge_stale_courses(db, owner_id, active_ids)
-
-        mark_sync_succeeded(db, owner_id, _now())
-        elapsed = time.monotonic() - started_monotonic
-        logger.info(
-            "Sync ok user=%s courses=%d assignments=%d google_requests=%d "
-            "duration=%.1fs",
-            owner_id,
-            len(courses),
-            assignment_count,
-            stats.requests,
-            elapsed,
-        )
-        return {
-            "ok": True,
-            "last_sync": now,
-            "courses": len(courses),
-            "assignments": assignment_count,
-        }
-    except (
-        Exception
-    ) as exc:  # any Google/network error must land in sync_status, not crash the API
-        # The dashboard gets the short, sanitized sentence below; the log
-        # keeps the whole stack, which is the only artifact a user can send
-        # from a build that fails on a platform we do not have (e.g. the exe
-        # under Wine). Raw exception text never reaches the frontend (§18).
+    except Exception as exc:  # any Google/network error lands in sync_status (§18)
+        # Sanitized sentence to the dashboard, full stack to the log — raw
+        # exception text never reaches the frontend. The counters show
+        # whether this was quota pressure or a Classroom outage (§60).
+        counters = stats.snapshot()
         logger.exception(
-            "Classroom sync failed after %d Google requests", stats.requests
+            "Classroom sync failed after %d Google requests "
+            "(quota_errors=%d server_errors=%d)",
+            counters["requests"],
+            counters["quota_errors"],
+            counters["server_errors"],
         )
-        db.rollback()
         message = _public_error(exc)
-        mark_sync_failed(db, owner_id, message, _now())
+        with SessionLocal() as db:
+            if message == NEEDS_REAUTH:
+                # Stage 9 (§41): a 401 during the sync means this user's
+                # grant died mid-flight (revoked in the Google account).
+                # Mark the account for re-authorization, stop retrying, and
+                # drop ONLY this user's credential row — other users' grants
+                # and sessions are untouched.
+                google_credentials.delete_google_credentials(db, owner_id)
+                mark_sync_needs_reauth(db, owner_id, message, _now())
+                metrics.record(metrics.SYNC_NEEDS_REAUTH)
+            else:
+                mark_sync_failed(db, owner_id, message, _now())
+                metrics.record(metrics.SYNC_FAILED)
         return {"ok": False, "error": message}
     finally:
         pool.shutdown(wait=True)
-        db.close()
+    return _write_sync_results(
+        owner_id,
+        courses,
+        active_ids,
+        teacher_names,
+        payloads,
+        work_cache,
+        stats,
+        started_monotonic,
+    )
+
+
+def _write_sync_results(
+    owner_id: int,
+    courses: list,
+    active_ids: set[str],
+    teacher_names: dict,
+    payloads: dict,
+    work_cache: dict,
+    stats: RequestStats,
+    started_monotonic: float,
+) -> dict:
+    """Persist one finished fetch into the owner's cache scope (§45).
+
+    Own short transaction at the END of the sync (not across the fetch):
+    the write phase commits per course so a 1,000-course teacher cache
+    cannot hold one giant transaction, and the Google request counters land
+    in the success log line for the capacity review (§60).
+    """
+    from models_auth import User as _User
+
+    assignment_count = 0
+    now = _now()
+
+    with SessionLocal() as db:
+        try:
+            owner = db.get(_User, owner_id)
+            if owner is None or not owner.is_active:
+                return {"ok": False, "error": NOT_SIGNED_IN}
+            for raw_course, role in courses:
+                course_id = raw_course["id"]
+                course = db.get(Course, (owner_id, course_id))
+                if course is None:
+                    course = Course(user_id=owner_id, id=course_id)
+                    db.add(course)
+                course.name = raw_course.get("name", "Untitled course")
+                course.description = raw_course.get(
+                    "descriptionHeading"
+                ) or raw_course.get("description")
+                course.section = raw_course.get("section")
+                course.room = raw_course.get("room")
+                course.enrollment_state = raw_course.get("enrollmentState")
+                course.course_state = raw_course.get("courseState")
+                course_role = db.get(CourseRole, (owner_id, course_id))
+                if course_role is None:
+                    course_role = CourseRole(user_id=owner_id, course_id=course_id)
+                    db.add(course_role)
+                course_role.role = role
+                course.teacher_names = teacher_names.get(course_id, [])
+                course.synced_at = now
+
+                payload = payloads[course_id]
+                if role == "TEACHER":
+                    assignment_count += _write_teacher_course(
+                        db, owner_id, course_id, payload
+                    )
+                else:
+                    assignment_count += _write_student_course(
+                        db, owner_id, course_id, payload["submissions"], work_cache
+                    )
+                db.commit()
+
+            # Mirror cleanup: archived, deleted and unenrolled courses are no
+            # longer part of the student dashboard. Anything the API did not
+            # return for THIS owner's cache on this sync is removed from it.
+            _purge_stale_courses(db, owner_id, active_ids)
+
+            mark_sync_succeeded(db, owner_id, _now())
+            elapsed = time.monotonic() - started_monotonic
+            counters = stats.snapshot()
+            metrics.record(metrics.SYNC_SUCCEEDED)
+            logger.info(
+                "Sync ok user=%s courses=%d assignments=%d google_requests=%d "
+                "quota_errors=%d server_errors=%d duration=%.1fs",
+                owner_id,
+                len(courses),
+                assignment_count,
+                counters["requests"],
+                counters["quota_errors"],
+                counters["server_errors"],
+                elapsed,
+            )
+            return {
+                "ok": True,
+                "last_sync": now,
+                "courses": len(courses),
+                "assignments": assignment_count,
+            }
+        except Exception as exc:  # any write error lands in sync_status, not the API
+            # The dashboard gets the short, sanitized sentence below; the log
+            # keeps the whole stack. Raw exception text never reaches the
+            # frontend (§18). The fetch already finished, so there is no
+            # Google/network error left to catch here — only cache writes.
+            counters = stats.snapshot()
+            logger.exception(
+                "Classroom sync write failed after %d Google requests "
+                "(quota_errors=%d server_errors=%d)",
+                counters["requests"],
+                counters["quota_errors"],
+                counters["server_errors"],
+            )
+            db.rollback()
+            message = _public_error(exc)
+            mark_sync_failed(db, owner_id, message, _now())
+            return {"ok": False, "error": message}

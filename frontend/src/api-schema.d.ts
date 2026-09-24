@@ -41,7 +41,20 @@ export interface paths {
         get: operations["me_api_me_get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Own Account
+         * @description Delete everything stored for the CALLER (§44).
+         *
+         *     The explicit "delete my account" path: sessions, OAuth credentials,
+         *     sync state and the whole Classroom cache of this user are removed, and
+         *     the local ``users`` row goes with them. Other users' rows are never
+         *     touched — there is deliberately no global variant of this operation.
+         *
+         *     Desktop builds have no server-side account (single local user, data in
+         *     ``%LOCALAPPDATA%``): the endpoint is hosted-only and answers 400 there
+         *     with a pointer to ``DELETE /api/cache`` + logout.
+         */
+        delete: operations["delete_own_account_api_me_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -224,6 +237,12 @@ export interface paths {
          *     global concurrency ceiling (``SYNC_MAX_CONCURRENT_USERS``). When every
          *     slot is taken the request is answered with 503 and a Retry-Later-style
          *     phrase instead of queueing behind other users' syncs.
+         *
+         *     Stage 9 (§39): hosted manual syncs additionally carry a per-user
+         *     cooldown (``SYNC_MANUAL_COOLDOWN_SECONDS``). Holding the Sync button
+         *     reuses the in-flight run (409) or gets 429 instead of launching a
+         *     second full Classroom fan-out; one user cannot eat the whole Google
+         *     quota this way. The background scheduler bypasses the cooldown.
          */
         post: operations["run_sync_api_sync_post"];
         delete?: never;
@@ -244,6 +263,58 @@ export interface paths {
         post?: never;
         /** Clear Cache */
         delete: operations["clear_cache_api_cache_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/cache": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Clear Own Cache
+         * @description Explicit alias of ``DELETE /api/cache`` (stage 9, §66).
+         *
+         *     Same handler shape, same per-user scope, same ``confirm=true`` gate —
+         *     the path only says what the code already does: delete the CALLER's
+         *     cache, never anyone else's. Kept side by side with ``/api/cache`` so
+         *     existing desktop clients keep working while new clients can use the
+         *     unambiguous name.
+         */
+        delete: operations["clear_own_cache_api_me_cache_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/google": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect Google Account
+         * @description Disconnect the caller's Google account, keep the local account (§44).
+         *
+         *     Removes the stored OAuth credentials and resets the caller's sync state
+         *     of THIS user only; the application session stays valid (the caller
+         *     stays signed in to the dashboard and its cached data remains visible,
+         *     with its last-sync timestamp). ``confirm=true`` is required because the
+         *     action forces a fresh consent screen on the next sync.
+         */
+        delete: operations["disconnect_google_account_api_me_google_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1056,6 +1127,37 @@ export interface operations {
             };
         };
     };
+    delete_own_account_api_me_delete: {
+        parameters: {
+            query?: {
+                confirm?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     login_api_auth_login_post: {
         parameters: {
             query?: never;
@@ -1295,6 +1397,72 @@ export interface operations {
         };
     };
     clear_cache_api_cache_delete: {
+        parameters: {
+            query?: {
+                confirm?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_own_cache_api_me_cache_delete: {
+        parameters: {
+            query?: {
+                confirm?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disconnect_google_account_api_me_google_delete: {
         parameters: {
             query?: {
                 confirm?: boolean;

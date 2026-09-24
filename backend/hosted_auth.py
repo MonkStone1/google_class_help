@@ -62,6 +62,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
+import metrics
 import sync_store
 from config import COOKIE_HOST_PREFIX, COOKIE_SAMESITE, COOKIE_SECURE
 from database import get_db
@@ -280,6 +281,7 @@ def resolve_session_user(request: Request, db: Session) -> User:
     """
     token = request.cookies.get(SESSION_COOKIE_NAME)
     if not token:
+        metrics.record(metrics.SESSION_REJECTED)
         raise HTTPException(status_code=401, detail="Not signed in.")
     row = (
         db.query(UserSession)
@@ -288,9 +290,11 @@ def resolve_session_user(request: Request, db: Session) -> User:
     )
     now = _utcnow()
     if row is None or row.revoked_at is not None or row.expires_at <= now:
+        metrics.record(metrics.SESSION_REJECTED)
         raise HTTPException(status_code=401, detail="Not signed in.")
     user = db.get(User, row.user_id)
     if user is None or not user.is_active:
+        metrics.record(metrics.SESSION_REJECTED)
         raise HTTPException(status_code=401, detail="Not signed in.")
     # Touch last_seen at most once a minute to keep writes off the hot path.
     if now - row.last_seen_at > timedelta(minutes=1):
@@ -376,6 +380,23 @@ def callback(request: Request, db: Session = Depends(get_db)) -> RedirectRespons
     def _fail(detail: str, status_code: int = 400) -> RedirectResponse:
         # Fail closed to the dashboard with a short marker; the reason goes
         # to the log only (no token/code material, §5 "never log").
+        # Stage 9 (§39): rejected callbacks are counted per IP so an error
+        # loop cannot retry forever — successes are never throttled.
+        from config import RATE_LIMIT_CALLBACK_FAILURES_PER_MINUTE
+        from proxy import client_ip as _client_ip
+
+        limiter = request.app.state.rate_limiter
+        if not limiter.allow(
+            f"callback-fail:{_client_ip(request)}",
+            capacity=RATE_LIMIT_CALLBACK_FAILURES_PER_MINUTE,
+            refill_per_second=RATE_LIMIT_CALLBACK_FAILURES_PER_MINUTE / 60.0,
+        ):
+            logger.warning("OAuth callback failure bucket exhausted: %s", detail)
+            metrics.record(metrics.LOGIN_FAILED)
+            response = RedirectResponse("/?login_error=429", status_code=302)
+            response.delete_cookie(NONCE_COOKIE_NAME, path="/")
+            return response
+        metrics.record(metrics.LOGIN_FAILED)
         response = RedirectResponse(f"/?login_error={status_code}", status_code=302)
         response.delete_cookie(NONCE_COOKIE_NAME, path="/")
         logger.warning("OAuth callback rejected: %s", detail)
@@ -464,6 +485,7 @@ def callback(request: Request, db: Session = Depends(get_db)) -> RedirectRespons
     response = RedirectResponse(redirect_to, status_code=302)
     _set_session_cookie(response, session_token, _session_cookie_secure(request))
     response.delete_cookie(NONCE_COOKIE_NAME, path="/")
+    metrics.record(metrics.LOGIN_SUCCEEDED)
     logger.info("User id=%s signed in (hosted web OAuth).", user.id)
     return response
 
@@ -511,6 +533,7 @@ def logout(
         if row is not None:
             row.revoked_at = _utcnow()
             db.commit()
+            metrics.record(metrics.LOGOUT)
     response = JSONResponse({"ok": True})
     response.delete_cookie(SESSION_COOKIE_NAME, path="/")
     return response

@@ -123,3 +123,20 @@ def public_origin(request: Request) -> str | None:
     if authority is None:
         return None
     return canonical_origin(external_scheme(request), authority[0], authority[1])
+
+
+def client_ip(request: Request) -> str:
+    """Best-effort client identity for abuse throttling (stage 9, section 39).
+
+    The direct TCP peer by default; the leftmost X-Forwarded-For entry only
+    when that peer is a configured reverse proxy (same trust rule as the
+    scheme/host helpers above) — otherwise a client could pick any identity
+    and dodge the bucket. The value is a throttle key only, never an auth
+    decision.
+    """
+    peer = request.client.host if request.client is not None else "unknown"
+    if peer_is_trusted_proxy(request):
+        forwarded = request.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
+        if forwarded:
+            return forwarded
+    return peer

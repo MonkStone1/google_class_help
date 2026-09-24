@@ -46,6 +46,24 @@ os.environ["GC_DASHBOARD_ALLOWED_HOSTS"] = "gch.test,testserver,localhost,127.0.
 os.environ.pop("GC_DASHBOARD_COOKIE_HOST_PREFIX", None)
 os.environ.pop("GC_DASHBOARD_HSTS_MAX_AGE", None)
 
+# Stage-9 abuse-control and capacity knobs (§39/§40/§44/§88): a stray value
+# from the developer's shell must not change the limits, cooldowns or
+# conservative defaults the suite pins. Popped, not defaulted — the stage-9
+# tests assert the code defaults (rate limits > 0, cooldown > 0, small pool).
+for _stage9_knob in (
+    "GC_DASHBOARD_RATE_LIMIT_LOGIN_PER_MINUTE",
+    "GC_DASHBOARD_RATE_LIMIT_CALLBACK_FAILURES_PER_MINUTE",
+    "GC_DASHBOARD_RATE_LIMIT_SYNC_PER_MINUTE",
+    "GC_DASHBOARD_RATE_LIMIT_CACHE_CLEAR_PER_MINUTE",
+    "GC_DASHBOARD_SYNC_MANUAL_COOLDOWN_SECONDS",
+    "GC_DASHBOARD_RETENTION_SWEEP_SECONDS",
+    "GC_DASHBOARD_DB_POOL_SIZE",
+    "GC_DASHBOARD_DB_MAX_OVERFLOW",
+    "GC_DASHBOARD_SYNC_WORKERS",
+    "GC_DASHBOARD_SYNC_MAX_CONCURRENT_USERS",
+):
+    os.environ.pop(_stage9_knob, None)
+
 from fastapi.testclient import TestClient
 
 from database import Base, SessionLocal, engine

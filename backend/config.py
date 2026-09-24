@@ -181,7 +181,46 @@ def _normalize_origins(values: list[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(normalized))
 
 
-SYNC_MAX_WORKERS = _int_env("GC_DASHBOARD_SYNC_WORKERS", 16, minimum=1)
+# Stage-9 hosted Postgres pool (section 45/88): small on purpose. Sync no
+# longer holds a connection across the Google fetch, so a handful covers
+# web requests plus the bounded scheduler on the 1 vCPU / 1 GB target.
+DB_POOL_SIZE = _int_env("GC_DASHBOARD_DB_POOL_SIZE", 5, minimum=1)
+DB_MAX_OVERFLOW = _int_env("GC_DASHBOARD_DB_MAX_OVERFLOW", 5, minimum=0)
+
+
+# Stage-9 knobs (ADR-0027): abuse controls and the manual-sync cooldown.
+# Login/callback buckets are per IP; the callback bucket counts REJECTED
+# attempts only, so a classroom behind one school NAT can still sign in.
+RATE_LIMIT_LOGIN_PER_MINUTE = _int_env(
+    "GC_DASHBOARD_RATE_LIMIT_LOGIN_PER_MINUTE", 30, minimum=1
+)
+RATE_LIMIT_CALLBACK_FAILURES_PER_MINUTE = _int_env(
+    "GC_DASHBOARD_RATE_LIMIT_CALLBACK_FAILURES_PER_MINUTE", 20, minimum=1
+)
+# Manual sync (section 39): per-IP bucket plus a per-user cooldown below.
+RATE_LIMIT_SYNC_PER_MINUTE = _int_env(
+    "GC_DASHBOARD_RATE_LIMIT_SYNC_PER_MINUTE", 60, minimum=1
+)
+# Destructive cache clears (sections 44/66): rare operator action.
+RATE_LIMIT_CACHE_CLEAR_PER_MINUTE = _int_env(
+    "GC_DASHBOARD_RATE_LIMIT_CACHE_CLEAR_PER_MINUTE", 10, minimum=1
+)
+# Per-user manual-sync cooldown, seconds (section 39): pressing Sync twice
+# reuses the in-flight run (409) or gets 429 instead of a second fan-out.
+# The scheduler is NOT throttled by this - planned syncs bypass it.
+SYNC_MANUAL_COOLDOWN_SECONDS = _int_env(
+    "GC_DASHBOARD_SYNC_MANUAL_COOLDOWN_SECONDS", 60, minimum=0
+)
+
+# Retention sweep cadence, seconds (stage 9, section 44): expired/revoked
+# sessions and expired OAuth login attempts are removed by the worker at
+# most this often. 0 disables the sweep (tests).
+RETENTION_SWEEP_SECONDS = _int_env(
+    "GC_DASHBOARD_RETENTION_SWEEP_SECONDS", 3600, minimum=0
+)
+
+
+SYNC_MAX_WORKERS = _int_env("GC_DASHBOARD_SYNC_WORKERS", 4, minimum=1)
 
 # Background sync: runs once at startup, then every SYNC_INTERVAL_MINUTES.
 # 0 disables the schedule entirely (no startup sync, no repeats).

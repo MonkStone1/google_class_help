@@ -53,8 +53,11 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+import maintenance
+import metrics
 import sync_service
 from config import (
+    RETENTION_SWEEP_SECONDS,
     SYNC_INTERVAL_MINUTES,
     SYNC_MAX_CONCURRENT_USERS,
     SYNC_SCAN_INTERVAL_SECONDS,
@@ -196,6 +199,7 @@ def run_user(user_id: int) -> dict:
         result = sync_service.sync_user_id(user_id)
     except Exception:
         logger.exception("Scheduled sync for user id=%s crashed", user_id)
+        metrics.record(metrics.SYNC_JOB_CRASHED)
         return {"user_id": user_id, "ok": False, "error": "Internal sync error."}
     error = str(result.get("error") or "")
     if result.get("ok"):
@@ -234,6 +238,7 @@ class SyncScheduler:
         max_concurrent: int | None = None,
         scan_interval_seconds: int | None = None,
         startup_stagger_seconds: int | None = None,
+        maintenance_interval_seconds: int | None = None,
     ) -> None:
         self.interval_seconds = (
             interval_seconds
@@ -245,6 +250,11 @@ class SyncScheduler:
             scan_interval_seconds
             if scan_interval_seconds is not None
             else SYNC_SCAN_INTERVAL_SECONDS
+        )
+        maintenance_interval_seconds = (
+            maintenance_interval_seconds
+            if maintenance_interval_seconds is not None
+            else RETENTION_SWEEP_SECONDS
         )
         self.startup_stagger_seconds = (
             startup_stagger_seconds
@@ -263,8 +273,30 @@ class SyncScheduler:
         self._in_flight: set[int] = set()
         self._stop = threading.Event()
         self._loop: threading.Thread | None = None
+        # Stage 9 (§44/§60): housekeeping cadence — the retention sweep and
+        # the metrics summary run at most this often, from the scan loop.
+        self.maintenance_interval_seconds = maintenance_interval_seconds
+        self._last_maintenance = 0.0
 
     # ------------------------------------------------------------- runtime
+
+    def run_maintenance(self) -> dict[str, int]:
+        """Retention sweep + metrics summary (§44/§60); never fatal."""
+        removed: dict[str, int] = {}
+        try:
+            with SessionLocal() as db:
+                removed = maintenance.purge_expired(db)
+        except Exception:
+            logger.exception("Retention sweep failed; retrying next cycle")
+        if removed.get("sessions") or removed.get("login_states"):
+            logger.info(
+                "Retention sweep removed sessions=%s login_states=%s.",
+                removed.get("sessions", 0),
+                removed.get("login_states", 0),
+            )
+        metrics.log_snapshot("worker")
+        self._last_maintenance = time.monotonic()
+        return removed
 
     def scan_once(self, now: datetime | None = None) -> list[int]:
         """Submit every due user this pass, up to the free worker slots.
@@ -325,6 +357,14 @@ class SyncScheduler:
                 self.scan_once()
             except Exception:
                 logger.exception("Sync scan failed; retrying on the next tick")
+            # Stage 9 (§44/§60): retention sweep + metrics summary, at most
+            # once per maintenance interval (0 disables it in tests).
+            if (
+                self.maintenance_interval_seconds > 0
+                and time.monotonic() - self._last_maintenance
+                >= self.maintenance_interval_seconds
+            ):
+                self.run_maintenance()
             # Scans carry a little randomness so several worker containers
             # do not tick in lockstep (their DB claim already prevents
             # duplicate jobs, this only smooths the database load).

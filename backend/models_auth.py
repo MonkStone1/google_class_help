@@ -20,6 +20,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -69,9 +70,16 @@ class UserSession(Base):
     logout revokes the session row but keeps the stored refresh token so
     the next sign-in can reuse the Google authorization without a new
     consent screen (documented in ADR-0020).
+
+    Indexes (migration stage 9, §68): lookups are by token hash (unique
+    index), and the session sweeper selects by ``(user_id, expires_at)``
+    (revoked/expired rows of one user). The composite index covers the
+    former single-column ``user_id`` index as its leftmost prefix, so the
+    redundant index was dropped in revision 0003.
     """
 
     __tablename__ = "sessions"
+    __table_args__ = (Index("ix_sessions_user_expires", "user_id", "expires_at"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     # SHA-256 hex of the opaque cookie token. The raw token is never stored.
@@ -79,7 +87,7 @@ class UserSession(Base):
         String(64), nullable=False, unique=True, index=True
     )
     user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)

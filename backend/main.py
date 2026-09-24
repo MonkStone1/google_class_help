@@ -41,7 +41,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from access_log import install_query_redaction
+from access_log import install_query_redaction, install_secret_redaction
 from api import router
 from config import (
     ALLOWED_HOSTS,
@@ -52,6 +52,9 @@ from config import (
     HOSTED_MODE,
     HSTS_MAX_AGE,
     IS_PRODUCTION,
+    RATE_LIMIT_CACHE_CLEAR_PER_MINUTE,
+    RATE_LIMIT_LOGIN_PER_MINUTE,
+    RATE_LIMIT_SYNC_PER_MINUTE,
     normalize_origin,
 )
 from database import SessionLocal, init_db
@@ -104,6 +107,13 @@ async def lifespan(app: FastAPI):
       impossible because every sync claims its user in the database.
     """
     init_db()
+    # Stage 9 (§42): hosted application logs go to stdout/stderr (Docker and
+    # systemd capture them — no RotatingFileHandler like the desktop
+    # launcher's logs/app.log). The secret filter is a safety net on top of
+    # "never log credentials": a stray token-shaped value degrades to
+    # [REDACTED] instead of a leak. Desktop keeps its file log untouched.
+    if app.state.hosted:
+        install_secret_redaction()
     user_scheduler = None
     if not app.state.hosted:
         # Desktop-only schedule (ADR-0015). Imported HERE, not at module
@@ -190,10 +200,63 @@ def create_app(hosted: bool = False) -> FastAPI:
         title="Local Google Classroom Dashboard", version="1.0.0", lifespan=lifespan
     )
     app.state.hosted = hosted
+    # Stage 9 (§39): in-memory token buckets live on the app instance, not in
+    # a module global — two apps in one process (desktop + hosted in tests)
+    # never share quota, and a fresh app starts with fresh buckets.
+    import rate_limit
+
+    app.state.rate_limiter = rate_limit.RateLimiter()
 
     if hosted:
         from hosted_auth import resolve_session_user
         from hosted_auth import router as hosted_router
+        from proxy import client_ip
+
+        def _throttled(request: Request, key: str, capacity: int) -> bool:
+            limiter = request.app.state.rate_limiter
+            return limiter.allow(
+                key,
+                capacity=capacity,
+                refill_per_second=capacity / 60.0,
+            )
+
+        def _retry_later(detail: str) -> JSONResponse:
+            # 429 carries Retry-After so a well-behaved client backs off
+            # instead of hammering the bucket (section 59 error mapping).
+            return JSONResponse(
+                {"detail": detail},
+                status_code=429,
+                headers={"Retry-After": "60"},
+            )
+
+        @app.middleware("http")
+        async def throttle_abuse_surfaces(request: Request, call_next):
+            # Stage 9 (section 39), hosted only: per-IP buckets in front of
+            # the credential-adjacent and fan-out-adjacent endpoints. Desktop
+            # never runs this middleware. Buckets answer 429; they never
+            # authenticate, never touch Google, never touch the database.
+            # The bucket is keyed by (surface, ip) so one hot endpoint cannot
+            # exhaust the allowance of another.
+            path = request.url.path
+            method = request.method
+            surface: str | None = None
+            if method == "GET" and path == "/api/auth/login":
+                surface = "login"
+            elif method == "POST" and path == "/api/sync":
+                surface = "sync"
+            elif method == "DELETE" and path in {"/api/cache", "/api/me/cache"}:
+                surface = "cache"
+            if surface is not None:
+                capacity = {
+                    "login": RATE_LIMIT_LOGIN_PER_MINUTE,
+                    "sync": RATE_LIMIT_SYNC_PER_MINUTE,
+                    "cache": RATE_LIMIT_CACHE_CLEAR_PER_MINUTE,
+                }[surface]
+                if not _throttled(request, f"{surface}:{client_ip(request)}", capacity):
+                    return _retry_later(
+                        "Too many requests for this action; try again later."
+                    )
+            return await call_next(request)
 
         # Added FIRST so CORS (added below) wraps the gate: 401 responses
         # still carry CORS headers and the frontend can read them (§7).

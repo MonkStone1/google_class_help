@@ -35,6 +35,22 @@ def _build_engine() -> Engine:
     if url:
         # pool_pre_ping: drop connections killed by the server/idle timeouts
         # instead of failing a request with "server closed the connection".
+        # Stage 9 (§45/§88): the hosted pool is deliberately small — sync
+        # holds no connection across the Google fetch anymore, so web
+        # requests + a bounded scheduler fit in a handful of connections on
+        # a 1 GB VPS. Knobs, not code, raise it with vertical scaling.
+        if url.startswith("postgresql"):
+            from config import DB_MAX_OVERFLOW as _overflow
+            from config import DB_POOL_SIZE as _size
+
+            return create_engine(
+                url,
+                pool_pre_ping=True,
+                pool_size=_size,
+                max_overflow=_overflow,
+                pool_timeout=30,
+                pool_recycle=1800,
+            )
         return create_engine(url, pool_pre_ping=True)
     if HOSTED_MODE:
         raise RuntimeError(
