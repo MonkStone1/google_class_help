@@ -36,6 +36,10 @@ export const ru = {
  "tabs.switchBlocked": "— автоматическое переключение не удалось, попробуйте ещё раз или закройте эту вкладку.",
  "tabs.dismiss": "Скрыть это сообщение",
 
+
+  "signin.turnstileRequired": "Пройдите проверку, чтобы продолжить вход.",
+  "signin.turnstilePending": "Перед входом требуется проверка.",
+
  "search.label": "Результаты поиска",
  "search.noResults": "Ничего не найдено по «{query}»",
  "search.assignments": "Задания",

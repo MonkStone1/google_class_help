@@ -6,6 +6,12 @@ data/*.db
 # Hosted deployment secrets (migration stage 2): only .env.example is tracked.
 .env
 backend/.env
+!.env.example
+
+# Database dumps and any other backup artifacts (migration stage 10, §57).
+backups/
+*.dump
+*.sql.gz
 
 # Python
 .venv/

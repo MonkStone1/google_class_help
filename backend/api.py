@@ -55,7 +55,7 @@ caller's scope (never disclosing whether another user's row exists).
 
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
@@ -943,53 +943,50 @@ def status(
 
 @router.post("/sync", response_model=SyncResult)
 def run_sync(
-    request: Request, user: User = Depends(ownership.get_current_user)
+    request: Request,
+    user: User = Depends(ownership.get_current_user),
+    db: Session = Depends(get_db),
 ) -> SyncResult:
-    """Synchronize the calling user's cache with THEIR Google credentials.
+    """Queue (hosted) or run (desktop) a sync of the calling user's cache.
 
     §12: /api/sync must never touch another user's data. Desktop: the local
-    owner (token.json). Hosted: the session user's oauth_tokens — sync_now
-    resolves the cache owner and credentials from this user. Since the
-    per-user scheduler (stage 5, §18) a manual sync only conflicts with
-    THIS user's own running sync (background or another manual call); any
-    other user syncs independently.
+    owner (token.json) — sync runs inline as before. Hosted: the session
+    user's oauth_tokens — the request only flags ``sync_requested`` and
+    answers ``{"ok": True, "queued": True, "status": "queued"}`` immediately;
+    the worker container performs the actual Classroom fan-out (DDoS plan
+    §9: never run the full sync inside the HTTP request).
 
-    §65: a manual sync is interactive work and is bounded by the process's
-    global concurrency ceiling (``SYNC_MAX_CONCURRENT_USERS``). When every
-    slot is taken the request is answered with 503 and a Retry-Later-style
-    phrase instead of queueing behind other users' syncs.
-
-    Stage 9 (§39): hosted manual syncs additionally carry a per-user
-    cooldown (``SYNC_MANUAL_COOLDOWN_SECONDS``). Holding the Sync button
-    reuses the in-flight run (409) or gets 429 instead of launching a
-    second full Classroom fan-out; one user cannot eat the whole Google
-    quota this way. The background scheduler bypasses the cooldown.
+    Hosted conflict mapping: a sync already in flight for THIS user → 409;
+    a manual request inside the per-user cooldown → 429 + Retry-After; the
+    background scheduler bypasses the cooldown. Other users sync
+    independently. Rate-limit buckets (§39) stay in middleware.
     """
     if request.app.state.hosted:
         from config import SYNC_MANUAL_COOLDOWN_SECONDS
+        from sync_store import sync_status as _sync_row
 
-        if SYNC_MANUAL_COOLDOWN_SECONDS > 0:
-            from datetime import datetime, timezone
-
-            # A fresh per-request session: the endpoint dependency owns its
-            # own session and must not be reused here (short transactions,
-            # stage 9 §45).
-            from database import SessionLocal as _SessionLocal
-            from sync_store import sync_status as _sync_row
-
-            now = datetime.now(timezone.utc).replace(tzinfo=None)
-            with _SessionLocal() as _db:
-                row = _sync_row(_db, user.id)
-                started = row.last_started_at if row is not None else None
-            if (
-                started is not None
-                and (now - started).total_seconds() < SYNC_MANUAL_COOLDOWN_SECONDS
-            ):
-                raise HTTPException(
-                    status_code=429,
-                    detail="A sync just ran for this account; try again shortly.",
-                    headers={"Retry-After": str(SYNC_MANUAL_COOLDOWN_SECONDS)},
-                )
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        row = _sync_row(db, user.id)
+        if row is not None and row.status == sync.SYNC_RUNNING:
+            # A running sync is not an error: 409 tells the client to keep
+            # showing its spinner instead of surfacing a failure (§3.9).
+            raise HTTPException(
+                status_code=409, detail="A synchronization is already running."
+            )
+        if (
+            SYNC_MANUAL_COOLDOWN_SECONDS > 0
+            and row is not None
+            and row.last_started_at is not None
+            and (now - row.last_started_at).total_seconds()
+            < SYNC_MANUAL_COOLDOWN_SECONDS
+        ):
+            raise HTTPException(
+                status_code=429,
+                detail="A sync just ran for this account; try again shortly.",
+                headers={"Retry-After": str(SYNC_MANUAL_COOLDOWN_SECONDS)},
+            )
+        sync.request_sync(db, user.id)
+        return SyncResult(ok=True, queued=True, status="queued")
     result = sync.sync_now(user=user, interactive=True)
     if not result.get("ok"):
         error = str(result.get("error", ""))

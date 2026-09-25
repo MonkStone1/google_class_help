@@ -249,3 +249,11 @@ class SyncResult(BaseModel):
     courses: int = 0
     assignments: int = 0
     error: str | None = None
+    # Stage 10 (queued manual sync): hosted POST /api/sync no longer runs the
+    # Classroom fan-out inside the HTTP request. It only flags
+    # ``sync_requested`` and answers immediately; the worker does the work.
+    # ``queued=True`` + ``status="queued"`` means "accepted, watch
+    # GET /api/status (sync_status/queued) for progress". Desktop keeps the
+    # inline contract (queued=False).
+    queued: bool = False
+    status: str | None = None

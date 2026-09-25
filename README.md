@@ -84,13 +84,19 @@ production web-клиент (`APP_ENV` и `GC_DASHBOARD_ALLOWED_HOSTS`/
 - **Лимиты (только hosted):** токен-бакеты по (поверхность, client IP) —
   логин 30/мин, отклонённые OAuth-callback'и 20/мин, ручной синк 60/мин
   **плюс cooldown 60 с на пользователя**, очистка кэша 10/мин; превышение
-  → 429 + `Retry-After`. IP из `X-Forwarded-For` верится только от
-  доверенного прокси. Desktop не лимитируется.
-- **Бюджет синка:** `SYNC_MAX_WORKERS=4` × `SYNC_MAX_CONCURRENT_USERS=2`
-  = 8 потоков на воркер; для ~1000 пользователей и 25 учителей при
-  интервале 10 мин — ~600 запросов Google/мин (~10 QPS, порядок ниже
-  квоты проекта). Арифметика в `backend/capacity.py`; рост лимитов —
-  только вместе со счётчиками `quota_errors`/`server_errors` в логе синка.
+  → 429 + `Retry-After`. IP из `CF-Connecting-IP`/`X-Forwarded-For`
+  верится только от доверенного прокси. Desktop не лимитируется.
+  Прод-`.env` для 1 vCPU / 1 GB ставит консервативнее: логин 10/мин, синк
+  10/мин.
+- **Бюджет синка:** `SYNC_MAX_WORKERS` × `SYNC_MAX_CONCURRENT_USERS`;
+  на целевом VPS 1 vCPU / 1 GB это `2 × 1 = 2` потока, интервал 30 мин,
+  стартовый stagger 600 с — очередь вместо залпа. Арифметика в
+  `backend/capacity.py`; рост лимитов — только вместе со счётчиками
+  `quota_errors`/`server_errors` в логе синка.
+- **Ручной синк — queued:** `POST /api/sync` только ставит
+  `sync_requested` и сразу отвечает `{"ok": true, "queued": true}`;
+  работу выполняет воркер. Уже идущий синк → 409, cooldown → 429.
+  Desktop сохраняет inline-поведение (503 при исчерпании пула).
 - **Токены Google:** `invalid_grant` удаляет грант только этого
   пользователя и ставит `needs_reauth`; остальные аккаунты не затрагиваются.
 - **Логи hosted:** stdout (Docker/systemd), с редакцией query-строк и
@@ -102,7 +108,42 @@ production web-клиент (`APP_ENV` и `GC_DASHBOARD_ALLOWED_HOSTS`/
   всем кэшем), оба с `confirm=true` и только про вызывающего;
   `DELETE /api/me/cache` — явный алиас очистки кэша.
 - **Транзакции:** синк не держит соединение PostgreSQL через сетевой фетч
-  (короткие транзакции на фазы); пул `5+5` соединений под 1 vCPU / 1 GB.
+  (короткие транзакции на фазы); пул `3+2` соединений на 1 vCPU / 1 GB.
+
+### Развёртывание на хостинге (миграция этап 10, ADR-0028)
+
+Прод — пять контейнеров на приватной docker-сети, наружу ничего:
+
+```text
+Internet → Cloudflare (TLS, DDoS) → Tunnel → cloudflared
+                                                 ↓
+                                            caddy:80 → web:8000 → postgres:5432
+                                                       worker  → postgres:5432
+```
+
+Ключевые файлы: `Dockerfile` (Node-сборка фронта + python:3.12-slim,
+non-root, pinned `backend/requirements-prod.txt`), `compose.yml`,
+`Caddyfile` (внутренний HTTP-хоп, `max_size 2MB`), `.dockerignore`,
+`tools/backup_postgres.sh`, `.env.example`.
+
+Порядок выката и приёмка — `docs/DEPLOYMENT_CHECKLIST.md`
+(Cloudflare → VPS/firewall → `.env` → `docker compose build` →
+`alembic upgrade head` → health/ready → OAuth → изоляция → бэкапы).
+
+- **Health/readiness:** `GET /api/health` (публичный, `{"ok": true}`) и
+  `GET /api/ready` (`SELECT 1`, 200/503, без деталей инфраструктуры) —
+  используются healthcheck'ом контейнера и туннелем.
+- **Origin скрыт:** публичных портов у VPS нет, PostgreSQL и uvicorn
+  доступны только внутри `internal`-сети; SSH — по ключам.
+- **Бэкапы:** `pg_dump --format=custom` в `backups/` (rolling 7), restore
+  останавливает web/worker, затем `alembic upgrade head`; `.env`
+  (Fernet-ключ, Google secret, tunnel token) хранится отдельно и
+  зашифрованно, дампы никогда не попадают в Git.
+- **Turnstile** реализован и включается заполнением
+  `TURNSTILE_SITE_KEY`/`TURNSTILE_SECRET_KEY` (пустые ключи — проверка
+  выключена); **HSTS включён** (`GC_DASHBOARD_HSTS_MAX_AGE=31536000`,
+  только по https).
+
 
 ---
 

@@ -32,7 +32,12 @@ import type {
 type AuthState = {
   auth: AuthStatus | null;
   sessionRequired: boolean;
-  login: () => Promise<void>;
+  /**
+   * Start sign-in. `turnToken` is a solved Turnstile widget token — passed
+   * only when the server reports a challenge (DDoS plan §17); desktop and
+   * challenge-free hosted flows ignore it.
+   */
+  login: (turnToken?: string) => Promise<void>;
   logout: () => Promise<void>;
 };
 
@@ -185,18 +190,37 @@ export function DataProvider({ children }: { children: ReactNode }) {
     };
   }, [auth?.login_in_progress, loadData]);
 
-  const login = useCallback(async () => {
+  const login = useCallback(async (turnToken?: string) => {
     invalidateAllResources();
     setError(null);
     try {
+      if (turnToken) {
+        // Turnstile challenge solved (DDoS plan §17): the backend verified
+        // the token at Cloudflare and handed back the Google consent URL.
+        const { redirect_url } = await api.loginStart(turnToken);
+        window.location.assign(redirect_url);
+        return;
+      }
       await api.login();
       await loadData();
     } catch (err) {
+      const status = err instanceof Error ? (err as ApiError).status : 0;
       // Hosted mode deliberately disables POST /auth/login (405): the only
       // way in is a full-page navigation into the server-owned OAuth flow,
       // where the browser never touches the Google token (§25/§26).
-      if (err instanceof Error && (err as ApiError).status === 405) {
+      if (status === 405) {
         window.location.assign(LOGIN_URL);
+        return;
+      }
+      if (status === 403) {
+        // The server asked for a Turnstile challenge (expired/missing
+        // token). Send the browser back to the sign-in gate with the
+        // challenge flag so the widget is rendered again.
+        if (window.location.search.includes("challenge=required")) {
+          window.location.reload();
+        } else {
+          window.location.assign("/?challenge=required");
+        }
         return;
       }
       setError(
@@ -225,11 +249,32 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const syncNow = useCallback(async (): Promise<SyncResult | null> => {
     setSyncing(true);
     try {
+      const before = status?.last_sync ?? null;
       const result = await api.sync();
       // Teacher pages read from the resource cache; a fresh sync must drop it
       // so they refetch instead of showing pre-sync data (ADR-0017).
       invalidateAllResources();
       await loadData();
+      // Hosted mode (migration stage 10, DDoS plan §9) queues the job: this
+      // POST only flags ``sync_requested`` and returns ``queued=true``. Keep
+      // the spinner on and watch /api/status until the background worker
+      // starts and finishes the run, or the cache actually moves forward.
+      if (result?.queued) {
+        let sawRunning = false;
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 2500));
+          const next = await api.getStatus();
+          setStatus(next);
+          if (next.sync_status === "running") {
+            sawRunning = true;
+            continue;
+          }
+          if (sawRunning || (next.last_sync ?? null) !== before) {
+            break;
+          }
+        }
+        await loadData();
+      }
       return result;
     } catch (err) {
       setError(
@@ -241,7 +286,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     } finally {
       setSyncing(false);
     }
-  }, [loadData]);
+  }, [loadData, status?.last_sync]);
 
   const refresh = useCallback(async () => {
     setLoading(true);

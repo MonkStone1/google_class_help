@@ -35,10 +35,13 @@ Coexistence and the production edge (migration stage 8, §32–§38/§48):
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from access_log import install_query_redaction, install_secret_redaction
@@ -55,9 +58,10 @@ from config import (
     RATE_LIMIT_CACHE_CLEAR_PER_MINUTE,
     RATE_LIMIT_LOGIN_PER_MINUTE,
     RATE_LIMIT_SYNC_PER_MINUTE,
+    TURNSTILE_SITE_KEY,
     normalize_origin,
 )
-from database import SessionLocal, init_db
+from database import SessionLocal, get_db, init_db
 from path_config import FRONTEND_DIST_DIR
 from proxy import (
     effective_authority,
@@ -69,27 +73,45 @@ from proxy import (
 
 logger = logging.getLogger(__name__)
 
+
 # §48: CSP matched to the ACTUAL React bundle — every origin is same-origin
 # because the frontend only calls the local /api (verified by the §49 secret
-# scan: no external URLs in the source tree). The pre-paint theme script of
+# scan: no secret-shaped URLs in the source tree). The pre-paint theme script of
 # index.html lives in /theme-init.js (no inline script), so script-src needs
 # no hash and no 'unsafe-inline'. style-src keeps 'unsafe-inline' for React
 # inline styles. Top-level navigation to accounts.google.com is not a
 # fetch/frame/form and is not restricted by these directives; the OAuth
 # redirect is a server-side 302. frame-ancestors 'none' answers the
 # framing question together with X-Frame-Options below.
-CONTENT_SECURITY_POLICY = (
-    "default-src 'self'; "
-    "script-src 'self'; "
-    "style-src 'self' 'unsafe-inline'; "
-    "img-src 'self' data:; "
-    "font-src 'self' data:; "
-    "connect-src 'self'; "
-    "object-src 'none'; "
-    "base-uri 'self'; "
-    "form-action 'self'; "
-    "frame-ancestors 'none'"
-)
+#
+# Turnstile (DDoS plan §17, stage 10): when TURNSTILE_SITE_KEY is set the
+# widget loads its script and iframe from challenges.cloudflare.com — those
+# two origins are then added to script-src/frame-src and nowhere else.
+def _build_content_security_policy(site_key: str) -> str:
+    """CSP for the hosted edge (§48).
+
+    Same-origin by default; when Turnstile is configured (site key present)
+    the widget's origin is additionally allowed for scripts and frames —
+    and never anywhere else.
+    """
+    turnstile = " https://challenges.cloudflare.com" if site_key else ""
+    frame = f"frame-src 'self'{turnstile}; " if turnstile else ""
+    return (
+        "default-src 'self'; "
+        f"script-src 'self'{turnstile}; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "font-src 'self' data:; "
+        "connect-src 'self'; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        f"{frame}"
+        "frame-ancestors 'none'"
+    )
+
+
+CONTENT_SECURITY_POLICY = _build_content_security_policy(TURNSTILE_SITE_KEY)
 
 
 @asynccontextmanager
@@ -242,6 +264,10 @@ def create_app(hosted: bool = False) -> FastAPI:
             surface: str | None = None
             if method == "GET" and path == "/api/auth/login":
                 surface = "login"
+            elif method == "POST" and path == "/api/auth/login/start":
+                # Turnstile-guarded start (DDoS §17) shares the login bucket:
+                # it is the same credential-adjacent surface.
+                surface = "login"
             elif method == "POST" and path == "/api/sync":
                 surface = "sync"
             elif method == "DELETE" and path in {"/api/cache", "/api/me/cache"}:
@@ -271,7 +297,7 @@ def create_app(hosted: bool = False) -> FastAPI:
             if (
                 request.method == "OPTIONS"
                 or not path.startswith("/api/")
-                or path == "/api/health"
+                or path in ("/api/health", "/api/ready")
                 or path.startswith("/api/auth/")
             ):
                 return await call_next(request)
@@ -343,6 +369,21 @@ def create_app(hosted: bool = False) -> FastAPI:
     @app.get("/api/health")
     def health() -> dict:
         return {"ok": True}
+
+    @app.get("/api/ready")
+    def ready(db: Session = Depends(get_db)) -> JSONResponse:  # noqa: B008
+        """Readiness check (migration stage 10, §58 / DDoS plan §24).
+
+        Verifies that the database connection pool and engine are operational
+        without leaking infrastructure details, environment variables, or credentials.
+        Returns 200 {"ok": True, "db": "up"} or 503 {"ok": False, "db": "down"}.
+        """
+        try:
+            db.execute(select(1))
+            return JSONResponse({"ok": True, "db": "up"}, status_code=200)
+        except SQLAlchemyError as exc:
+            logger.warning("Readiness probe database check failed: %s", exc)
+            return JSONResponse({"ok": False, "db": "down"}, status_code=503)
 
     class SPAStaticFiles(StaticFiles):
         """Static files with SPA fallback.

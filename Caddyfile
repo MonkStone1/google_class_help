@@ -1,0 +1,48 @@
+# Google Class Help — internal reverse proxy (migration stage 10, §54/§55).
+#
+# This Caddy instance is NOT the TLS edge: Cloudflare terminates HTTPS and the
+# cloudflared tunnel reaches it over the private Docker network at caddy:80.
+# Therefore it listens on plain HTTP inside the network and has no published
+# ports (see compose.yml). Automatic HTTPS is intentionally off here — the
+# public certificate belongs to Cloudflare, and the origin stays hidden.
+#
+#   Internet → Cloudflare (TLS) → Tunnel → cloudflared → caddy:80 → web:8000
+
+{
+	# No admin API exposure, no TLS automation: internal hop only.
+	admin off
+	auto_https off
+}
+
+:80 {
+	# DDoS plan §13: the application has no upload feature; cap request bodies
+	# at 2 MB so a huge POST cannot occupy the single vCPU.
+	request_body {
+		max_size 2MB
+	}
+
+	# The app itself is the only backend: FastAPI serves /api and the built
+	# React bundle (Option A of §35), so every path proxies to the same place.
+	reverse_proxy web:8000 {
+		# Give the backend the real client identity and scheme. backend/proxy.py
+		# only believes these headers when the immediate peer is listed in
+		# GC_DASHBOARD_TRUSTED_PROXIES (§29) — the Docker network is that peer.
+		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-Host {host}
+		# Keep client-supplied XFF chain as seen by cloudflared/Caddy.
+		header_up X-Forwarded-For {remote_host}
+
+		# A stalled sync/Google call must not hold a Caddy stream forever.
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 120s
+		}
+	}
+
+	encode gzip
+
+	log {
+		output stdout
+		format console
+	}
+}

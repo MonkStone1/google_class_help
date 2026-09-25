@@ -126,16 +126,18 @@ def public_origin(request: Request) -> str | None:
 
 
 def client_ip(request: Request) -> str:
-    """Best-effort client identity for abuse throttling (stage 9, section 39).
+    """Best-effort client identity for abuse throttling (stage 9, section 39 & DDoS plan §7).
 
-    The direct TCP peer by default; the leftmost X-Forwarded-For entry only
-    when that peer is a configured reverse proxy (same trust rule as the
-    scheme/host helpers above) — otherwise a client could pick any identity
-    and dodge the bucket. The value is a throttle key only, never an auth
-    decision.
+    The direct TCP peer by default; CF-Connecting-IP or leftmost X-Forwarded-For
+    only when that peer is a configured trusted reverse proxy (e.g. Caddy / cloudflared).
+    Otherwise a client could pick any identity and dodge the bucket.
+    The value is a throttle key only, never an auth decision.
     """
     peer = request.client.host if request.client is not None else "unknown"
     if peer_is_trusted_proxy(request):
+        cf_ip = request.headers.get("cf-connecting-ip", "").strip()
+        if cf_ip:
+            return cf_ip
         forwarded = request.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
         if forwarded:
             return forwarded

@@ -42,15 +42,19 @@ def test_same_origin_post_is_allowed(client, monkeypatch):
     assert response.status_code == 200
 
 
-def test_second_sync_returns_409(client, monkeypatch):
+def test_second_sync_returns_409(client, db):
     # A sync that is already running is a conflict, not a server error (§3.9).
-    monkeypatch.setattr(
-        sync,
-        "sync_now",
-        lambda user=None, **kwargs: {
-            "ok": False,
-            "error": "A synchronization is already running.",
-        },
-    )
-    response = client.post("/api/sync")
+    # Desktop runs inline: hold this owner's per-user lock so sync_now
+    # reports ALREADY_RUNNING and the endpoint maps it to 409.
+    import ownership
+    import sync_service
+
+    owner = ownership.ensure_local_owner(db)
+    db.commit()
+    lock = sync_service._sync_lock_for(owner.id)
+    lock.acquire()
+    try:
+        response = client.post("/api/sync")
+    finally:
+        lock.release()
     assert response.status_code == 409

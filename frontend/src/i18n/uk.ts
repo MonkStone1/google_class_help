@@ -36,6 +36,10 @@ export const uk = {
  "tabs.switchBlocked": "— автоматичне переключення не вдалося, спробуйте ще раз або закрийте цю вкладку.",
  "tabs.dismiss": "Приховати це повідомлення",
 
+
+  "signin.turnstileRequired": "Пройдіть перевірку, щоб продовжити вхід.",
+  "signin.turnstilePending": "Перед входом потрібна перевірка.",
+
  "search.label": "Результати пошуку",
  "search.noResults": "Нічого не знайдено за «{query}»",
  "search.assignments": "Завдання",

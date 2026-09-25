@@ -324,7 +324,7 @@
     "/api/sync": {
       "post": {
         "summary": "Run Sync",
-        "description": "Synchronize the calling user's cache with THEIR Google credentials.\n\n§12: /api/sync must never touch another user's data. Desktop: the local\nowner (token.json). Hosted: the session user's oauth_tokens — sync_now\nresolves the cache owner and credentials from this user. Since the\nper-user scheduler (stage 5, §18) a manual sync only conflicts with\nTHIS user's own running sync (background or another manual call); any\nother user syncs independently.\n\n§65: a manual sync is interactive work and is bounded by the process's\nglobal concurrency ceiling (``SYNC_MAX_CONCURRENT_USERS``). When every\nslot is taken the request is answered with 503 and a Retry-Later-style\nphrase instead of queueing behind other users' syncs.\n\nStage 9 (§39): hosted manual syncs additionally carry a per-user\ncooldown (``SYNC_MANUAL_COOLDOWN_SECONDS``). Holding the Sync button\nreuses the in-flight run (409) or gets 429 instead of launching a\nsecond full Classroom fan-out; one user cannot eat the whole Google\nquota this way. The background scheduler bypasses the cooldown.",
+        "description": "Queue (hosted) or run (desktop) a sync of the calling user's cache.\n\n§12: /api/sync must never touch another user's data. Desktop: the local\nowner (token.json) — sync runs inline as before. Hosted: the session\nuser's oauth_tokens — the request only flags ``sync_requested`` and\nanswers ``{\"ok\": True, \"queued\": True, \"status\": \"queued\"}`` immediately;\nthe worker container performs the actual Classroom fan-out (DDoS plan\n§9: never run the full sync inside the HTTP request).\n\nHosted conflict mapping: a sync already in flight for THIS user → 409;\na manual request inside the per-user cooldown → 429 + Retry-After; the\nbackground scheduler bypasses the cooldown. Other users sync\nindependently. Rate-limit buckets (§39) stay in middleware.",
         "operationId": "run_sync_api_sync_post",
         "responses": {
           "200": {
@@ -734,6 +734,19 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/ready": {
+      "get": {
+        "summary": "Ready",
+        "description": "Readiness check (migration stage 10, §58 / DDoS plan §24).\n\nVerifies that the database connection pool and engine are operational\nwithout leaking infrastructure details, environment variables, or credentials.\nReturns 200 {\"ok\": True, \"db\": \"up\"} or 503 {\"ok\": False, \"db\": \"down\"}.",
+        "operationId": "ready_api_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
           }
         }
       }
@@ -1439,6 +1452,11 @@
           "error": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error"
+          },
+          "queued": { "type": "boolean", "title": "Queued", "default": false },
+          "status": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Status"
           }
         },
         "type": "object",

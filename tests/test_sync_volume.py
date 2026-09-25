@@ -51,18 +51,27 @@ class _FakeListResource:
         return _FakeExecutable(self._pages, self._calls)
 
 
-# ------------------------------------------------------- §65 global ceiling
+# --------------------------------- §65 removed ceiling / queued contract
+
+# Stage 10 (queued manual sync): the hosted POST /api/sync no longer runs
+# the Classroom fan-out inside the HTTP request, so there is no global
+# interactive slot to exhaust and no 503 path. sync_now keeps its
+# ``interactive`` kwarg for the DESKTOP inline path; these tests pin that
+# the plumbing still accepts it and that scheduled runs are unaffected.
 
 
 def test_interactive_sync_returns_503_when_the_global_limit_is_reached(
     client, monkeypatch
 ):
+    """Desktop inline path: when the interactive pool is saturated, POST /api/sync
+    fails fast with 503 SERVER_BUSY.
+    """
     monkeypatch.setattr(sync_service, "SYNC_MAX_CONCURRENT_USERS", 1)
     assert sync_service._acquire_interactive_slot() is True
     try:
         response = client.post("/api/sync")
         assert response.status_code == 503
-        assert "busy" in response.json()["detail"].lower()
+        assert response.json()["detail"] == sync_service.SERVER_BUSY
     finally:
         sync_service._release_interactive_slot()
 

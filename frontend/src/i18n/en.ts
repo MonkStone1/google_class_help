@@ -35,6 +35,11 @@ export const en = {
  "tabs.switchBlocked": "— automatic switching failed, try again or close this tab.",
  "tabs.dismiss": "Hide this notice",
 
+
+  "signin.turnstileRequired":
+    "Please complete the verification challenge to continue.",
+  "signin.turnstilePending": "Verification required before signing in.",
+
  "search.label": "Search results",
  "search.noResults": "No matches for “{query}”",
  "search.assignments": "Assignments",
