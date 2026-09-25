@@ -42,6 +42,68 @@ Vite dev-сервер: <http://localhost:5173> — проксирует `/api` �
 - токен после первой авторизации появится в `data/token.json`
   (git-ignored; каталог можно переопределить через `GC_DASHBOARD_DATA_DIR`).
 
+### Конфигурация окружений (миграция на хостинг, §51)
+
+Три слоя конфигурации разделены; прод-секреты не нужны ни для
+разработки, ни для тестов:
+
+| Слой | Запуск | Конфигурация |
+| --- | --- | --- |
+| **Local development** | `uvicorn main:app --reload` + `npm run dev` (как выше) | по умолчанию `APP_ENV=development`: Host-список — `localhost`/`127.0.0.1`, CORS — Vite-origins, БД — SQLite в `<проект>\data\`. Прод-переменные (`DATABASE_URL`, секреты Google) не читаются |
+| **Hosted-разработка** (опционально) | те же команды + `GC_DASHBOARD_HOSTED=1` и `APP_BASE_URL=http://localhost:5173` | отдельный **development web OAuth-клиент** Google с redirect `http://localhost:5173/api/auth/callback` (Vite проксирует `/api` на бэкенд); локальный PostgreSQL или `DATABASE_URL` локального инстанса — прод-база не используется |
+| **CI / тесты** | `pytest`, `ruff`, `pyright`, `npm run lint`, `npx vitest run` | герметично: `tests/conftest.py` поднимает свой `GC_DASHBOARD_DATA_DIR` и подставляет фейковые значения env; фронтенд-тесты (vitest) секретов не требуют вообще |
+| **Production** | Docker/Compose (этап 10) | `.env` по `.env.example`: `APP_ENV=production`, `APP_BASE_URL`, web-клиент Google, `DATABASE_URL` (PostgreSQL), ключи шифрования. Секреты — только в env, никогда в Git и в ассетах |
+
+Правила: локальная разработка **не зависит** от прод-базы и прод-секретов;
+для Google OAuth в разработке используйте отдельный dev-клиент, а не
+production web-клиент (`APP_ENV` и `GC_DASHBOARD_ALLOWED_HOSTS`/
+`GC_DASHBOARD_CORS_ORIGINS` не задаются — дефолты development-режима).
+
+### Hosted production edge (миграция на хостинг, этап 8, ADR-0026)
+
+- Статика — Option A: FastAPI раздаёт `frontend/dist` (Caddy → FastAPI);
+  session-gate закрывает только `/api/*`, оболочка SPA и публичные
+  страницы доступны без сессии.
+- HTTPS обязателен: Caddy терминирует TLS и редиректит HTTP→HTTPS;
+  production hosted без `https://` в `APP_BASE_URL` не стартует.
+- Security headers (только hosted): `nosniff`, `Referrer-Policy`,
+  `X-Frame-Options`, same-origin CSP, `no-store` на `/api`; HSTS — opt-in
+  `GC_DASHBOARD_HSTS_MAX_AGE` после подтверждения HTTPS (этап 10).
+- Cookie `gch_session`: HttpOnly/Secure/Lax, `Path=/`, без Domain, TTL 14
+  суток; opt-in `__Host-`-префикс (`GC_DASHBOARD_COOKIE_HOST_PREFIX=1`).
+- CSRF: SameSite=Lax + точный Origin + Fetch Metadata на unsafe-методах
+  (`POST /api/auth/logout`, `POST /api/sync`, `DELETE /api/cache`); CORS
+  защитой не считается, подписанный токен не требуется (см. ADR-0026).
+- Публичные страницы для Google OAuth verification: `/privacy/`, `/terms/`.
+- Секреты: desktop-клиент встраивается в exe (base64 — обфускация, не
+  защита); hosted-секрет (`GOOGLE_CLIENT_SECRET`, ключ Fernet) — только
+  env сервера, никогда в браузере, `frontend/dist`, Nuitka-артефактах и Git.
+
+### Rate limits, capacity и retention (миграция на хостинг, этап 9, ADR-0027)
+
+- **Лимиты (только hosted):** токен-бакеты по (поверхность, client IP) —
+  логин 30/мин, отклонённые OAuth-callback'и 20/мин, ручной синк 60/мин
+  **плюс cooldown 60 с на пользователя**, очистка кэша 10/мин; превышение
+  → 429 + `Retry-After`. IP из `X-Forwarded-For` верится только от
+  доверенного прокси. Desktop не лимитируется.
+- **Бюджет синка:** `SYNC_MAX_WORKERS=4` × `SYNC_MAX_CONCURRENT_USERS=2`
+  = 8 потоков на воркер; для ~1000 пользователей и 25 учителей при
+  интервале 10 мин — ~600 запросов Google/мин (~10 QPS, порядок ниже
+  квоты проекта). Арифметика в `backend/capacity.py`; рост лимитов —
+  только вместе со счётчиками `quota_errors`/`server_errors` в логе синка.
+- **Токены Google:** `invalid_grant` удаляет грант только этого
+  пользователя и ставит `needs_reauth`; остальные аккаунты не затрагиваются.
+- **Логи hosted:** stdout (Docker/systemd), с редакцией query-строк и
+  redaction-фильтром токенов/куки/секретов; desktop — `%LOCALAPPDATA%` как
+  раньше.
+- **Retention и удаление:** воркер вычищает просроченные сессии и
+  OAuth-попытки (`GC_DASHBOARD_RETENTION_SWEEP_SECONDS`); пути удаления —
+  `DELETE /api/me/google` (отвязать Google) и `DELETE /api/me` (аккаунт со
+  всем кэшем), оба с `confirm=true` и только про вызывающего;
+  `DELETE /api/me/cache` — явный алиас очистки кэша.
+- **Транзакции:** синк не держит соединение PostgreSQL через сетевой фетч
+  (короткие транзакции на фазы); пул `5+5` соединений под 1 vCPU / 1 GB.
+
 ---
 
 ## PRODUCTION BUILD
@@ -164,5 +226,5 @@ build.bat
 Ярлык в Пуск/на рабочий стол создаётся вручную из
 `release\GoogleClassHelp.exe`; автозапуск и установщик намеренно не
 настраиваются без отдельного запроса.
-#   g o o g l e - c l a s s - h e l p  
+#   g o o g l e - c l a s s - h e l p 
  

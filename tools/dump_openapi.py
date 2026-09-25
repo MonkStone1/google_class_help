@@ -10,7 +10,11 @@ checkout.
 Usage (from the project root):
 
     .venv\\Scripts\\python.exe tools\\dump_openapi.py > frontend\\openapi.json
-    cd frontend && npm run gen:api:file
+    cd frontend && npx prettier --write openapi.json && npm run gen:api:file
+
+The raw dump is minified single-line JSON, while the committed
+``openapi.json`` is prettier-formatted (``printWidth: 80``) — always run the
+prettier pass before committing, or the diff will be unreadable.
 """
 
 import io

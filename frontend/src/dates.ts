@@ -29,16 +29,22 @@ export function detectLanguage(): Language {
   return "en";
 }
 
+/**
+ * Parse a backend sync timestamp (`last_sync`, `last_sync_finished_at`, …)
+ * for rendering in the browser's local zone.
+ *
+ * The backend stores these as naive UTC datetimes serialized without an
+ * offset, so `new Date("2026-09-19T00:00:00")` would wrongly read them as
+ * local time (stage 7, §26 — UTC rendered in the local zone). A value that
+ * already carries an offset (`Z` or `±HH:MM`) is taken at face value.
+ */
 export function toLocalDate(value: string | null): Date | null {
   if (!value) {
     return null;
   }
-  // Backend datetimes are naive local times serialized without a zone.
-  return new Date(
-    value.endsWith("Z")
-      ? value
-      : `${value}Z+00:00`.replace("+00:00Z+00:00", "+00:00"),
-  );
+  const hasOffset = value.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(value);
+  const parsed = new Date(hasOffset ? value : `${value}Z`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 export function parseDue(value: string | null): Date | null {

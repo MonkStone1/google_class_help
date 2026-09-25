@@ -21,6 +21,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Me
+         * @description Identity of the signed-in user (§23/§24).
+         *
+         *     Same identity source as ``/api/auth/status``: the validated session
+         *     user in hosted mode, the desktop local owner (with the Google profile
+         *     resolved and cached per user) in desktop mode. A request without a
+         *     valid application session is rejected earlier with 401 (hosted session
+         *     gate / dependency); this handler never sees an anonymous caller.
+         */
+        get: operations["me_api_me_get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Own Account
+         * @description Delete everything stored for the CALLER (§44).
+         *
+         *     The explicit "delete my account" path: sessions, OAuth credentials,
+         *     sync state and the whole Classroom cache of this user are removed, and
+         *     the local ``users`` row goes with them. Other users' rows are never
+         *     touched — there is deliberately no global variant of this operation.
+         *
+         *     Desktop builds have no server-side account (single local user, data in
+         *     ``%LOCALAPPDATA%``): the endpoint is hosted-only and answers 400 there
+         *     with a pointer to ``DELETE /api/cache`` + logout.
+         */
+        delete: operations["delete_own_account_api_me_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -183,7 +222,28 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Run Sync */
+        /**
+         * Run Sync
+         * @description Synchronize the calling user's cache with THEIR Google credentials.
+         *
+         *     §12: /api/sync must never touch another user's data. Desktop: the local
+         *     owner (token.json). Hosted: the session user's oauth_tokens — sync_now
+         *     resolves the cache owner and credentials from this user. Since the
+         *     per-user scheduler (stage 5, §18) a manual sync only conflicts with
+         *     THIS user's own running sync (background or another manual call); any
+         *     other user syncs independently.
+         *
+         *     §65: a manual sync is interactive work and is bounded by the process's
+         *     global concurrency ceiling (``SYNC_MAX_CONCURRENT_USERS``). When every
+         *     slot is taken the request is answered with 503 and a Retry-Later-style
+         *     phrase instead of queueing behind other users' syncs.
+         *
+         *     Stage 9 (§39): hosted manual syncs additionally carry a per-user
+         *     cooldown (``SYNC_MANUAL_COOLDOWN_SECONDS``). Holding the Sync button
+         *     reuses the in-flight run (409) or gets 429 instead of launching a
+         *     second full Classroom fan-out; one user cannot eat the whole Google
+         *     quota this way. The background scheduler bypasses the cooldown.
+         */
         post: operations["run_sync_api_sync_post"];
         delete?: never;
         options?: never;
@@ -203,6 +263,58 @@ export interface paths {
         post?: never;
         /** Clear Cache */
         delete: operations["clear_cache_api_cache_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/cache": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Clear Own Cache
+         * @description Explicit alias of ``DELETE /api/cache`` (stage 9, §66).
+         *
+         *     Same handler shape, same per-user scope, same ``confirm=true`` gate —
+         *     the path only says what the code already does: delete the CALLER's
+         *     cache, never anyone else's. Kept side by side with ``/api/cache`` so
+         *     existing desktop clients keep working while new clients can use the
+         *     unambiguous name.
+         */
+        delete: operations["clear_own_cache_api_me_cache_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/google": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect Google Account
+         * @description Disconnect the caller's Google account, keep the local account (§44).
+         *
+         *     Removes the stored OAuth credentials and resets the caller's sync state
+         *     of THIS user only; the application session stays valid (the caller
+         *     stays signed in to the dashboard and its cached data remains visible,
+         *     with its last-sync timestamp). ``confirm=true`` is required because the
+         *     action forces a fresh consent screen on the next sync.
+         */
+        delete: operations["disconnect_google_account_api_me_google_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -526,7 +638,15 @@ export interface components {
             /** Average Percent */
             average_percent?: number | null;
         };
-        /** AuthStatus */
+        /**
+         * AuthStatus
+         * @description Auth state of THIS browser's application session (§24).
+         *
+         *     ``user`` is the only identity shape (migration stage 7, §26): the flat
+         *     ``user_name``/``user_email`` mirrors were dropped once the frontend
+         *     switched over. ``auth_url``/``login_in_progress`` remain because the
+         *     desktop loopback flow still publishes its single-use consent URL.
+         */
         AuthStatus: {
             /** Authenticated */
             authenticated: boolean;
@@ -539,10 +659,7 @@ export interface components {
             error?: string | null;
             /** Auth Url */
             auth_url?: string | null;
-            /** User Name */
-            user_name?: string | null;
-            /** User Email */
-            user_email?: string | null;
+            user?: components["schemas"]["UserOut"] | null;
         };
         /** CourseDetailOut */
         CourseDetailOut: {
@@ -866,10 +983,6 @@ export interface components {
         SyncStatus: {
             /** Authenticated */
             authenticated: boolean;
-            /** User Name */
-            user_name?: string | null;
-            /** User Email */
-            user_email?: string | null;
             /** Last Sync */
             last_sync?: string | null;
             /** Last Sync Error */
@@ -879,6 +992,15 @@ export interface components {
              * @default false
              */
             syncing: boolean;
+            /**
+             * Sync Status
+             * @default pending
+             */
+            sync_status: string;
+            /** Last Sync Started At */
+            last_sync_started_at?: string | null;
+            /** Last Sync Finished At */
+            last_sync_finished_at?: string | null;
             /**
              * Total Assignments
              * @default 0
@@ -927,6 +1049,22 @@ export interface components {
             /** Last Sync */
             last_sync?: string | null;
         };
+        /**
+         * UserOut
+         * @description Identity of the authenticated user (migration stage 6, §24).
+         *
+         *     Exactly the three fields the frontend needs to render "signed in as".
+         *     No Google credential material, no tokens, no OAuth state: the local
+         *     ``users.id`` is the only identifier and it is the caller's own.
+         */
+        UserOut: {
+            /** Id */
+            id: number;
+            /** Name */
+            name?: string | null;
+            /** Email */
+            email?: string | null;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -965,6 +1103,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthStatus"];
+                };
+            };
+        };
+    };
+    me_api_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserOut"];
+                };
+            };
+        };
+    };
+    delete_own_account_api_me_delete: {
+        parameters: {
+            query?: {
+                confirm?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1208,6 +1397,72 @@ export interface operations {
         };
     };
     clear_cache_api_cache_delete: {
+        parameters: {
+            query?: {
+                confirm?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_own_cache_api_me_cache_delete: {
+        parameters: {
+            query?: {
+                confirm?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disconnect_google_account_api_me_google_delete: {
         parameters: {
             query?: {
                 confirm?: boolean;

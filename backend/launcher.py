@@ -155,6 +155,13 @@ def start_on_free_port(app) -> tuple[uvicorn.Server, threading.Thread, int]:
                 http="h11",
                 ws="none",  # no websockets needed; keeps the build minimal
                 lifespan="on",
+                # Trusted-proxy headers are handled by backend/proxy.py, which
+                # verifies the immediate peer against GC_DASHBOARD_TRUSTED_PROXIES
+                # before believing X-Forwarded-Proto/Host.  Letting Uvicorn also
+                # apply them would trust its own (loopback-by-default) list and
+                # rewrite request.client before that check can run (§29).
+                proxy_headers=False,
+                forwarded_allow_ips=[],
             )
         )
         thread = threading.Thread(target=server.run, name="uvicorn-server", daemon=True)

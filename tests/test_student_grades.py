@@ -11,11 +11,12 @@ from models import Course, CourseRole, CourseWork, StudentSubmission
 
 
 @pytest.fixture()
-def seeded_student_course(db):
-    db.add(Course(id="c1", name="Math", course_state="ACTIVE"))
-    db.add(CourseRole(course_id="c1", role="STUDENT"))
+def seeded_student_course(db, owner_id):
+    db.add(Course(user_id=owner_id, id="c1", name="Math", course_state="ACTIVE"))
+    db.add(CourseRole(user_id=owner_id, course_id="c1", role="STUDENT"))
     db.add(
         CourseWork(
+            user_id=owner_id,
             id="w1",
             course_id="c1",
             title="Quiz",
@@ -25,6 +26,7 @@ def seeded_student_course(db):
     )
     db.add(
         StudentSubmission(
+            user_id=owner_id,
             course_id="c1",
             coursework_id="w1",
             state="RETURNED",

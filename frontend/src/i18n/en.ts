@@ -23,7 +23,10 @@ export const en = {
  "topbar.lastSync": "Last synchronized: {time}",
  "topbar.cachedData": "Cached data",
  "topbar.sync": "Sync",
- "topbar.syncing": "Syncing…",
+  "topbar.syncing": "Syncing…",
+  "topbar.signInAgain": "Sign in again",
+  "topbar.needsReauthHint":
+    "Google access has expired. Sign in again to resume synchronization.",
  "topbar.notifications": "Notifications",
  "topbar.toggleTheme": "Toggle theme",
 

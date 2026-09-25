@@ -1,8 +1,50 @@
 """HTTP API surface of the dashboard.
 
-Endpoints are thin: they read from SQLite, derive views with the sync
-service, and return Pydantic models. Google communication lives in
-classroom_api.py / sync.py only.
+Endpoints are thin: they read from the Classroom cache, derive views with
+the sync service, and return Pydantic models. Google communication lives
+in classroom_api.py / sync.py only.
+
+User isolation (migration stage 4, §12/§13): every endpoint takes the
+authenticated user through the ``get_current_user`` dependency
+(ownership.py) — the validated session user in hosted mode, the synthetic
+local owner on desktop — and every cache read is scoped to that user's
+rows. No handler accepts or trusts a user id from the request itself;
+IDOR-style cross-user access, including coursework reached by guessing a
+Google id, resolves to 404/403. The desktop /api/auth/* endpoints keep
+the loopback flow's single-account state by design (ADR-0019); in hosted
+mode they are shadowed by hosted_auth.py (§16: per-attempt login state).
+
+API response ownership (migration stage 4, §67): every response carries
+user data through exactly one ownership path down to ``users.id``, and no
+query joins two users' rows — aggregate joins equate ``user_id`` on both
+sides:
+
+    CourseOut / CourseDetailOut         → Course.user_id
+    AssignmentOut / AssignmentDetailOut → CourseWork.user_id → Course.user_id
+    StudentGradesOut                    → CourseWork/Course.user_id
+                                          + StudentSubmission.user_id
+    TeacherGradesOut                    → CourseStudent / CourseWorkSubmission
+                                          → Course.user_id
+    SubmissionOut                       → CourseWorkSubmission.user_id (teacher)
+                                          or StudentSubmission.user_id (student)
+    SyncStatus / AuthStatus             → the authenticated user itself
+
+The schema makes the path structural: every cache table has ``user_id`` in
+its primary key with an ownership FK (models.py, §10), so a row without an
+owner cannot exist and a same-named Google id is unique only within one
+user's scope. ``tests/test_user_isolation.py`` guards both the schema
+shape and the aggregates.
+
+Teacher mode and API surface (migration stage 6, §21–§24): roles stay
+per-course and per-user (ADR-0017), every teacher-only view is gated on
+BOTH the authenticated user and ``role == TEACHER``, and every response
+keeps the stage-4 ownership path. ``GET /api/me`` exposes the caller's own
+identity, and ``AuthStatus.user`` is the only identity shape — the flat
+``user_name``/``user_email`` mirrors were removed in stage 7 (§26).
+Status codes are
+checked per §23: 401 for a missing application session, 403 for an
+authenticated user without the course role, 404 for a resource outside the
+caller's scope (never disclosing whether another user's row exists).
 """
 
 # ruff: noqa: B008, DTZ005, DTZ901
@@ -15,11 +57,13 @@ import threading
 import time
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, case, func, or_
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
-import auth
+import maintenance
+import ownership
 import sync
 from classroom_api import ClassroomClient, build_service
 from database import get_db
@@ -32,6 +76,7 @@ from models import (
     CourseWorkSubmission,
     StudentSubmission,
 )
+from models_auth import User
 from schemas import (
     AssignmentDetailOut,
     AssignmentOut,
@@ -51,32 +96,45 @@ from schemas import (
     SyncResult,
     SyncStatus,
     TeacherGradesOut,
+    UserOut,
 )
 from sync_store import SubmissionRow, get_submission
 
 router = APIRouter(prefix="/api")
 
 
-# ---------------------------------------------------------------- auth
+# ------------------------------------------------------- user profile (§17)
 
-# User profile cache (review §1.3): the frontend polls /api/status every
-# ~1.5 s while logging in, and a network roundtrip to Google inside every
-# poll is unacceptable. The profile changes about once a year, so it is
-# cached for five minutes; the network call itself runs OUTSIDE the lock.
+# The frontend polls the status endpoints every ~1.5 s while logging in, and
+# a network roundtrip to Google inside every poll is unacceptable. The
+# profile changes about once a year, so it is cached for five minutes; the
+# network call itself runs OUTSIDE the lock.
+#
+# The cache is keyed by the LOCAL USER ID (§17): one entry per user, never a
+# process-global "last profile" another user could read. Hosted users do not
+# use it at all — their `users` row is the authoritative profile, refreshed
+# from Google at every login (§7) — so this path serves the desktop build's
+# single local owner, whose row stays empty until the first Google lookup.
 _profile_lock = threading.Lock()
-_profile_cache: tuple[float, str | None, str | None] | None = None
+_profile_cache: dict[int, tuple[float, str | None, str | None]] = {}
 PROFILE_TTL_SECONDS = 300
 
 
-def _cached_profile(creds) -> tuple[str | None, str | None]:
-    """User profile with a 5-minute TTL; one Google request at a time."""
-    global _profile_cache
+def _cached_profile(user: User, creds) -> tuple[str | None, str | None]:
+    """Profile of ONE user, cached under that user's id (§17).
+
+    A users row that already carries a profile (hosted: written at login)
+    is returned directly; otherwise Google userinfo is asked once and the
+    answer is remembered under ``user.id`` for PROFILE_TTL_SECONDS. User B
+    can never receive User A's cached name/email: lookups and writes use
+    the id, not a module global.
+    """
+    if user.display_name or user.email:
+        return user.display_name, user.email
     with _profile_lock:
-        if (
-            _profile_cache is not None
-            and time.monotonic() - _profile_cache[0] < PROFILE_TTL_SECONDS
-        ):
-            return _profile_cache[1], _profile_cache[2]
+        cached = _profile_cache.get(user.id)
+        if cached is not None and time.monotonic() - cached[0] < PROFILE_TTL_SECONDS:
+            return cached[1], cached[2]
     profile = ClassroomClient(build_service(creds)).get_user_profile()
     name = profile.get("name", {})
     value = (
@@ -84,59 +142,148 @@ def _cached_profile(creds) -> tuple[str | None, str | None]:
         profile.get("emailAddress") or name.get("fullName"),
     )
     with _profile_lock:
-        _profile_cache = (time.monotonic(), value[0], value[1])
+        _profile_cache[user.id] = (time.monotonic(), value[0], value[1])
     return value
 
 
-def _reset_profile_cache() -> None:
-    """Drop the cached profile (logout / re-login as another account)."""
-    global _profile_cache
+def _reset_profile_cache(user_id: int | None = None) -> None:
+    """Drop one user's cached profile (§17); no id clears every entry."""
     with _profile_lock:
-        _profile_cache = None
+        if user_id is None:
+            _profile_cache.clear()
+        else:
+            _profile_cache.pop(user_id, None)
 
 
-def _build_auth_status() -> AuthStatus:
+def _user_out(user: User) -> UserOut:
+    """The three identity fields of the caller (§24).
+
+    Built from the local ``users`` row only — never from a Google
+    credential, token or OAuth object, none of which may appear in any
+    response.
+    """
+    return UserOut(id=user.id, name=user.display_name, email=user.email)
+
+
+def _build_auth_status(user: User) -> AuthStatus:
+    """AuthStatus of ONE user (§16) with their own profile (§17).
+
+    Hosted: the ``users`` row is the authoritative profile (refreshed from
+    Google at every login, §7) and there is no loopback login state.
+    Desktop: the loopback flow's single-account state, plus the Google
+    userinfo profile cached under the local owner's id.
+
+    §24/§26: the payload describes THIS browser's application session,
+    carries no OAuth internals (no access/refresh token, no client secret,
+    no authorization code), and exposes identity only through ``user``.
+    """
+    if user.provider == "google":
+        return AuthStatus(
+            authenticated=True,
+            login_in_progress=False,
+            error=None,
+            auth_url=None,
+            user=_user_out(user),
+        )
+    # Desktop-only branch: auth (the loopback flow) is imported here so the
+    # hosted service never loads the desktop module (migration stage 8, §32).
+    import auth
+
     status = auth.login_status()
-    user_name = None
-    user_email = None
-    creds = auth.get_valid_credentials()
-    if creds is not None:
-        user_name, user_email = _cached_profile(creds)
-    return AuthStatus(**status, user_name=user_name, user_email=user_email)
+    identity: UserOut | None = None
+    if status["authenticated"]:
+        creds = auth.get_valid_credentials()
+        if creds is not None:
+            user_name, user_email = _cached_profile(user, creds)
+            identity = UserOut(id=user.id, name=user_name, email=user_email)
+    return AuthStatus(**status, user=identity)
+
+
+def _is_authenticated(user: User) -> bool:
+    """Signed-in state alone — no profile lookup (§17/§26).
+
+    ``/api/status`` is polled every ~1.5 s while a sign-in is in flight, so
+    it must not reach Google for identity fields it no longer exposes.
+    """
+    if user.provider == "google":
+        return True
+    import auth
+
+    return bool(auth.login_status().get("authenticated"))
 
 
 @router.get("/auth/status", response_model=AuthStatus)
-def auth_status() -> AuthStatus:
-    return _build_auth_status()
+def auth_status(user: User = Depends(ownership.get_current_user)) -> AuthStatus:
+    return _build_auth_status(user)
+
+
+@router.get("/me", response_model=UserOut)
+def me(user: User = Depends(ownership.get_current_user)) -> UserOut:
+    """Identity of the signed-in user (§23/§24).
+
+    Same identity source as ``/api/auth/status``: the validated session
+    user in hosted mode, the desktop local owner (with the Google profile
+    resolved and cached per user) in desktop mode. A request without a
+    valid application session is rejected earlier with 401 (hosted session
+    gate / dependency); this handler never sees an anonymous caller.
+    """
+    status = _build_auth_status(user)
+    # ``user`` is always populated by _build_auth_status; the fallback keeps
+    # the type honest without inventing a second identity source.
+    return status.user or _user_out(user)
 
 
 @router.post("/auth/login", response_model=AuthStatus)
-def login() -> AuthStatus:
+def login(user: User = Depends(ownership.get_current_user)) -> AuthStatus:
+    import auth
+
     result = auth.start_login()
     if not result.get("started"):
         raise HTTPException(
             status_code=500, detail=result.get("error", "Login failed.")
         )
-    return _build_auth_status()
+    return _build_auth_status(user)
 
 
 @router.post("/auth/logout", response_model=AuthStatus)
-def logout() -> AuthStatus:
+def logout(user: User = Depends(ownership.get_current_user)) -> AuthStatus:
+    import auth
+
     auth.logout()
-    _reset_profile_cache()  # the next sign-in may be a different account
-    return _build_auth_status()
+    # Only the caller's cached profile is dropped (§17); the next sign-in on
+    # this browser may be another account, but other users' entries stay.
+    _reset_profile_cache(user.id)
+    return _build_auth_status(user)
+
+
+# ------------------------------------------------------- current user (§13)
+
+
+def current_user_id(user: User = Depends(ownership.get_current_user)) -> int:
+    """The authenticated user's id — the cache owner of this request (§13).
+
+    Thin derivation over ``ownership.get_current_user``, which validates
+    the hosted session (or resolves the desktop local owner) itself and
+    never trusts a request-supplied id. Most cache reads need only the id;
+    the endpoints that need the profile take the user dependency directly.
+    """
+    return user.id
 
 
 # ------------------------------------------------------------ derived SQL
 
 
-def _role_map(db: Session) -> dict[str, str]:
-    """course_id → role of the signed-in user ("TEACHER"/"STUDENT").
+def _role_map(db: Session, owner_id: int) -> dict[str, str]:
+    """course_id → role of the cache owner ("TEACHER"/"STUDENT").
 
     Roles live in their own table so an older cache file keeps working
     (ADR-0003/0017); courses synced before teacher mode default to STUDENT.
+    Scoped to the owner's rows (stage 3).
     """
-    return {row.course_id: row.role for row in db.query(CourseRole).all()}
+    return {
+        row.course_id: row.role
+        for row in db.query(CourseRole).filter_by(user_id=owner_id).all()
+    }
 
 
 def _build_assignment_out(
@@ -203,40 +350,49 @@ def _build_assignment_out(
     )
 
 
-def _load_assignments(db: Session) -> list[AssignmentOut]:
-    """Load cached assignments merged with the role-appropriate details.
+def _load_assignments(db: Session, owner_id: int) -> list[AssignmentOut]:
+    """Load the owner's cached assignments merged with role-appropriate details.
 
-    Student courses (the existing dashboard) merge the authenticated user's
-    own submission into the personal fields. Teacher courses merge aggregate
-    submission counts instead: the teacher is not a student in their own
-    course, so `submitted`/`graded` stay false there and the aggregates live
-    in `submission_count`/`graded_count`/`average_percent`.
+    Student courses (the existing dashboard) merge their own submission into
+    the personal fields. Teacher courses merge aggregate submission counts
+    instead: the teacher is not a student in their own course, so
+    `submitted`/`graded` stay false there and the aggregates live in
+    `submission_count`/`graded_count`/`average_percent`.
 
     Archived courses are ignored everywhere (see sync): their cached rows, if
-    any, are excluded from every response built here.
+    any, are excluded from every response built here. Every query is scoped
+    to the request's cache owner (stage 3); the joins in
+    _course_stats_sql/_student_totals_sql additionally equate user_id so a
+    same-named row of another user can never leak into an aggregate (§67).
     """
-    courses = {c.id: c for c in db.query(Course).all() if c.course_state != "ARCHIVED"}
-    roles = _role_map(db)
+    courses = {
+        c.id: c
+        for c in db.query(Course).filter_by(user_id=owner_id).all()
+        if c.course_state != "ARCHIVED"
+    }
+    roles = _role_map(db, owner_id)
     submissions = {
-        (s.course_id, s.coursework_id): s for s in db.query(StudentSubmission).all()
+        (s.course_id, s.coursework_id): s
+        for s in db.query(StudentSubmission).filter_by(user_id=owner_id).all()
     }
     teacher_submissions: dict[tuple[str, str], list[CourseWorkSubmission]] = {}
-    for row in db.query(CourseWorkSubmission).all():
+    for row in db.query(CourseWorkSubmission).filter_by(user_id=owner_id).all():
         teacher_submissions.setdefault((row.course_id, row.coursework_id), []).append(
             row
         )
     roster_counts = {
         course_id: count
         for course_id, count in db.query(
-            CourseStudent.course_id, func.count(CourseStudent.user_id)
+            CourseStudent.course_id, func.count(CourseStudent.student_id)
         )
+        .filter_by(user_id=owner_id)
         .group_by(CourseStudent.course_id)
         .all()
     }
     now = datetime.now()
     out: list[AssignmentOut] = []
 
-    works = db.query(CourseWork).all()
+    works = db.query(CourseWork).filter_by(user_id=owner_id).all()
     for work in works:
         course = courses.get(work.course_id)
         if course is None:
@@ -262,23 +418,26 @@ def _load_assignments(db: Session) -> list[AssignmentOut]:
     return out
 
 
-def _assignment_by_id(db: Session, coursework_id: str) -> AssignmentOut | None:
+def _assignment_by_id(
+    db: Session, owner_id: int, coursework_id: str
+) -> AssignmentOut | None:
     """One cached assignment by primary key (review §2.1).
 
     Replaces the old ``next(a for a in _load_assignments(db) ...)`` scan,
     which loaded every course/coursework/submission table to answer for a
     single row. Indexed gets only; archived or missing work is None/404.
+    The PK includes the owner (stage 3).
     """
-    work = db.get(CourseWork, coursework_id)
+    work = db.get(CourseWork, (owner_id, coursework_id))
     if work is None:
         return None
-    course = db.get(Course, work.course_id)
+    course = db.get(Course, (owner_id, work.course_id))
     if course is None or course.course_state == "ARCHIVED":
         return None
-    role = _role_map(db).get(work.course_id, "STUDENT")
+    role = _role_map(db, owner_id).get(work.course_id, "STUDENT")
     roster_count = (
-        db.query(func.count(CourseStudent.user_id))
-        .filter_by(course_id=work.course_id)
+        db.query(func.count(CourseStudent.student_id))
+        .filter_by(user_id=owner_id, course_id=work.course_id)
         .scalar()
         or 0
     )
@@ -286,11 +445,11 @@ def _assignment_by_id(db: Session, coursework_id: str) -> AssignmentOut | None:
         work,
         course,
         role,
-        get_submission(db, work.course_id, work.id, "me", is_teacher=False)
+        get_submission(db, owner_id, work.course_id, work.id, "me", is_teacher=False)
         if role != "TEACHER"
         else None,
         db.query(CourseWorkSubmission)
-        .filter_by(course_id=work.course_id, coursework_id=work.id)
+        .filter_by(user_id=owner_id, course_id=work.course_id, coursework_id=work.id)
         .all()
         if role == "TEACHER"
         else [],
@@ -309,7 +468,7 @@ def _student_only(assignments: list[AssignmentOut]) -> list[AssignmentOut]:
     return [a for a in assignments if a.role != "TEACHER"]
 
 
-def _course_stats_sql(db: Session) -> dict[str, CourseOut]:
+def _course_stats_sql(db: Session, owner_id: int) -> dict[str, CourseOut]:
     """Per-course aggregates computed in SQL (review §2.1).
 
     Replaces the old approach of loading every coursework/submission row
@@ -320,11 +479,14 @@ def _course_stats_sql(db: Session) -> dict[str, CourseOut]:
     mean-of-assignments, the same formula the Python code used; the teacher
     average is the mean over all class submissions (previously the mean of
     per-assignment means — the per-submission weighting is the fairer one).
+
+    Scoped to the owner's rows, and every join equates ``user_id`` on both
+    sides (§67): identical Google ids of another user must never join in.
     """
     now = datetime.now()
     own_pending = func.coalesce(StudentSubmission.state.not_in(SUBMITTED_STATES), True)
-    own_rows = (
-        db.query(
+    own_rows = db.execute(
+        select(
             Course.id,
             func.count(CourseWork.id).label("total"),
             func.coalesce(func.sum(case((own_pending, 1), else_=0)), 0).label("todo"),
@@ -347,7 +509,10 @@ def _course_stats_sql(db: Session) -> dict[str, CourseOut]:
             func.coalesce(
                 func.sum(
                     case(
-                        (StudentSubmission.assigned_points.is_not(None), 1),
+                        (
+                            StudentSubmission.assigned_points.is_not(None),
+                            1,
+                        ),
                         else_=0,
                     )
                 ),
@@ -367,14 +532,25 @@ def _course_stats_sql(db: Session) -> dict[str, CourseOut]:
                 )
             ).label("average"),
         )
-        .outerjoin(CourseWork, CourseWork.course_id == Course.id)
-        .outerjoin(StudentSubmission, StudentSubmission.coursework_id == CourseWork.id)
-        .filter(Course.course_state != "ARCHIVED")
+        .outerjoin(
+            CourseWork,
+            and_(
+                CourseWork.user_id == Course.user_id,
+                CourseWork.course_id == Course.id,
+            ),
+        )
+        .outerjoin(
+            StudentSubmission,
+            and_(
+                StudentSubmission.user_id == CourseWork.user_id,
+                StudentSubmission.coursework_id == CourseWork.id,
+            ),
+        )
+        .filter(Course.user_id == owner_id, Course.course_state != "ARCHIVED")
         .group_by(Course.id)
-        .all()
-    )
-    teacher_rows = (
-        db.query(
+    ).all()
+    teacher_rows = db.execute(
+        select(
             Course.id,
             func.coalesce(
                 func.sum(
@@ -410,20 +586,30 @@ def _course_stats_sql(db: Session) -> dict[str, CourseOut]:
                 )
             ).label("average"),
         )
-        .outerjoin(CourseWork, CourseWork.course_id == Course.id)
         .outerjoin(
-            CourseWorkSubmission, CourseWorkSubmission.coursework_id == CourseWork.id
+            CourseWork,
+            and_(
+                CourseWork.user_id == Course.user_id,
+                CourseWork.course_id == Course.id,
+            ),
         )
-        .filter(Course.course_state != "ARCHIVED")
+        .outerjoin(
+            CourseWorkSubmission,
+            and_(
+                CourseWorkSubmission.user_id == CourseWork.user_id,
+                CourseWorkSubmission.coursework_id == CourseWork.id,
+            ),
+        )
+        .filter(Course.user_id == owner_id, Course.course_state != "ARCHIVED")
         .group_by(Course.id)
-        .all()
-    )
-    roles = _role_map(db)
+    ).all()
+    roles = _role_map(db, owner_id)
     roster_counts = {
         course_id: count
         for course_id, count in db.query(
-            CourseStudent.course_id, func.count(CourseStudent.user_id)
+            CourseStudent.course_id, func.count(CourseStudent.student_id)
         )
+        .filter_by(user_id=owner_id)
         .group_by(CourseStudent.course_id)
         .all()
     }
@@ -431,7 +617,7 @@ def _course_stats_sql(db: Session) -> dict[str, CourseOut]:
     teacher = {row[0]: row[1:] for row in teacher_rows}
     courses = (
         db.query(Course)
-        .filter(Course.course_state != "ARCHIVED")
+        .filter(Course.user_id == owner_id, Course.course_state != "ARCHIVED")
         .order_by(Course.name)
         .all()
     )
@@ -474,11 +660,13 @@ def _course_stats_sql(db: Session) -> dict[str, CourseOut]:
 
 
 @router.get("/courses", response_model=list[CourseOut])
-def list_courses(db: Session = Depends(get_db)) -> list[CourseOut]:
-    stats = _course_stats_sql(db)
+def list_courses(
+    owner_id: int = Depends(current_user_id), db: Session = Depends(get_db)
+) -> list[CourseOut]:
+    stats = _course_stats_sql(db, owner_id)
     courses = (
         db.query(Course)
-        .filter(Course.course_state != "ARCHIVED")
+        .filter(Course.user_id == owner_id, Course.course_state != "ARCHIVED")
         .order_by(Course.name)
         .all()
     )
@@ -490,9 +678,10 @@ def list_assignments(
     course_id: str | None = Query(default=None),
     search: str | None = Query(default=None),
     status: str | None = Query(default=None),
+    owner_id: int = Depends(current_user_id),
     db: Session = Depends(get_db),
 ) -> list[AssignmentOut]:
-    assignments = _student_only(_load_assignments(db))
+    assignments = _student_only(_load_assignments(db, owner_id))
     if course_id:
         assignments = [a for a in assignments if a.course_id == course_id]
     if search:
@@ -520,28 +709,33 @@ def list_assignments(
 @router.get("/assignments/upcoming", response_model=list[AssignmentOut])
 def upcoming(
     days: int = Query(default=7, ge=1, le=60),
+    owner_id: int = Depends(current_user_id),
     db: Session = Depends(get_db),
 ) -> list[AssignmentOut]:
     now = datetime.now()
     end = now + timedelta(days=days)
     return [
         a
-        for a in _student_only(_load_assignments(db))
+        for a in _student_only(_load_assignments(db, owner_id))
         if a.due_at is not None and now <= a.due_at <= end and not a.submitted
     ]
 
 
 @router.get("/assignments/overdue", response_model=list[AssignmentOut])
-def overdue(db: Session = Depends(get_db)) -> list[AssignmentOut]:
-    return [a for a in _student_only(_load_assignments(db)) if a.is_overdue]
+def overdue(
+    owner_id: int = Depends(current_user_id), db: Session = Depends(get_db)
+) -> list[AssignmentOut]:
+    return [a for a in _student_only(_load_assignments(db, owner_id)) if a.is_overdue]
 
 
 @router.get("/grades", response_model=list[CourseGrades])
-def grades(db: Session = Depends(get_db)) -> list[CourseGrades]:
-    assignments = _student_only(_load_assignments(db))
+def grades(
+    owner_id: int = Depends(current_user_id), db: Session = Depends(get_db)
+) -> list[CourseGrades]:
+    assignments = _student_only(_load_assignments(db, owner_id))
     courses = (
         db.query(Course)
-        .filter(Course.course_state != "ARCHIVED")
+        .filter(Course.user_id == owner_id, Course.course_state != "ARCHIVED")
         .order_by(Course.name)
         .all()
     )
@@ -589,6 +783,7 @@ def grades(db: Session = Depends(get_db)) -> list[CourseGrades]:
 def calendar(
     from_date: str | None = Query(default=None, alias="from"),
     to_date: str | None = Query(default=None, alias="to"),
+    owner_id: int = Depends(current_user_id),
     db: Session = Depends(get_db),
 ) -> dict:
     def _parse(value: str | None) -> datetime | None:
@@ -602,20 +797,21 @@ def calendar(
     start = _parse(from_date) or datetime.now().replace(day=1)
     end = _parse(to_date) or (start + timedelta(days=62))
     grouped: dict[str, list] = {}
-    for a in _student_only(_load_assignments(db)):
+    for a in _student_only(_load_assignments(db, owner_id)):
         if a.due_at is None or not (start <= a.due_at <= end):
             continue
         grouped.setdefault(a.due_at.date().isoformat(), []).append(a)
     return {"from": start.isoformat(), "to": end.isoformat(), "days": grouped}
 
 
-def _student_totals_sql(db: Session) -> dict:
+def _student_totals_sql(db: Session, owner_id: int) -> dict:
     """Global counters for the student dashboard, computed in SQL (§2.1).
 
     Every course the signed-in user does not teach (a missing CourseRole row
     defaults to STUDENT, like _role_map) and is not archived. One statement
     with no fan-out: CourseRole and StudentSubmission are both at most 1:1
     with a course/coursework row, so plain counts/sums are safe here.
+    Scoped to the owner's rows; joins equate user_id on both sides (§67).
     """
     now = datetime.now()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -678,10 +874,31 @@ def _student_totals_sql(db: Session) -> dict:
             func.avg(percent),
         )
         .select_from(Course)
-        .outerjoin(CourseRole, CourseRole.course_id == Course.id)
-        .outerjoin(CourseWork, CourseWork.course_id == Course.id)
-        .outerjoin(StudentSubmission, StudentSubmission.coursework_id == CourseWork.id)
-        .filter(Course.course_state != "ARCHIVED", is_student_course)
+        .outerjoin(
+            CourseRole,
+            and_(
+                CourseRole.user_id == Course.user_id, CourseRole.course_id == Course.id
+            ),
+        )
+        .outerjoin(
+            CourseWork,
+            and_(
+                CourseWork.user_id == Course.user_id,
+                CourseWork.course_id == Course.id,
+            ),
+        )
+        .outerjoin(
+            StudentSubmission,
+            and_(
+                StudentSubmission.user_id == CourseWork.user_id,
+                StudentSubmission.coursework_id == CourseWork.id,
+            ),
+        )
+        .filter(
+            Course.user_id == owner_id,
+            Course.course_state != "ARCHIVED",
+            is_student_course,
+        )
         .one()
     )
     return {
@@ -697,75 +914,238 @@ def _student_totals_sql(db: Session) -> dict:
 
 
 @router.get("/status", response_model=SyncStatus)
-def status(db: Session = Depends(get_db)) -> SyncStatus:
-    auth_status = _build_auth_status()
+def status(
+    user: User = Depends(ownership.get_current_user),
+    db: Session = Depends(get_db),
+) -> SyncStatus:
+    # Signed-in state of the CALLING user (§16): hosted reads the session
+    # user, desktop the loopback account — never a global login state, and
+    # never a Google profile lookup (identity is exposed via /auth/status
+    # and /api/me only, §26).
+    owner_id = user.id
+    # Structured per-user sync state (migration stage 5, §18): the
+    # dashboard sees a short status plus the last successful time — never
+    # an exception trace (the stored message is already sanitized).
+    sync_state = sync.sync_status(db, owner_id)
     return SyncStatus(
-        authenticated=auth_status.authenticated,
-        user_name=auth_status.user_name,
-        user_email=auth_status.user_email,
-        last_sync=sync.get_state_datetime(db, "last_sync"),
-        last_sync_error=sync.get_state(db, "last_sync_error"),
+        authenticated=_is_authenticated(user),
+        last_sync=sync_state.last_success_at if sync_state else None,
+        last_sync_error=sync_state.last_error if sync_state else None,
+        syncing=bool(sync_state and sync_state.status == sync.SYNC_RUNNING),
+        sync_status=sync_state.status if sync_state else sync.SYNC_PENDING,
+        last_sync_started_at=sync_state.last_started_at if sync_state else None,
+        last_sync_finished_at=sync_state.last_finished_at if sync_state else None,
         # Aggregated in SQL, not by loading every table: the frontend polls
         # this endpoint every ~1.5 s while signing in (review §2.1 / §1.3).
-        **_student_totals_sql(db),
+        **_student_totals_sql(db, owner_id),
     )
 
 
 @router.post("/sync", response_model=SyncResult)
-def run_sync(db: Session = Depends(get_db)) -> SyncResult:
-    result = sync.sync_now()
-    if not result.get("ok") and "already running" in str(result.get("error", "")):
-        # A running sync is not an error: 409 tells the client to keep
-        # showing its spinner instead of surfacing a failure (review §3.9).
-        raise HTTPException(
-            status_code=409, detail="A synchronization is already running."
-        )
+def run_sync(
+    request: Request, user: User = Depends(ownership.get_current_user)
+) -> SyncResult:
+    """Synchronize the calling user's cache with THEIR Google credentials.
+
+    §12: /api/sync must never touch another user's data. Desktop: the local
+    owner (token.json). Hosted: the session user's oauth_tokens — sync_now
+    resolves the cache owner and credentials from this user. Since the
+    per-user scheduler (stage 5, §18) a manual sync only conflicts with
+    THIS user's own running sync (background or another manual call); any
+    other user syncs independently.
+
+    §65: a manual sync is interactive work and is bounded by the process's
+    global concurrency ceiling (``SYNC_MAX_CONCURRENT_USERS``). When every
+    slot is taken the request is answered with 503 and a Retry-Later-style
+    phrase instead of queueing behind other users' syncs.
+
+    Stage 9 (§39): hosted manual syncs additionally carry a per-user
+    cooldown (``SYNC_MANUAL_COOLDOWN_SECONDS``). Holding the Sync button
+    reuses the in-flight run (409) or gets 429 instead of launching a
+    second full Classroom fan-out; one user cannot eat the whole Google
+    quota this way. The background scheduler bypasses the cooldown.
+    """
+    if request.app.state.hosted:
+        from config import SYNC_MANUAL_COOLDOWN_SECONDS
+
+        if SYNC_MANUAL_COOLDOWN_SECONDS > 0:
+            from datetime import datetime, timezone
+
+            # A fresh per-request session: the endpoint dependency owns its
+            # own session and must not be reused here (short transactions,
+            # stage 9 §45).
+            from database import SessionLocal as _SessionLocal
+            from sync_store import sync_status as _sync_row
+
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            with _SessionLocal() as _db:
+                row = _sync_row(_db, user.id)
+                started = row.last_started_at if row is not None else None
+            if (
+                started is not None
+                and (now - started).total_seconds() < SYNC_MANUAL_COOLDOWN_SECONDS
+            ):
+                raise HTTPException(
+                    status_code=429,
+                    detail="A sync just ran for this account; try again shortly.",
+                    headers={"Retry-After": str(SYNC_MANUAL_COOLDOWN_SECONDS)},
+                )
+    result = sync.sync_now(user=user, interactive=True)
+    if not result.get("ok"):
+        error = str(result.get("error", ""))
+        if "already running" in error:
+            # A running sync is not an error: 409 tells the client to keep
+            # showing its spinner instead of surfacing a failure (§3.9).
+            raise HTTPException(
+                status_code=409, detail="A synchronization is already running."
+            )
+        if error == sync.SERVER_BUSY:
+            raise HTTPException(status_code=503, detail=error)
     return SyncResult(**result)
 
 
 @router.delete("/cache")
 def clear_cache(
-    confirm: bool = Query(default=False), db: Session = Depends(get_db)
+    confirm: bool = Query(default=False),
+    owner_id: int = Depends(current_user_id),
+    db: Session = Depends(get_db),
 ) -> dict:
     if not confirm:
         raise HTTPException(
             status_code=400,
             detail="Pass confirm=true to clear all locally cached data.",
         )
-    sync.reset_cache(db)
+    # Deletes only the calling user's cache rows (stage 3; audit P4/Y4).
+    sync.reset_cache(db, owner_id)
     return {"ok": True, "cleared": True}
+
+
+@router.delete("/me/cache")
+def clear_own_cache(
+    confirm: bool = Query(default=False),
+    owner_id: int = Depends(current_user_id),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Explicit alias of ``DELETE /api/cache`` (stage 9, §66).
+
+    Same handler shape, same per-user scope, same ``confirm=true`` gate —
+    the path only says what the code already does: delete the CALLER's
+    cache, never anyone else's. Kept side by side with ``/api/cache`` so
+    existing desktop clients keep working while new clients can use the
+    unambiguous name.
+    """
+    if not confirm:
+        raise HTTPException(
+            status_code=400,
+            detail="Pass confirm=true to clear all locally cached data.",
+        )
+    sync.reset_cache(db, owner_id)
+    return {"ok": True, "cleared": True}
+
+
+@router.delete("/me/google")
+def disconnect_google_account(
+    confirm: bool = Query(default=False),
+    user: User = Depends(ownership.get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Disconnect the caller's Google account, keep the local account (§44).
+
+    Removes the stored OAuth credentials and resets the caller's sync state
+    of THIS user only; the application session stays valid (the caller
+    stays signed in to the dashboard and its cached data remains visible,
+    with its last-sync timestamp). ``confirm=true`` is required because the
+    action forces a fresh consent screen on the next sync.
+    """
+    if not confirm:
+        raise HTTPException(
+            status_code=400,
+            detail="Pass confirm=true to disconnect the Google account.",
+        )
+    # Desktop has no application account: this is exactly /api/auth/logout.
+    if user.provider != "google":
+        import auth
+
+        auth.logout()
+        _reset_profile_cache(user.id)
+        return {"ok": True, "disconnected": True}
+    maintenance.disconnect_google(db, user.id)
+    _reset_profile_cache(user.id)
+    return {"ok": True, "disconnected": True}
+
+
+@router.delete("/me")
+def delete_own_account(
+    request: Request,
+    confirm: bool = Query(default=False),
+    user: User = Depends(ownership.get_current_user),
+    db: Session = Depends(get_db),
+) -> JSONResponse:
+    """Delete everything stored for the CALLER (§44).
+
+    The explicit "delete my account" path: sessions, OAuth credentials,
+    sync state and the whole Classroom cache of this user are removed, and
+    the local ``users`` row goes with them. Other users' rows are never
+    touched — there is deliberately no global variant of this operation.
+
+    Desktop builds have no server-side account (single local user, data in
+    ``%LOCALAPPDATA%``): the endpoint is hosted-only and answers 400 there
+    with a pointer to ``DELETE /api/cache`` + logout.
+    """
+    if not confirm:
+        raise HTTPException(
+            status_code=400,
+            detail="Pass confirm=true to delete the account and all cached data.",
+        )
+    if not request.app.state.hosted:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Desktop builds have no server-side account; use "
+                "DELETE /api/cache and sign out instead."
+            ),
+        )
+    removed = maintenance.delete_user_data(db, user)
+    _reset_profile_cache(user.id)
+    response = JSONResponse({"ok": True, "deleted": True, **removed})
+    # The session no longer exists server-side; drop the cookie too so the
+    # browser does not keep presenting a dead token (§37).
+    from hosted_auth import SESSION_COOKIE_NAME
+
+    response.delete_cookie(SESSION_COOKIE_NAME, path="/")
+    return response
 
 
 # ------------------------------------------------------- teacher-mode views
 
 
-def _get_course(db: Session, course_id: str) -> Course:
-    """Course by id; ARCHIVED and missing courses are 404."""
-    course = db.get(Course, course_id)
+def _get_course(db: Session, owner_id: int, course_id: str) -> Course:
+    """The owner's course by id; ARCHIVED and missing courses are 404."""
+    course = db.get(Course, (owner_id, course_id))
     if course is None or course.course_state == "ARCHIVED":
         raise HTTPException(status_code=404, detail="Course not found.")
     return course
 
 
-def _course_role(db: Session, course: Course) -> str:
-    """Role of the signed-in user in this course ("TEACHER"/"STUDENT")."""
-    row = db.get(CourseRole, course.id)
+def _course_role(db: Session, owner_id: int, course: Course) -> str:
+    """Role of the cache owner in this course ("TEACHER"/"STUDENT")."""
+    row = db.get(CourseRole, (owner_id, course.id))
     return row.role if row else "STUDENT"
 
 
-def _require_teacher(db: Session, course: Course) -> None:
+def _require_teacher(db: Session, owner_id: int, course: Course) -> None:
     """Teacher-only endpoints must never be reachable from a student course."""
-    if _course_role(db, course) != "TEACHER":
+    if _course_role(db, owner_id, course) != "TEACHER":
         raise HTTPException(
             status_code=403,
             detail="This course is not taught by the signed-in user.",
         )
 
 
-def _roster_rows(db: Session, course_id: str) -> list[CourseStudent]:
+def _roster_rows(db: Session, owner_id: int, course_id: str) -> list[CourseStudent]:
     return (
         db.query(CourseStudent)
-        .filter_by(course_id=course_id)
+        .filter_by(user_id=owner_id, course_id=course_id)
         .order_by(CourseStudent.full_name)
         .all()
     )
@@ -775,8 +1155,8 @@ def _student_out(row: CourseStudent | None, fallback_id: str = "") -> StudentOut
     if row is None:
         return StudentOut(id=fallback_id, full_name=fallback_id)
     return StudentOut(
-        id=row.user_id,
-        full_name=row.full_name or row.user_id,
+        id=row.student_id,
+        full_name=row.full_name or row.student_id,
         email=row.email,
         photo_url=row.photo_url,
     )
@@ -826,7 +1206,7 @@ def _submission_out_for(
 
 
 def _submissions_for_work(
-    db: Session, course: Course, work: CourseWork
+    db: Session, owner_id: int, course: Course, work: CourseWork
 ) -> list[SubmissionOut]:
     """Every roster student's state for one assignment (teacher view).
 
@@ -834,19 +1214,19 @@ def _submissions_for_work(
     the assignment page shows the whole class rather than only those who
     turned work in.
     """
-    if _course_role(db, course) != "TEACHER":
-        sub = get_submission(db, course.id, work.id, "me", is_teacher=False)
+    if _course_role(db, owner_id, course) != "TEACHER":
+        sub = get_submission(db, owner_id, course.id, work.id, "me", is_teacher=False)
         if sub is None:
             return []
         return [_submission_out_for(sub, "me", "", work)]
 
     rows = (
         db.query(CourseWorkSubmission)
-        .filter_by(course_id=course.id, coursework_id=work.id)
+        .filter_by(user_id=owner_id, course_id=course.id, coursework_id=work.id)
         .all()
     )
     sub_map = {row.student_id: row for row in rows}
-    roster = {row.user_id: row for row in _roster_rows(db, course.id)}
+    roster = {row.student_id: row for row in _roster_rows(db, owner_id, course.id)}
     # A submission for an unknown student must still surface, not vanish.
     for student_id in sub_map:
         roster.setdefault(student_id, None)  # type: ignore[arg-type]
@@ -865,44 +1245,70 @@ def _submissions_for_work(
 
 
 @router.get("/courses/{course_id}", response_model=CourseDetailOut)
-def course_detail(course_id: str, db: Session = Depends(get_db)) -> CourseDetailOut:
-    course = _get_course(db, course_id)
-    stats = _course_stats_sql(db)
-    role = _course_role(db, course)
+def course_detail(
+    course_id: str,
+    owner_id: int = Depends(current_user_id),
+    db: Session = Depends(get_db),
+) -> CourseDetailOut:
+    course = _get_course(db, owner_id, course_id)
+    stats = _course_stats_sql(db, owner_id)
+    role = _course_role(db, owner_id, course)
+    # §21: the roster is teacher-only data. A student course has no roster
+    # rows to begin with; gating on the role also keeps rows left over from
+    # a former teaching period out of the response.
+    students = (
+        [_student_out(row) for row in _roster_rows(db, owner_id, course_id)]
+        if role == "TEACHER"
+        else []
+    )
     return CourseDetailOut(
         course=stats[course.id],
         role=role,
-        students=[_student_out(row) for row in _roster_rows(db, course_id)],
-        last_sync=sync.get_state_datetime(db, "last_sync"),
+        students=students,
+        last_sync=sync.last_sync_time(db, owner_id),
     )
 
 
 @router.get("/courses/{course_id}/coursework", response_model=list[AssignmentOut])
 def course_coursework(
-    course_id: str, db: Session = Depends(get_db)
+    course_id: str,
+    owner_id: int = Depends(current_user_id),
+    db: Session = Depends(get_db),
 ) -> list[AssignmentOut]:
     """Coursework of one course: all of it for a teacher, own work for a student."""
-    _get_course(db, course_id)
-    return [a for a in _load_assignments(db) if a.course_id == course_id]
+    _get_course(db, owner_id, course_id)
+    return [a for a in _load_assignments(db, owner_id) if a.course_id == course_id]
 
 
 @router.get("/courses/{course_id}/students", response_model=list[StudentOut])
-def course_students(course_id: str, db: Session = Depends(get_db)) -> list[StudentOut]:
-    course = _get_course(db, course_id)
-    _require_teacher(db, course)
-    return [_student_out(row) for row in _roster_rows(db, course_id)]
+def course_students(
+    course_id: str,
+    owner_id: int = Depends(current_user_id),
+    db: Session = Depends(get_db),
+) -> list[StudentOut]:
+    course = _get_course(db, owner_id, course_id)
+    _require_teacher(db, owner_id, course)
+    return [_student_out(row) for row in _roster_rows(db, owner_id, course_id)]
 
 
 @router.get("/courses/{course_id}/grades", response_model=TeacherGradesOut)
-def course_grades(course_id: str, db: Session = Depends(get_db)) -> TeacherGradesOut:
+def course_grades(
+    course_id: str,
+    owner_id: int = Depends(current_user_id),
+    db: Session = Depends(get_db),
+) -> TeacherGradesOut:
     """Spreadsheet-style grade matrix: every student × every assignment."""
-    course = _get_course(db, course_id)
-    _require_teacher(db, course)
+    course = _get_course(db, owner_id, course_id)
+    _require_teacher(db, owner_id, course)
     works = sorted(
-        db.query(CourseWork).filter_by(course_id=course_id).all(),
+        db.query(CourseWork).filter_by(user_id=owner_id, course_id=course_id).all(),
         key=lambda work: (work.due_at is None, work.due_at or datetime.max),
     )
-    rows = db.query(CourseWorkSubmission).filter_by(course_id=course_id).all()
+    rows = (
+        db.query(CourseWorkSubmission)
+        .filter_by(user_id=owner_id, course_id=course_id)
+        .all()
+    )
     sub_map = {(row.coursework_id, row.student_id): row for row in rows}
     assignments = [
         GradeColumn(
@@ -915,11 +1321,11 @@ def course_grades(course_id: str, db: Session = Depends(get_db)) -> TeacherGrade
     ]
     student_rows: list[StudentGradeRow] = []
     class_percents: list[float] = []
-    for student in _roster_rows(db, course_id):
+    for student in _roster_rows(db, owner_id, course_id):
         cells: list[SubmissionCell] = []
         row_percents: list[float] = []
         for work in works:
-            has_sub = sub_map.get((work.id, student.user_id))
+            has_sub = sub_map.get((work.id, student.student_id))
             if has_sub is None:
                 cells.append(SubmissionCell(coursework_id=work.id))
                 continue
@@ -965,7 +1371,7 @@ def course_grades(course_id: str, db: Session = Depends(get_db)) -> TeacherGrade
             if class_percents
             else None
         ),
-        last_sync=sync.get_state_datetime(db, "last_sync"),
+        last_sync=sync.last_sync_time(db, owner_id),
     )
 
 
@@ -974,17 +1380,22 @@ def course_grades(course_id: str, db: Session = Depends(get_db)) -> TeacherGrade
     response_model=AssignmentDetailOut,
 )
 def coursework_detail(
-    course_id: str, coursework_id: str, db: Session = Depends(get_db)
+    course_id: str,
+    coursework_id: str,
+    owner_id: int = Depends(current_user_id),
+    db: Session = Depends(get_db),
 ) -> AssignmentDetailOut:
     """Full assignment page: metadata, materials and the submission table."""
-    course = _get_course(db, course_id)
-    work = db.get(CourseWork, coursework_id)
+    course = _get_course(db, owner_id, course_id)
+    work = db.get(CourseWork, (owner_id, coursework_id))
     if work is None or work.course_id != course_id:
         raise HTTPException(status_code=404, detail="Assignment not found.")
-    base = _assignment_by_id(db, coursework_id)  # PK lookup, not a full scan (§2.1)
+    base = _assignment_by_id(
+        db, owner_id, coursework_id
+    )  # PK lookup, not a full scan (§2.1)
     if base is None:
         raise HTTPException(status_code=404, detail="Assignment not found.")
-    submissions = _submissions_for_work(db, course, work)
+    submissions = _submissions_for_work(db, owner_id, course, work)
     counts: dict[str, int] = {}
     for item in submissions:
         counts[item.status] = counts.get(item.status, 0) + 1
@@ -998,33 +1409,40 @@ def coursework_detail(
     response_model=list[SubmissionOut],
 )
 def coursework_submissions(
-    course_id: str, coursework_id: str, db: Session = Depends(get_db)
+    course_id: str,
+    coursework_id: str,
+    owner_id: int = Depends(current_user_id),
+    db: Session = Depends(get_db),
 ) -> list[SubmissionOut]:
-    course = _get_course(db, course_id)
-    work = db.get(CourseWork, coursework_id)
+    course = _get_course(db, owner_id, course_id)
+    work = db.get(CourseWork, (owner_id, coursework_id))
     if work is None or work.course_id != course_id:
         raise HTTPException(status_code=404, detail="Assignment not found.")
-    return _submissions_for_work(db, course, work)
+    return _submissions_for_work(db, owner_id, course, work)
 
 
 def _grade_submissions(
-    db: Session, course_id: str, student_id: str, is_teacher: bool
+    db: Session, owner_id: int, course_id: str, student_id: str, is_teacher: bool
 ) -> dict[str, CourseWorkSubmission | StudentSubmission]:
     """Submissions of one student in one course, from the right table.
 
     Teacher courses keep per-student rows in CourseWorkSubmission; the
     student route keeps the user's own rows in StudentSubmission (ADR-0010).
     Reading only CourseWorkSubmission made this endpoint return an empty
-    grade list for every student course.
+    grade list for every student course. Scoped to the cache owner (stage 3).
     """
     if is_teacher:
         rows = (
             db.query(CourseWorkSubmission)
-            .filter_by(course_id=course_id, student_id=student_id)
+            .filter_by(user_id=owner_id, course_id=course_id, student_id=student_id)
             .all()
         )
         return {row.coursework_id: row for row in rows}
-    rows = db.query(StudentSubmission).filter_by(course_id=course_id).all()
+    rows = (
+        db.query(StudentSubmission)
+        .filter_by(user_id=owner_id, course_id=course_id)
+        .all()
+    )
     return {row.coursework_id: row for row in rows}
 
 
@@ -1033,26 +1451,35 @@ def _grade_submissions(
     response_model=StudentGradesOut,
 )
 def student_grades(
-    course_id: str, student_id: str, db: Session = Depends(get_db)
+    course_id: str,
+    student_id: str,
+    owner_id: int = Depends(current_user_id),
+    db: Session = Depends(get_db),
 ) -> StudentGradesOut:
     """One student's coursework, submission state and grade for a course."""
-    course = _get_course(db, course_id)
-    is_teacher = _course_role(db, course) == "TEACHER"
+    course = _get_course(db, owner_id, course_id)
+    is_teacher = _course_role(db, owner_id, course) == "TEACHER"
     if not is_teacher and student_id != "me":
         raise HTTPException(
             status_code=403,
             detail="Students can only view their own grades.",
         )
+    # §23: a teacher asking for a student who is not enrolled in this course
+    # gets 404, not a fabricated empty student row. The student route keeps
+    # the "me" sentinel (ADR-0010).
+    roster_row = None
+    if is_teacher:
+        roster_row = db.get(CourseStudent, (owner_id, course_id, student_id))
+        if roster_row is None:
+            raise HTTPException(status_code=404, detail="Student not found.")
     student = (
-        _student_out(db.get(CourseStudent, (course_id, student_id)), student_id)
-        if is_teacher
-        else StudentOut(id="me")
+        _student_out(roster_row, student_id) if is_teacher else StudentOut(id="me")
     )
     works = sorted(
-        db.query(CourseWork).filter_by(course_id=course_id).all(),
+        db.query(CourseWork).filter_by(user_id=owner_id, course_id=course_id).all(),
         key=lambda work: (work.due_at is None, work.due_at or datetime.max),
     )
-    sub_map = _grade_submissions(db, course_id, student_id, is_teacher)
+    sub_map = _grade_submissions(db, owner_id, course_id, student_id, is_teacher)
     items: list[StudentGradeItem] = []
     percents: list[float] = []
     for work in works:
@@ -1098,5 +1525,5 @@ def student_grades(
         student=student,
         average_percent=(round(sum(percents) / len(percents), 2) if percents else None),
         items=items,
-        last_sync=sync.get_state_datetime(db, "last_sync"),
+        last_sync=sync.last_sync_time(db, owner_id),
     )

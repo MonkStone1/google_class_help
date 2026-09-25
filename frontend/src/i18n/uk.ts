@@ -25,6 +25,9 @@ export const uk = {
  "topbar.cachedData": "Кешовані дані",
  "topbar.sync": "Синхронізувати",
  "topbar.syncing": "Синхронізація…",
+ "topbar.signInAgain": "Увійти знову",
+ "topbar.needsReauthHint":
+  "Доступ до Google закінчився. Увійдіть знову, щоб відновити синхронізацію.",
  "topbar.notifications": "Сповіщення",
  "topbar.toggleTheme": "Змінити тему",
 

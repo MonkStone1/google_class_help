@@ -6,6 +6,7 @@ googleapiclient package directly.
 """
 
 from datetime import datetime
+from threading import Lock
 from typing import Any
 
 import httplib2
@@ -20,6 +21,77 @@ REQUEST_TIMEOUT_SECONDS = 30
 # which also self-throttles us under the per-user quota (20 QPS) when many
 # workers run in parallel.
 NUM_RETRIES = 3
+
+
+class RequestStats:
+    """Thread-safe counter of the Google requests one sync performs (§65).
+
+    Teacher mode fans out to far more requests than the student view (every
+    course's coursework, roster and all submissions). The counter makes that
+    volume observable in the sync log without putting anything into the
+    cached data or the API response. Clients are built per worker thread, so
+    the counter is shared across them and guards its own state.
+
+    Stage 9 (§60): quota-relevant failures get their own counters — 429
+    (per-user and per-project quota) and 5xx (Classroom-side) — so the
+    capacity review (ADR-0027) can tell "we hit the quota" apart from
+    "Google was down" without grepping tracebacks.
+    """
+
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self.requests = 0
+        self.quota_errors = 0
+        self.server_errors = 0
+
+    def record(self) -> None:
+        with self._lock:
+            self.requests += 1
+
+    def record_quota_error(self) -> None:
+        with self._lock:
+            self.quota_errors += 1
+
+    def record_server_error(self) -> None:
+        with self._lock:
+            self.server_errors += 1
+
+    def snapshot(self) -> dict[str, int]:
+        with self._lock:
+            return {
+                "requests": self.requests,
+                "quota_errors": self.quota_errors,
+                "server_errors": self.server_errors,
+            }
+
+
+def _classify_http_status(status: int | None) -> str | None:
+    """Map an HttpError status to the stats bucket that owns it (§60)."""
+    if status == 429:
+        return "quota"
+    if status is not None and 500 <= status <= 599:
+        return "server"
+    # Quota-exhaustion 403s carry one of these reasons in the payload.
+    return None
+
+
+def _is_quota_403(error: HttpError) -> bool:
+    """Whether a 403 is really quota exhaustion (retryable, §40)."""
+    try:
+        content = error.content
+        text = content.decode("utf-8", "ignore") if isinstance(content, bytes) else ""
+    except Exception:  # noqa: BLE001 - classification must never raise
+        return False
+    lowered = text.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "ratelimitexceeded",
+            "quotaexceeded",
+            "userratelimitexceeded",
+            "resource_exhausted",
+        )
+    )
 
 
 def build_service(credentials) -> Any:
@@ -83,8 +155,35 @@ class ClassroomClient:
     as ``Any``.
     """
 
-    def __init__(self, service: Any) -> None:
+    def __init__(self, service: Any, stats: RequestStats | None = None) -> None:
         self._service = service
+        # Optional observability counter shared by one sync's worker threads
+        # (§65); None keeps the client usable without instrumentation.
+        self._stats = stats
+
+    def _execute(self, request: Any) -> dict:
+        """Execute one prepared request with the shared retry policy (§65).
+
+        The single choke point for every Classroom call: it applies
+        googleapiclient's exponential backoff (``num_retries``) and, when a
+        :class:`RequestStats` was supplied, counts the request so a sync can
+        log its real API volume. Stage 9 (§60): HttpError statuses are also
+        classified into quota/server counters before propagating, so the
+        log line tells quota pressure apart from Classroom outages.
+        """
+        if self._stats is not None:
+            self._stats.record()
+        try:
+            return request.execute(num_retries=NUM_RETRIES)
+        except HttpError as exc:
+            if self._stats is not None:
+                status = getattr(getattr(exc, "resp", None), "status", None)
+                bucket = _classify_http_status(status)
+                if bucket == "quota" or (status == 403 and _is_quota_403(exc)):
+                    self._stats.record_quota_error()
+                elif bucket == "server":
+                    self._stats.record_server_error()
+            raise
 
     def list_courses(
         self,
@@ -110,11 +209,8 @@ class ClassroomClient:
             if teacher_id:
                 kwargs["teacherId"] = teacher_id
             try:
-                response = (
-                    self._service.courses()
-                    .list(**kwargs)
-                    .execute(num_retries=NUM_RETRIES)
-                )
+                request = self._service.courses().list(**kwargs)
+                response = self._execute(request)
             except HttpError:
                 return None
             items.extend(response.get("courses", []))
@@ -144,12 +240,8 @@ class ClassroomClient:
             if course_work_states:
                 kwargs["courseWorkStates"] = course_work_states
             try:
-                response = (
-                    self._service.courses()
-                    .courseWork()
-                    .list(**kwargs)
-                    .execute(num_retries=NUM_RETRIES)
-                )
+                request = self._service.courses().courseWork().list(**kwargs)
+                response = self._execute(request)
             except HttpError:
                 return None
             items.extend(response.get("courseWork", []))
@@ -168,12 +260,12 @@ class ClassroomClient:
         page_token: str | None = None
         while True:
             try:
-                response = (
+                request = (
                     self._service.courses()
                     .teachers()
                     .list(courseId=course_id, pageSize=100, pageToken=page_token)
-                    .execute(num_retries=NUM_RETRIES)
                 )
+                response = self._execute(request)
             except HttpError:
                 return items
             for teacher in response.get("teachers", []):
@@ -204,12 +296,12 @@ class ClassroomClient:
         page_token: str | None = None
         while True:
             try:
-                response = (
+                request = (
                     self._service.courses()
                     .students()
                     .list(courseId=course_id, pageSize=100, pageToken=page_token)
-                    .execute(num_retries=NUM_RETRIES)
                 )
+                response = self._execute(request)
             except HttpError:
                 return None
             for student in response.get("students", []):
@@ -241,7 +333,7 @@ class ClassroomClient:
         page_token: str | None = None
         while True:
             try:
-                response = (
+                request = (
                     self._service.courses()
                     .courseWork()
                     .studentSubmissions()
@@ -251,8 +343,8 @@ class ClassroomClient:
                         pageSize=100,
                         pageToken=page_token,
                     )
-                    .execute(num_retries=NUM_RETRIES)
                 )
+                response = self._execute(request)
             except HttpError:
                 return None
             items.extend(response.get("studentSubmissions", []))
@@ -273,7 +365,7 @@ class ClassroomClient:
         page_token: str | None = None
         while True:
             try:
-                response = (
+                request = (
                     self._service.courses()
                     .courseWork()
                     .studentSubmissions()
@@ -284,8 +376,8 @@ class ClassroomClient:
                         pageSize=100,
                         pageToken=page_token,
                     )
-                    .execute(num_retries=NUM_RETRIES)
                 )
+                response = self._execute(request)
             except HttpError:
                 return items
             items.extend(response.get("studentSubmissions", []))
@@ -297,21 +389,18 @@ class ClassroomClient:
     def get_coursework(self, course_id: str, course_work_id: str) -> dict:
         """Point lookup of one assignment (allowed for students)."""
         try:
-            return (
+            request = (
                 self._service.courses()
                 .courseWork()
                 .get(courseId=course_id, id=course_work_id)
-                .execute(num_retries=NUM_RETRIES)
             )
+            return self._execute(request)
         except HttpError:
             return {}
 
     def get_user_profile(self) -> dict:
         try:
-            return (
-                self._service.userProfiles()
-                .get(userId="me")
-                .execute(num_retries=NUM_RETRIES)
-            )
+            request = self._service.userProfiles().get(userId="me")
+            return self._execute(request)
         except HttpError:
             return {}

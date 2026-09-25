@@ -5,15 +5,36 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
+class UserOut(BaseModel):
+    """Identity of the authenticated user (migration stage 6, §24).
+
+    Exactly the three fields the frontend needs to render "signed in as".
+    No Google credential material, no tokens, no OAuth state: the local
+    ``users.id`` is the only identifier and it is the caller's own.
+    """
+
+    id: int
+    name: str | None = None
+    email: str | None = None
+
+
 class AuthStatus(BaseModel):
+    """Auth state of THIS browser's application session (§24).
+
+    ``user`` is the only identity shape (migration stage 7, §26): the flat
+    ``user_name``/``user_email`` mirrors were dropped once the frontend
+    switched over. ``auth_url``/``login_in_progress`` remain because the
+    desktop loopback flow still publishes its single-use consent URL.
+    """
+
     authenticated: bool
     login_in_progress: bool = False
     error: str | None = None
     # Consent URL, exposed while the sign-in waits for the redirect: a build
     # whose shell cannot open a browser (Wine) must still be signable (ADR-0019).
     auth_url: str | None = None
-    user_name: str | None = None
-    user_email: str | None = None
+    # Identity of the signed-in user; None while unauthenticated.
+    user: UserOut | None = None
 
 
 class MaterialOut(BaseModel):
@@ -204,11 +225,16 @@ class StudentGradesOut(BaseModel):
 
 class SyncStatus(BaseModel):
     authenticated: bool
-    user_name: str | None = None
-    user_email: str | None = None
     last_sync: datetime | None = None
     last_sync_error: str | None = None
     syncing: bool = False
+    # Structured sync state (migration stage 5, §18). ``sync_status`` is one
+    # of "pending"/"running"/"ok"/"error"/"needs_reauth": the frontend uses
+    # it to decide between a spinner (running), a retry hint (error) and a
+    # re-auth prompt (needs_reauth) without parsing the error text.
+    sync_status: str = "pending"
+    last_sync_started_at: datetime | None = None
+    last_sync_finished_at: datetime | None = None
     total_assignments: int = 0
     completed: int = 0
     missing: int = 0

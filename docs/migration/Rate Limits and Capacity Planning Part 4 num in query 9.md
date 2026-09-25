@@ -27,13 +27,13 @@ The most important scalability concern is **not the static React frontend** and 
 A reasonable first production target is a VPS around:
 
 ```text
-2 vCPU
-2 GB RAM
+1 vCPU
+1 GB RAM
 30–40 GB SSD
 multiple TB monthly transfer
 ```
 
-A 2 vCPU / 2 GB VPS is considered an acceptable **initial deployment size** for ~1,000 registered users provided that synchronization, caching, database access, and concurrency are implemented correctly.
+A 1 vCPU / 1 GB VPS is considered an acceptable **initial deployment size** for ~1,000 registered users provided that synchronization, caching, database access, and concurrency are implemented correctly.
 
 Do not assume that 1,000 registered users equals 1,000 concurrent users. The system must be designed so that a temporary increase in concurrent activity does not cause uncontrolled Google API fan-out or exhaust server memory.
 
@@ -235,9 +235,9 @@ Potential scale-up signals include sustained high memory usage, sustained CPU sa
 The first scaling step should preferably be vertical scaling, for example:
 
 ```text
-2 vCPU / 2 GB
+1 vCPU / 1 GB
       ↓
-4 vCPU / 4 GB
+2 vCPU / 2 GB
 ```
 
 before introducing a more complex multi-server architecture.

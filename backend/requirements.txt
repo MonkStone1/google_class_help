@@ -3,5 +3,12 @@ uvicorn[standard]>=0.32
 SQLAlchemy>=2.0
 google-api-python-client>=2.150
 google-auth-oauthlib>=1.2
+# Hosted mode (migration stage 2): authenticated encryption for Google
+# OAuth tokens stored in the database (token_crypto.py).
+cryptography>=42
+# Hosted mode (migration stage 3): PostgreSQL primary datastore + versioned
+# schema migrations (database.py, alembic). Not imported by the desktop build.
+psycopg[binary]>=3.2
+alembic>=1.14
 pystray>=0.19
 Pillow>=10.0

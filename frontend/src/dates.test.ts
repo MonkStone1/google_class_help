@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { createdTime, formatTime, parseDue, relativeDayLabel } from "./dates.ts";
+import {
+  createdTime,
+  formatTime,
+  parseDue,
+  relativeDayLabel,
+  toLocalDate,
+} from "./dates.ts";
 
 describe("parseDue", () => {
   it("parses naive FastAPI datetimes as local time", () => {
@@ -27,6 +33,28 @@ describe("createdTime", () => {
 
   it("returns epoch ms for valid timestamps", () => {
     expect(createdTime("1970-01-01T00:00:01Z")).toBe(1000);
+  });
+});
+
+describe("toLocalDate", () => {
+  it("reads naive backend timestamps as UTC, not local time", () => {
+    const parsed = toLocalDate("2026-09-19T00:00:00");
+    expect(parsed).not.toBeNull();
+    expect(parsed?.toISOString()).toBe("2026-09-19T00:00:00.000Z");
+  });
+
+  it("keeps values that already carry an offset", () => {
+    expect(toLocalDate("2026-09-19T00:00:00Z")?.toISOString()).toBe(
+      "2026-09-19T00:00:00.000Z",
+    );
+    expect(toLocalDate("2026-09-19T03:00:00+03:00")?.toISOString()).toBe(
+      "2026-09-19T00:00:00.000Z",
+    );
+  });
+
+  it("returns null for missing or invalid values", () => {
+    expect(toLocalDate(null)).toBeNull();
+    expect(toLocalDate("tomorrow")).toBeNull();
   });
 });
 

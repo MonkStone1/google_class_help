@@ -559,7 +559,13 @@ from grading import (  # noqa: F401
     grade_percent,
     is_submitted_state,
 )
-from sync_service import get_state, get_state_datetime, reset_cache, sync_now  # noqa: F401
+from sync_service import sync_now, sync_user_id  # noqa: F401
+from sync_store import (  # noqa: F401
+    last_sync_error,
+    last_sync_time,
+    reset_cache,
+    sync_status,
+)
 ```
 
 ### 2.3 🟠 Две таблицы одного и того же факта

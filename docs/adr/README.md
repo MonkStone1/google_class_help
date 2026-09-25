@@ -26,3 +26,11 @@
 | [ADR-0017](adr-0017-teacher-mode.md) | Teacher-режим — отдельный маршрут чтения курса | Accepted |
 | [ADR-0018](adr-0018-single-instance-launcher.md) | Single-instance launcher — mutex, state-файл порта, трей и активация дашборда | Accepted |
 | [ADR-0019](adr-0019-oauth-flow-owned-by-app.md) | OAuth-флоу во владении приложения — свой loopback-callback и единый HTTPS-транспорт | Accepted |
+| [ADR-0020](adr-0020-hosted-web-oauth-and-sessions.md) | Хостед-режим — web OAuth, серверные сессии и шифрование токенов | Accepted |
+| [ADR-0021](adr-0021-postgresql-alembic-user-scoped-schema.md) | PostgreSQL + Alembic и user-scoped схема кэша | Accepted |
+| [ADR-0022](adr-0022-user-isolation-get-current-user.md) | User isolation — get_current_user и user-scoped Google-креденшелы | Accepted |
+| [ADR-0023](adr-0023-per-user-sync-scheduler.md) | Per-user синхронизация — планировщик/воркер, `sync_status`, needs_reauth | Accepted |
+| [ADR-0024](adr-0024-teacher-mode-api-surface.md) | Teacher-mode API surface — role gates, `/api/me`, identity shape и глобальный предел интерактивного синка | Accepted |
+| [ADR-0025](adr-0025-frontend-config-production.md) | Production frontend и session boundary — env-Host/CORS/trusted proxy, cookie-флаги и `/data` | Accepted |
+| [ADR-0026](adr-0026-desktop-hosted-coexistence-production-edge.md) | Desktop/hosted coexistence и production edge — разделение модулей, Option A, HTTPS/CSRF/headers, privacy/terms | Accepted |
+| [ADR-0027](adr-0027-rate-limits-capacity-retention.md) | Rate limits, capacity и retention — токен-бакеты, бюджет синка 4×2, retention/удаление, короткие транзакции | Accepted |
