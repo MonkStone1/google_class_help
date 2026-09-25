@@ -1,0 +1,32 @@
+{
+  "blockers": [
+    "Whether HSTS is also emitted by Cloudflare/Caddy, and whether every production browser path uses externally HTTPS requests, cannot be established from repository source alone."
+  ],
+  "validation_plan": {
+    "deployment": "Request the production hostname over HTTPS and over HTTP and inspect Strict-Transport-Security presence/absence, duplication, and redirect behavior at both the edge and origin.",
+    "local": "Read the HSTS branch in backend/main.py, external_scheme/proxy handling, and Caddyfile header behavior without live requests."
+  },
+  "trace": [
+    {
+      "kind": "entrypoint",
+      "file": "backend/proxy.py",
+      "line": 86,
+      "scope": "external_scheme",
+      "description": "Request scheme is resolved from forwarded proto header if peer is trusted proxy."
+    },
+    {
+      "kind": "propagation",
+      "file": "backend/main.py",
+      "line": 447,
+      "scope": "security_headers_middleware",
+      "description": "Origin middleware checks if HSTS is configured and external scheme is HTTPS."
+    },
+    {
+      "kind": "sink",
+      "file": "backend/main.py",
+      "line": 450,
+      "scope": "security_headers_middleware",
+      "description": "Strict-Transport-Security header is written to the outbound HTTP response."
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "confidence": {
+    "reason": "Source trace is complete and the missing timeout is visible on every failure and success path; socket-hang duration was not measured because target execution was unavailable.",
+    "score": "high"
+  },
+  "description": "The hosted Turnstile verification path performs an outbound HTTPS POST to Cloudflare siteverify without a socket timeout. The vulnerable call is reachable from an unauthenticated endpoint, POST /api/auth/login/start, before any authenticated session is required.",
+  "evidence": [
+    {
+      "description": "httplib2.Http() is constructed with no timeout argument, unlike TOKEN_TIMEOUT_SECONDS used for Google token calls.",
+      "file": "backend/hosted_auth.py",
+      "line": 365
+    },
+    {
+      "description": "The no-timeout response is used as the sole pass/fail gate for login initiation.",
+      "file": "backend/hosted_auth.py",
+      "line": 366
+    },
+    {
+      "description": "Callers propagate the unbounded result without adding their own time bound.",
+      "file": "backend/hosted_auth.py",
+      "line": 473
+    },
+    {
+      "description": "Google token exchange in the same codebase uses an explicit 30-second timeout, establishing that unbounded outbound calls are not the intended pattern.",
+      "file": "backend/oauth_transport.py",
+      "line": 106
+    }
+  ],
+  "execution": {
+    "attacker_perspective": "Unauthenticated remote client.",
+    "instructions": [
+      "Configure hosted mode with Turnstile enabled.",
+      "POST /api/auth/login/start with an attacker-chosen token while Cloudflare siteverify is slow or unresponsive.",
+      "Observe that the affected request thread remains occupied for the duration of the outbound socket wait.",
+      "Repeat with a small number of concurrent unauthenticated requests and observe shared request-handling capacity being retained."
+    ],
+    "observed_result": "Each affected login-start request retains its worker while waiting on siteverify; sustained slow responses retain shared request-handling capacity.",
+    "payloads": [
+      "POST /api/auth/login/start with JSON body {\"token\": \"attacker-controlled\"}"
+    ]
+  },
+  "fingerprint": "gch/turnstile-siteverify-no-timeout",
+  "intended_behavior": "Unauthenticated outbound verification calls should have an explicit low timeout and fail closed, so a slow verification provider cannot retain shared request-handling capacity.",
+  "remediation": {
+    "code_changes": [
+      {
+        "file_name": "backend/hosted_auth.py",
+        "fixed_code": "http = httplib2.Http(timeout=TURNSTILE_TIMEOUT_SECONDS)"
+      }
+    ],
+    "strategy": "Add an explicit low timeout to the Turnstile siteverify POST and keep fail-closed behavior; use the same bounded-transport pattern already used by oauth_transport."
+  },
+  "root_cause": "Missing outbound timeout on the Cloudflare Turnstile siteverify POST in _verify_turnstile.",
+  "severity": {
+    "impact": {
+      "reason": "Shared request-handling capacity can be retained by slow verification responses; no credential, tenant-data, or code-execution boundary is crossed.",
+      "score": "low"
+    },
+    "likelihood": {
+      "reason": "The affected endpoint is unauthenticated and the timeout is absent on every call, but exploitation needs sustained slow siteverify responses and competes with existing per-IP login throttling.",
+      "score": "medium"
+    },
+    "overall_severity": "low"
+  },
+  "title": "Turnstile siteverify POST has no outbound timeout",
+  "trace": [
+    {
+      "description": "Unauthenticated entry: login-start endpoint enabled only with Turnstile keys.",
+      "file": "backend/hosted_auth.py",
+      "kind": "entrypoint",
+      "line": 446,
+      "scope": "login_start"
+    },
+    {
+      "description": "Attacker-controlled token is passed to verification.",
+      "file": "backend/hosted_auth.py",
+      "kind": "propagation",
+      "line": 473,
+      "scope": "login_start"
+    },
+    {
+      "description": "Verification helper performs an outbound HTTPS POST.",
+      "file": "backend/hosted_auth.py",
+      "kind": "propagation",
+      "line": 350,
+      "scope": "_verify_turnstile"
+    },
+    {
+      "description": "HTTP client is created without a timeout; unbounded socket wait.",
+      "file": "backend/hosted_auth.py",
+      "kind": "sink",
+      "line": 365,
+      "scope": "_verify_turnstile"
+    }
+  ],
+  "verdict": "confirmed",
+  "conditions": []
+}

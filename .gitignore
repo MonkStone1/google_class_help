@@ -7,7 +7,6 @@ data/*.db
 .env
 backend/.env
 !.env.example
-
 # Database dumps and any other backup artifacts (migration stage 10, §57).
 backups/
 *.dump
@@ -31,3 +30,4 @@ release/
 assets/
 logs/
 data/
+skills/

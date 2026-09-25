@@ -1,0 +1,489 @@
+[
+  {
+    "claimed_root_cause": "Abuse throttle identity depends on trusted-proxy and edge-header behavior.",
+    "description": "Rate-limit client identity uses CF-Connecting-IP/X-Forwarded-For only from a configured trusted proxy peer.",
+    "evidence": [
+      {
+        "description": "Throttle identity falls back to TCP peer unless proxy trust is established.",
+        "file": "backend/proxy.py",
+        "line": 136
+      },
+      {
+        "description": "Forwarded IP headers are honored only for a trusted immediate peer.",
+        "file": "backend/proxy.py",
+        "line": 137
+      },
+      {
+        "description": "Caddy forwards client identity headers toward the backend.",
+        "file": "Caddyfile",
+        "line": 30
+      }
+    ],
+    "fingerprint": "gch/edge-header-trust-needs-deployment-check",
+    "title": "Throttle identity depends on edge header handling",
+    "blockers": [
+      "Whether Cloudflare is configured to strip or normalize client-supplied CF-Connecting-IP/X-Forwarded-For before the tunnel, and whether the origin accepts only tunnel traffic, are deployment facts outside the repository."
+    ],
+    "validation_plan": {
+      "deployment": "From an external host, send requests with forged CF-Connecting-IP/X-Forwarded-For values and confirm the effective throttle identity remains the tunnel peer unless the peer is trusted; also verify firewall/tunnel settings deny direct origin access.",
+      "local": "Read backend/proxy.py client_ip and peer_is_trusted_proxy paths, plus Caddy header_up handling and compose networking, without sending live traffic."
+    },
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "Caddyfile",
+        "line": 30,
+        "scope": "reverse_proxy",
+        "description": "Edge reverse proxy passes inbound client identity headers to the application."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/proxy.py",
+        "line": 86,
+        "scope": "peer_is_trusted_proxy",
+        "description": "Proxy helper inspects the immediate peer address against the trusted proxy list."
+      },
+      {
+        "kind": "sink",
+        "file": "backend/proxy.py",
+        "line": 136,
+        "scope": "client_ip",
+        "description": "Throttle client identity falls back to TCP peer unless proxy trust is established."
+      }
+    ],
+    "verdict": "needs_validation"
+  },
+  {
+    "claimed_root_cause": "HSTS emission depends on externally observed HTTPS and edge configuration.",
+    "description": "HSTS is emitted only when enabled and the externally observed scheme is HTTPS; edge duplication behavior is deployment-specific.",
+    "evidence": [
+      {
+        "description": "HSTS branch requires positive max-age and externally HTTPS scheme.",
+        "file": "backend/main.py",
+        "line": 447
+      },
+      {
+        "description": "External scheme trusts forwarded proto only from a configured proxy.",
+        "file": "backend/proxy.py",
+        "line": 86
+      },
+      {
+        "description": "Production example enables one-year HSTS and warns about duplicate edge emission.",
+        "file": ".env.example",
+        "line": 183
+      }
+    ],
+    "fingerprint": "gch/hsts-edge-duplication-needs-check",
+    "title": "HSTS emission depends on edge HTTPS observation",
+    "blockers": [
+      "Whether HSTS is also emitted by Cloudflare/Caddy, and whether every production browser path uses externally HTTPS requests, cannot be established from repository source alone."
+    ],
+    "validation_plan": {
+      "deployment": "Request the production hostname over HTTPS and over HTTP and inspect Strict-Transport-Security presence/absence, duplication, and redirect behavior at both the edge and origin.",
+      "local": "Read the HSTS branch in backend/main.py, external_scheme/proxy handling, and Caddyfile header behavior without live requests."
+    },
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/proxy.py",
+        "line": 86,
+        "scope": "external_scheme",
+        "description": "Request scheme is resolved from forwarded proto header if peer is trusted proxy."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/main.py",
+        "line": 447,
+        "scope": "security_headers_middleware",
+        "description": "Origin middleware checks if HSTS is configured and external scheme is HTTPS."
+      },
+      {
+        "kind": "sink",
+        "file": "backend/main.py",
+        "line": 450,
+        "scope": "security_headers_middleware",
+        "description": "Strict-Transport-Security header is written to the outbound HTTP response."
+      }
+    ],
+    "verdict": "needs_validation"
+  },
+  {
+    "confidence": {
+      "reason": "Rate-limiter ownership and reset behavior are explicit in source; multi-replica request distribution was not executed in this source-only run.",
+      "score": "high"
+    },
+    "description": "Request throttling uses a process-local in-memory RateLimiter registry owned by each application process. In a multi-replica hosted deployment, each replica enforces the same nominal per-IP bucket independently, so aggregate traffic across replicas can exceed the intended shared limit.",
+    "evidence": [
+      {
+        "description": "Registry is explicitly per caller/process and isolated between app instances in the same process.",
+        "file": "backend/rate_limit.py",
+        "line": 8
+      },
+      {
+        "description": "main.py owns one process-wide registry; no shared/distributed throttle state.",
+        "file": "backend/main.py",
+        "line": 230
+      },
+      {
+        "description": "Throttling is explicitly hosted-only and relies on this registry.",
+        "file": "backend/rate_limit.py",
+        "line": 4
+      },
+      {
+        "description": "Supported deployment discussions contemplate web replicas/workers sharing load while throttle state remains local.",
+        "file": "backend/sync_service.py",
+        "line": 76
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "Unauthenticated remote client able to distribute requests across web replicas.",
+      "instructions": [
+        "Deploy hosted mode with more than one web replica behind the proxy.",
+        "Send login/callback/sync/cache-clear requests at the nominal per-IP limit toward each replica identity.",
+        "Observe that each replica accepts up to its local bucket, so aggregate accepted requests exceed the nominal shared bucket.",
+        "Confirm that no shared throttle store coordinates the replicas."
+      ],
+      "observed_result": "Aggregate accepted abusive requests scale with replica count because each replica maintains an independent token bucket.",
+      "payloads": [
+        "Repeated POST /api/auth/login/start, GET /api/auth/callback failures, POST /api/sync, DELETE /api/cache and DELETE /api/me/cache at the nominal per-IP limit per replica"
+      ]
+    },
+    "fingerprint": "gch/inmemory-ratelimit-diverges-across-replicas",
+    "intended_behavior": "Abuse throttling for internet-facing authentication, sync, and destructive endpoints should enforce the intended shared limit regardless of how many web replicas accept traffic.",
+    "remediation": {
+      "code_changes": [
+        {
+          "file_name": "backend/rate_limit.py",
+          "fixed_code": "Replace the process-local RateLimiter for internet-facing buckets with shared throttle state, or document the deployment as single-web-replica-only and enforce that topology in compose/deployment checks."
+        }
+      ],
+      "strategy": "Use shared rate-limit state for externally reachable buckets when multiple web replicas are supported; otherwise constrain the supported topology to one web replica and check it at deployment time."
+    },
+    "root_cause": "Process-local in-memory rate-limit buckets with no shared coordination across web replicas.",
+    "severity": {
+      "impact": {
+        "reason": "Abuse controls weaken as replicas scale; this permits more abusive throughput but does not itself bypass authentication or expose another tenant.",
+        "score": "low"
+      },
+      "likelihood": {
+        "reason": "Requires a multi-replica deployment and distributed abusive traffic; single-replica deployments and Cloudflare edge controls reduce exposure.",
+        "score": "low"
+      },
+      "overall_severity": "low"
+    },
+    "title": "In-memory rate limits diverge across web replicas",
+    "trace": [
+      {
+        "description": "Throttle registry is instantiated per application process.",
+        "file": "backend/main.py",
+        "kind": "entrypoint",
+        "line": 230,
+        "scope": "create_app"
+      },
+      {
+        "description": "Registry implementation is explicitly process-local and isolated.",
+        "file": "backend/rate_limit.py",
+        "kind": "propagation",
+        "line": 41,
+        "scope": "RateLimiter"
+      },
+      {
+        "description": "Internet-facing login/callback/sync/cache endpoints consume the local bucket.",
+        "file": "backend/main.py",
+        "kind": "propagation",
+        "line": 309,
+        "scope": "_login_allowed"
+      },
+      {
+        "description": "No shared throttle coordination; aggregate limit scales with replica count.",
+        "file": "backend/rate_limit.py",
+        "kind": "sink",
+        "line": 8,
+        "scope": "RateLimiter"
+      }
+    ],
+    "verdict": "confirmed",
+    "conditions": []
+  },
+  {
+    "claimed_root_cause": "OAuth authorization-code/state replay across callbacks.",
+    "description": "Candidate OAuth callback replay was considered and rejected.",
+    "evidence": [
+      {
+        "description": "State row is deleted before the Google exchange, preventing second use.",
+        "file": "backend/hosted_auth.py",
+        "line": 560
+      }
+    ],
+    "fingerprint": "gch/oauth-state-reuse-claim",
+    "title": "OAuth state replay does not reach token redemption",
+    "reason": "Source review shows the candidate OAuth state-reuse path does not exist: callback lookup is single-use and deletes the row before token exchange; replay therefore fails closed.",
+    "trace": [
+      {
+        "description": "Callback looks up the server-side OAuth state row by attacker-supplied state value.",
+        "file": "backend/hosted_auth.py",
+        "kind": "entrypoint",
+        "line": 531,
+        "scope": "callback"
+      },
+      {
+        "description": "State row is deleted before the outbound Google token exchange.",
+        "file": "backend/hosted_auth.py",
+        "kind": "propagation",
+        "line": 560,
+        "scope": "callback"
+      },
+      {
+        "description": "Replayed callback cannot reach token redemption with the same state.",
+        "file": "backend/hosted_auth.py",
+        "kind": "sink",
+        "line": 558,
+        "scope": "callback"
+      }
+    ],
+    "verdict": "rejected"
+  },
+  {
+    "claimed_root_cause": "Per-course teacher authorization depends on Google-issued role data.",
+    "description": "Teacher-only Classroom views require both the session user and a TEACHER role extracted from the caller's own Classroom API response.",
+    "evidence": [
+      {
+        "description": "Teacher list/detail routes call the teacher gate with session-derived owner id.",
+        "file": "backend/api.py",
+        "line": 848
+      },
+      {
+        "description": "Course content and grades use the same teacher gate shape.",
+        "file": "backend/api.py",
+        "line": 863
+      },
+      {
+        "description": "Role extraction reads only the caller's Classroom API response, not request parameters.",
+        "file": "backend/api.py",
+        "line": 733
+      }
+    ],
+    "fingerprint": "gch/teacher-role-relies-on-google-membership",
+    "title": "Teacher-role enforcement depends on live Google membership",
+    "blockers": [
+      "The authoritative per-course role assignment lives in the Classroom API response for the caller's own credential; repository tests and fixtures cannot prove that Google returns TEACHER for the wrong caller."
+    ],
+    "validation_plan": {
+      "deployment": "With two real Google accounts that share one Classroom course under different roles, sign in as the lower-privilege account and request the teacher-only routes for that course; confirm 403 and no roster/grades payload.",
+      "local": "Review tests/test_user_isolation.py, tests covering teacher routes, and models for composite user scoping; inspect the role extraction and teacher-gate helpers without live Google credentials."
+    },
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "backend/api.py",
+        "line": 848,
+        "scope": "teacher_gate",
+        "description": "Teacher list/detail routes invoke the teacher role gate with session user id."
+      },
+      {
+        "kind": "propagation",
+        "file": "backend/api.py",
+        "line": 733,
+        "scope": "get_teacher_courses",
+        "description": "The gate queries user course roles directly from the Google Classroom API response."
+      },
+      {
+        "kind": "sink",
+        "file": "backend/api.py",
+        "line": 863,
+        "scope": "teacher_gate",
+        "description": "Teacher authorization decisions depend strictly on Classroom API membership output."
+      }
+    ],
+    "verdict": "needs_validation"
+  },
+  {
+    "confidence": {
+      "reason": "Source trace is complete and the missing timeout is visible on every failure and success path; socket-hang duration was not measured because target execution was unavailable.",
+      "score": "high"
+    },
+    "description": "The hosted Turnstile verification path performs an outbound HTTPS POST to Cloudflare siteverify without a socket timeout. The vulnerable call is reachable from an unauthenticated endpoint, POST /api/auth/login/start, before any authenticated session is required.",
+    "evidence": [
+      {
+        "description": "httplib2.Http() is constructed with no timeout argument, unlike TOKEN_TIMEOUT_SECONDS used for Google token calls.",
+        "file": "backend/hosted_auth.py",
+        "line": 365
+      },
+      {
+        "description": "The no-timeout response is used as the sole pass/fail gate for login initiation.",
+        "file": "backend/hosted_auth.py",
+        "line": 366
+      },
+      {
+        "description": "Callers propagate the unbounded result without adding their own time bound.",
+        "file": "backend/hosted_auth.py",
+        "line": 473
+      },
+      {
+        "description": "Google token exchange in the same codebase uses an explicit 30-second timeout, establishing that unbounded outbound calls are not the intended pattern.",
+        "file": "backend/oauth_transport.py",
+        "line": 106
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "Unauthenticated remote client.",
+      "instructions": [
+        "Configure hosted mode with Turnstile enabled.",
+        "POST /api/auth/login/start with an attacker-chosen token while Cloudflare siteverify is slow or unresponsive.",
+        "Observe that the affected request thread remains occupied for the duration of the outbound socket wait.",
+        "Repeat with a small number of concurrent unauthenticated requests and observe shared request-handling capacity being retained."
+      ],
+      "observed_result": "Each affected login-start request retains its worker while waiting on siteverify; sustained slow responses retain shared request-handling capacity.",
+      "payloads": [
+        "POST /api/auth/login/start with JSON body {\"token\": \"attacker-controlled\"}"
+      ]
+    },
+    "fingerprint": "gch/turnstile-siteverify-no-timeout",
+    "intended_behavior": "Unauthenticated outbound verification calls should have an explicit low timeout and fail closed, so a slow verification provider cannot retain shared request-handling capacity.",
+    "remediation": {
+      "code_changes": [
+        {
+          "file_name": "backend/hosted_auth.py",
+          "fixed_code": "http = httplib2.Http(timeout=TURNSTILE_TIMEOUT_SECONDS)"
+        }
+      ],
+      "strategy": "Add an explicit low timeout to the Turnstile siteverify POST and keep fail-closed behavior; use the same bounded-transport pattern already used by oauth_transport."
+    },
+    "root_cause": "Missing outbound timeout on the Cloudflare Turnstile siteverify POST in _verify_turnstile.",
+    "severity": {
+      "impact": {
+        "reason": "Shared request-handling capacity can be retained by slow verification responses; no credential, tenant-data, or code-execution boundary is crossed.",
+        "score": "low"
+      },
+      "likelihood": {
+        "reason": "The affected endpoint is unauthenticated and the timeout is absent on every call, but exploitation needs sustained slow siteverify responses and competes with existing per-IP login throttling.",
+        "score": "medium"
+      },
+      "overall_severity": "low"
+    },
+    "title": "Turnstile siteverify POST has no outbound timeout",
+    "trace": [
+      {
+        "description": "Unauthenticated entry: login-start endpoint enabled only with Turnstile keys.",
+        "file": "backend/hosted_auth.py",
+        "kind": "entrypoint",
+        "line": 446,
+        "scope": "login_start"
+      },
+      {
+        "description": "Attacker-controlled token is passed to verification.",
+        "file": "backend/hosted_auth.py",
+        "kind": "propagation",
+        "line": 473,
+        "scope": "login_start"
+      },
+      {
+        "description": "Verification helper performs an outbound HTTPS POST.",
+        "file": "backend/hosted_auth.py",
+        "kind": "propagation",
+        "line": 350,
+        "scope": "_verify_turnstile"
+      },
+      {
+        "description": "HTTP client is created without a timeout; unbounded socket wait.",
+        "file": "backend/hosted_auth.py",
+        "kind": "sink",
+        "line": 365,
+        "scope": "_verify_turnstile"
+      }
+    ],
+    "verdict": "confirmed",
+    "conditions": []
+  },
+  {
+    "confidence": {
+      "reason": "Image reference and deployment wiring are explicit in source; registry mutation timing was not observed in this source-only run.",
+      "score": "high"
+    },
+    "description": "The compose deployment pins postgres and Caddy images but tracks cloudflared through the mutable cloudflare/cloudflared:latest tag. A rebuild or redeploy can therefore silently change the edge tunnel binary without a source change or review.",
+    "evidence": [
+      {
+        "description": "cloudflared service uses the mutable latest tag while warning that pinning matters.",
+        "file": "compose.yml",
+        "line": 142
+      },
+      {
+        "description": "Same file pins postgres to postgres:16-alpine.",
+        "file": "compose.yml",
+        "line": 21
+      },
+      {
+        "description": "Same file pins Caddy to caddy:2-alpine.",
+        "file": "compose.yml",
+        "line": 118
+      },
+      {
+        "description": "Runtime backend image pins exact dependency versions for reproducible deploys.",
+        "file": "backend/requirements-prod.txt",
+        "line": 9
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "Operator/supply-chain observer reviewing reproducible deployment inputs.",
+      "instructions": [
+        "Inspect compose.yml image references for the edge tunnel versus postgres and Caddy.",
+        "Rebuild or redeploy at two different times and record the resolved cloudflared digest.",
+        "Observe that the tunnel image can change without any repository change.",
+        "Confirm that no digest pin or update-review step constrains the edge binary."
+      ],
+      "observed_result": "The tunnel image reference is mutable: redeploys can silently change edge software while the repository remains unchanged.",
+      "payloads": [
+        "compose.yml cloudflared image reference cloudflare/cloudflared:latest"
+      ]
+    },
+    "fingerprint": "gch/unpinned-cloudflared-image-tag",
+    "intended_behavior": "Public-edge deployment inputs should be pinned and reviewable so rebuilds do not silently change tunnel software.",
+    "remediation": {
+      "code_changes": [
+        {
+          "file_name": "compose.yml",
+          "fixed_code": "image: cloudflare/cloudflared:2026.9.1  # replace with the reviewed/tested release and update deliberately, or pin by digest."
+        }
+      ],
+      "strategy": "Pin cloudflared to a tested version or digest and update it through deliberate dependency changes, matching the treatment of postgres and Caddy."
+    },
+    "root_cause": "Mutable latest image tag for the Cloudflare Tunnel edge container.",
+    "severity": {
+      "impact": {
+        "reason": "Edge software can change silently; no direct credential disclosure or tenant compromise is demonstrated by the tag alone.",
+        "score": "low"
+      },
+      "likelihood": {
+        "reason": "Requires an upstream image change coinciding with redeploy; routine rebuilds make this plausible over time.",
+        "score": "low"
+      },
+      "overall_severity": "informational"
+    },
+    "title": "Cloudflared edge image uses mutable latest tag",
+    "trace": [
+      {
+        "description": "Deployment entry: container image selection for the public edge.",
+        "file": "compose.yml",
+        "kind": "entrypoint",
+        "line": 137,
+        "scope": "cloudflared"
+      },
+      {
+        "description": "Mutable tag selects whatever latest resolves to at deploy time.",
+        "file": "compose.yml",
+        "kind": "propagation",
+        "line": 142,
+        "scope": "cloudflared"
+      },
+      {
+        "description": "No digest or version pin constrains the resolved edge artifact.",
+        "file": "compose.yml",
+        "kind": "sink",
+        "line": 142,
+        "scope": "cloudflared"
+      }
+    ],
+    "verdict": "confirmed",
+    "conditions": []
+  }
+]

@@ -1,0 +1,91 @@
+{
+  "confidence": {
+    "reason": "Image reference and deployment wiring are explicit in source; registry mutation timing was not observed in this source-only run.",
+    "score": "high"
+  },
+  "description": "The compose deployment pins postgres and Caddy images but tracks cloudflared through the mutable cloudflare/cloudflared:latest tag. A rebuild or redeploy can therefore silently change the edge tunnel binary without a source change or review.",
+  "evidence": [
+    {
+      "description": "cloudflared service uses the mutable latest tag while warning that pinning matters.",
+      "file": "compose.yml",
+      "line": 142
+    },
+    {
+      "description": "Same file pins postgres to postgres:16-alpine.",
+      "file": "compose.yml",
+      "line": 21
+    },
+    {
+      "description": "Same file pins Caddy to caddy:2-alpine.",
+      "file": "compose.yml",
+      "line": 118
+    },
+    {
+      "description": "Runtime backend image pins exact dependency versions for reproducible deploys.",
+      "file": "backend/requirements-prod.txt",
+      "line": 9
+    }
+  ],
+  "execution": {
+    "attacker_perspective": "Operator/supply-chain observer reviewing reproducible deployment inputs.",
+    "instructions": [
+      "Inspect compose.yml image references for the edge tunnel versus postgres and Caddy.",
+      "Rebuild or redeploy at two different times and record the resolved cloudflared digest.",
+      "Observe that the tunnel image can change without any repository change.",
+      "Confirm that no digest pin or update-review step constrains the edge binary."
+    ],
+    "observed_result": "The tunnel image reference is mutable: redeploys can silently change edge software while the repository remains unchanged.",
+    "payloads": [
+      "compose.yml cloudflared image reference cloudflare/cloudflared:latest"
+    ]
+  },
+  "fingerprint": "gch/unpinned-cloudflared-image-tag",
+  "intended_behavior": "Public-edge deployment inputs should be pinned and reviewable so rebuilds do not silently change tunnel software.",
+  "remediation": {
+    "code_changes": [
+      {
+        "file_name": "compose.yml",
+        "fixed_code": "image: cloudflare/cloudflared:2026.9.1  # replace with the reviewed/tested release and update deliberately, or pin by digest."
+      }
+    ],
+    "strategy": "Pin cloudflared to a tested version or digest and update it through deliberate dependency changes, matching the treatment of postgres and Caddy."
+  },
+  "root_cause": "Mutable latest image tag for the Cloudflare Tunnel edge container.",
+  "severity": {
+    "impact": {
+      "reason": "Edge software can change silently; no direct credential disclosure or tenant compromise is demonstrated by the tag alone.",
+      "score": "low"
+    },
+    "likelihood": {
+      "reason": "Requires an upstream image change coinciding with redeploy; routine rebuilds make this plausible over time.",
+      "score": "low"
+    },
+    "overall_severity": "informational"
+  },
+  "title": "Cloudflared edge image uses mutable latest tag",
+  "trace": [
+    {
+      "description": "Deployment entry: container image selection for the public edge.",
+      "file": "compose.yml",
+      "kind": "entrypoint",
+      "line": 137,
+      "scope": "cloudflared"
+    },
+    {
+      "description": "Mutable tag selects whatever latest resolves to at deploy time.",
+      "file": "compose.yml",
+      "kind": "propagation",
+      "line": 142,
+      "scope": "cloudflared"
+    },
+    {
+      "description": "No digest or version pin constrains the resolved edge artifact.",
+      "file": "compose.yml",
+      "kind": "sink",
+      "line": 142,
+      "scope": "cloudflared"
+    }
+  ],
+  "verdict": "confirmed",
+  "conditions": []
+}

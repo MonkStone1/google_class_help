@@ -1,0 +1,98 @@
+{
+  "confidence": {
+    "reason": "Rate-limiter ownership and reset behavior are explicit in source; multi-replica request distribution was not executed in this source-only run.",
+    "score": "high"
+  },
+  "description": "Request throttling uses a process-local in-memory RateLimiter registry owned by each application process. In a multi-replica hosted deployment, each replica enforces the same nominal per-IP bucket independently, so aggregate traffic across replicas can exceed the intended shared limit.",
+  "evidence": [
+    {
+      "description": "Registry is explicitly per caller/process and isolated between app instances in the same process.",
+      "file": "backend/rate_limit.py",
+      "line": 8
+    },
+    {
+      "description": "main.py owns one process-wide registry; no shared/distributed throttle state.",
+      "file": "backend/main.py",
+      "line": 230
+    },
+    {
+      "description": "Throttling is explicitly hosted-only and relies on this registry.",
+      "file": "backend/rate_limit.py",
+      "line": 4
+    },
+    {
+      "description": "Supported deployment discussions contemplate web replicas/workers sharing load while throttle state remains local.",
+      "file": "backend/sync_service.py",
+      "line": 76
+    }
+  ],
+  "execution": {
+    "attacker_perspective": "Unauthenticated remote client able to distribute requests across web replicas.",
+    "instructions": [
+      "Deploy hosted mode with more than one web replica behind the proxy.",
+      "Send login/callback/sync/cache-clear requests at the nominal per-IP limit toward each replica identity.",
+      "Observe that each replica accepts up to its local bucket, so aggregate accepted requests exceed the nominal shared bucket.",
+      "Confirm that no shared throttle store coordinates the replicas."
+    ],
+    "observed_result": "Aggregate accepted abusive requests scale with replica count because each replica maintains an independent token bucket.",
+    "payloads": [
+      "Repeated POST /api/auth/login/start, GET /api/auth/callback failures, POST /api/sync, DELETE /api/cache and DELETE /api/me/cache at the nominal per-IP limit per replica"
+    ]
+  },
+  "fingerprint": "gch/inmemory-ratelimit-diverges-across-replicas",
+  "intended_behavior": "Abuse throttling for internet-facing authentication, sync, and destructive endpoints should enforce the intended shared limit regardless of how many web replicas accept traffic.",
+  "remediation": {
+    "code_changes": [
+      {
+        "file_name": "backend/rate_limit.py",
+        "fixed_code": "Replace the process-local RateLimiter for internet-facing buckets with shared throttle state, or document the deployment as single-web-replica-only and enforce that topology in compose/deployment checks."
+      }
+    ],
+    "strategy": "Use shared rate-limit state for externally reachable buckets when multiple web replicas are supported; otherwise constrain the supported topology to one web replica and check it at deployment time."
+  },
+  "root_cause": "Process-local in-memory rate-limit buckets with no shared coordination across web replicas.",
+  "severity": {
+    "impact": {
+      "reason": "Abuse controls weaken as replicas scale; this permits more abusive throughput but does not itself bypass authentication or expose another tenant.",
+      "score": "low"
+    },
+    "likelihood": {
+      "reason": "Requires a multi-replica deployment and distributed abusive traffic; single-replica deployments and Cloudflare edge controls reduce exposure.",
+      "score": "low"
+    },
+    "overall_severity": "low"
+  },
+  "title": "In-memory rate limits diverge across web replicas",
+  "trace": [
+    {
+      "description": "Throttle registry is instantiated per application process.",
+      "file": "backend/main.py",
+      "kind": "entrypoint",
+      "line": 230,
+      "scope": "create_app"
+    },
+    {
+      "description": "Registry implementation is explicitly process-local and isolated.",
+      "file": "backend/rate_limit.py",
+      "kind": "propagation",
+      "line": 41,
+      "scope": "RateLimiter"
+    },
+    {
+      "description": "Internet-facing login/callback/sync/cache endpoints consume the local bucket.",
+      "file": "backend/main.py",
+      "kind": "propagation",
+      "line": 309,
+      "scope": "_login_allowed"
+    },
+    {
+      "description": "No shared throttle coordination; aggregate limit scales with replica count.",
+      "file": "backend/rate_limit.py",
+      "kind": "sink",
+      "line": 8,
+      "scope": "RateLimiter"
+    }
+  ],
+  "verdict": "confirmed",
+  "conditions": []
+}
