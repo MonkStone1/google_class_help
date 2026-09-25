@@ -62,7 +62,7 @@
 - [ ] **[VPS]** `docker compose up -d postgres` → дождаться `healthy`
       (`docker compose ps`).
 - [ ] **[VPS]** Миграции (первый прогон Alembic на живой PostgreSQL):
-      `docker compose run --rm web alembic -c /app/alembic.ini upgrade head`
+      `docker compose run --rm --workdir /app web alembic -c /app/alembic.ini upgrade head`
 - [ ] **[VPS]** `docker compose up -d web worker caddy cloudflared`
 - [ ] **[VPS]** `docker compose ps` — все сервисы `running`/`healthy`,
       `docker stats --no-stream` — RAM/CPU в лимитах.
@@ -82,9 +82,9 @@
       одинаковый Google course id у обоих не смешивается.
 - [ ] **[PC]** Teacher-сценарий: у аккаунта teacher-роль в одном курсе и
       student-роль в другом; `/students` недоступен на студенческом курсе.
-- [ ] **[PC]** `POST /api/sync` → `{"queued": true}`; в UI спиннер до
-      `sync_status` `running → ok`; повторный клик → 429 с `Retry-After`;
-      при идущем синке → 409.
+- [ ] **[PC]** `POST /api/sync` → `{"queued": true}`; в UI спиннер сразу после
+      ответа и до terminal `syncing=false`; данные обновляются автоматически;
+      повторный клик → 429 с `Retry-After`; при идущем синке → 409.
 - [ ] **[PC]** `DELETE /api/me/cache?confirm=true` чистит только свой кэш.
 - [ ] **[VPS]** Postgres/8000 недоступны снаружи (проверить с другого
       хоста: `nc -vz <IP> 5432` / `8000` — отказ).

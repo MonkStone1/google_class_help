@@ -227,11 +227,15 @@ class SyncStatus(BaseModel):
     authenticated: bool
     last_sync: datetime | None = None
     last_sync_error: str | None = None
+    # ``syncing`` is true for both a queued request and a claimed/running job.
+    # The frontend uses it to keep watching until the worker reaches a final
+    # state; ``sync_status`` remains ``pending`` while the job waits in queue.
     syncing: bool = False
     # Structured sync state (migration stage 5, §18). ``sync_status`` is one
-    # of "pending"/"running"/"ok"/"error"/"needs_reauth": the frontend uses
-    # it to decide between a spinner (running), a retry hint (error) and a
-    # re-auth prompt (needs_reauth) without parsing the error text.
+    # of "pending"/"running"/"ok"/"error"/"needs_reauth"; together with the
+    # derived ``syncing`` flag it lets the frontend distinguish an active
+    # queued/running job, a retryable error, and a re-auth prompt without
+    # parsing the error text.
     sync_status: str = "pending"
     last_sync_started_at: datetime | None = None
     last_sync_finished_at: datetime | None = None

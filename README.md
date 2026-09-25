@@ -59,6 +59,113 @@ Vite dev-сервер: <http://localhost:5173> — проксирует `/api` �
 production web-клиент (`APP_ENV` и `GC_DASHBOARD_ALLOWED_HOSTS`/
 `GC_DASHBOARD_CORS_ORIGINS` не задаются — дефолты development-режима).
 
+### Локальный Docker с Google OAuth
+
+Локальный hosted-стенд запускает тот же Docker image, что и production, но
+без Caddy и Cloudflare. Браузер обращается к `http://127.0.0.1:8000`, а
+PostgreSQL, web и worker общаются по отдельной Docker-сети. Это позволяет
+проверить настоящий Google OAuth, сессии, шифрование токенов, Alembic и
+синхронизацию Classroom, не используя production-домен или tunnel-токен.
+
+#### Настройка Google Cloud
+
+1. В **API & Services → Library** включите **Google Classroom API**.
+2. Настройте OAuth consent screen/Audience как **External → Testing** и
+   добавьте свой Google-аккаунт в **Test users**. Полная verification для
+   локального тестового пользователя не нужна.
+3. Создайте **отдельный OAuth client типа Web application**. Не используйте
+   desktop-клиент из `backend/credentials.json`: hosted-режим берёт web
+   client ID/secret только из environment.
+4. В качестве Authorized redirect URI укажите ровно:
+
+   ```text
+   http://127.0.0.1:8000/api/auth/callback
+   ```
+
+   Google разрешает HTTP для loopback IP у web-приложения. Не используйте
+   `localhost` в этом URI: адрес и порт должны точно совпадать с тем, что
+   отправляет приложение. Сайт также открывайте по `127.0.0.1`, иначе
+   OAuth-cookie и callback будут привязаны к другому hostname.
+
+Приложение запрашивает OIDC scopes `openid`, `profile`, `email` для
+идентификации профиля и четыре read-only Classroom scope:
+`classroom.courses.readonly`, `classroom.student-submissions.me.readonly`,
+`classroom.student-submissions.students.readonly` и
+`classroom.rosters.readonly`. Оно никогда не изменяет данные Classroom.
+
+#### Подготовка environment
+
+Из корня проекта:
+
+```bat
+cd D:\Documents\google_class_help
+Copy-Item .env.local.example .env.local
+```
+
+Откройте `.env.local` и заполните `GOOGLE_CLIENT_ID`,
+`GOOGLE_CLIENT_SECRET` и `POSTGRES_PASSWORD`. Затем сгенерируйте ключ:
+
+```bat
+.venv\Scripts\python.exe tools\generate_hosted_secrets.py
+```
+
+Скопируйте выведенное значение `GC_DASHBOARD_OAUTH_TOKEN_ENCRYPTION_KEY` в
+`.env.local`. Не перезаписывайте этот ключ при обычных перезапусках: он нужен
+для расшифровки уже сохранённых OAuth-токенов. Файл `.env.local` игнорируется
+Git и не попадает в Docker image.
+
+Локальный `compose.local.yml` сам включает `GC_DASHBOARD_HOSTED=1`,
+`APP_ENV=development`, PostgreSQL и отдельный worker. Он намеренно не включает
+Caddy/Cloudflare, production `.env`, HSTS и Secure-cookie: Google OAuth здесь
+использует разрешённый loopback HTTP callback.
+
+#### Сборка и запуск
+
+Во всех командах нужен один и тот же `--env-file`: Compose использует его и
+для подстановки пароля PostgreSQL, и для переменных контейнеров.
+
+```bat
+docker compose --env-file .env.local -f compose.local.yml config --quiet
+docker compose --env-file .env.local -f compose.local.yml build web
+docker compose --env-file .env.local -f compose.local.yml up -d postgres
+docker compose --env-file .env.local -f compose.local.yml run --rm --workdir /app web alembic -c /app/alembic.ini upgrade head
+docker compose --env-file .env.local -f compose.local.yml up -d web worker
+```
+
+Откройте <http://127.0.0.1:8000> и войдите через Google. После callback
+worker автоматически выполнит первый запрос синхронизации (в локальном
+compose уменьшены задержки сканирования). Проверить состояние контейнеров и
+логи можно командами:
+
+```bat
+docker compose --env-file .env.local -f compose.local.yml ps
+docker compose --env-file .env.local -f compose.local.yml logs --tail=100 web worker
+Invoke-RestMethod http://127.0.0.1:8000/api/health
+Invoke-RestMethod http://127.0.0.1:8000/api/ready
+```
+
+Ожидаемые ответы health/ready: `ok = True`, а у `/api/ready` также
+`db = up`. Если Google сообщает `redirect_uri_mismatch`, проверьте, что в
+Google Cloud указан именно `http://127.0.0.1:8000/api/auth/callback`, а в
+`compose.local.yml` задан тот же `GOOGLE_REDIRECT_URI`.
+
+Остановить стенд, сохранив локальную БД и OAuth-токены:
+
+```bat
+docker compose --env-file .env.local -f compose.local.yml down
+```
+
+Полностью удалить **только локальные** volumes БД и данных приложения:
+
+```bat
+docker compose --env-file .env.local -f compose.local.yml down --volumes
+```
+
+Этот вариант не проверяет Caddy, Cloudflare, публичный HTTPS и HSTS —
+для них нужен отдельный deployment-контур. Он проверяет локальный Docker и
+реальный Google OAuth end-to-end.
+
+
 ### Hosted production edge (миграция на хостинг, этап 8, ADR-0026)
 
 - Статика — Option A: FastAPI раздаёт `frontend/dist` (Caddy → FastAPI);
@@ -259,7 +366,8 @@ build.bat
 - любой локальный процесс пользователя может вызывать API (чтение кэша и
   запуск синхронизации) — приложение не защищает машину от своего же
   пользователя и на это не претендует;
-- все OAuth-scopes — read-only; приложение никогда ничего не изменяет в
+- Classroom OAuth-scopes — только read-only; OIDC scopes дают лишь профиль
+  текущего Google-пользователя. Приложение никогда ничего не изменяет в
   Google Classroom.
 
 ### Windows-интеграция (опционально, не автоматизировано)

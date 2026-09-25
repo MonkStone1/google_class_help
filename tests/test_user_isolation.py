@@ -231,6 +231,12 @@ def test_sync_targets_the_session_user_only(hosted_client, db, monkeypatch):
     bob_state = db.get(SyncStatus, bob.id)
     assert bob_state is not None
     assert bob_state.sync_requested is True
+    # The queue is already an active UI operation even before the worker
+    # claims it; the frontend must not wait for `status == running` to start
+    # watching and must not keep the old cache as the final view.
+    queued_status = hosted_client.get("/api/status").json()
+    assert queued_status["sync_status"] == sync_store.SYNC_PENDING
+    assert queued_status["syncing"] is True
 
 
 # ----------------------------------------------------- §16 per-session state

@@ -1,4 +1,4 @@
-"""Shared Google OAuth transport: read-only scopes and token-endpoint I/O.
+"""Shared Google OAuth scopes and token-endpoint I/O.
 
 Migration stage 8 (§32/§33): the middle layer both deployment modes share.
 Neither mode's startup imports the other mode's authentication flow, but
@@ -14,7 +14,8 @@ both redeem and refresh authorization codes through this one transport
 Contents are deliberately narrow: no browser flow, no local callback
 server, no token storage, no environment decisions — only
 
-- the read-only scope list (ADR-0002, identical in both modes),
+- the read-only Classroom scope list and the OIDC identity scopes used by
+  userinfo (ADR-0002, identical in both modes),
 - the token-endpoint exchange (``post_token_request``),
 - payload → ``Credentials`` parsing (``credentials_from_payload``),
 - the httplib2-preferred refresh (``refresh_credentials``).
@@ -35,9 +36,14 @@ from google.oauth2.credentials import Credentials
 
 logger = logging.getLogger(__name__)
 
-# Read-only scopes for both modes. The student route needs courses.readonly
-# plus student-submissions.me.readonly. Teacher mode adds two read-only
-# scopes:
+# Shared OAuth scopes for both deployment modes. The OIDC identity scopes are
+# included because the hosted flow calls Google's userinfo endpoint to resolve
+# the stable `sub` and the local profile (`name`/`email`) before Classroom sync.
+# None of these scopes grants Classroom write access.
+
+# Read-only Classroom scopes for both modes. The student route needs
+# courses.readonly plus student-submissions.me.readonly. Teacher mode adds two
+# read-only scopes:
 #
 # - classroom.student-submissions.students.readonly lets a teacher list ALL
 #   coursework of a course (courses.courseWork.list) and read every
@@ -51,8 +57,12 @@ logger = logging.getLogger(__name__)
 #   get_valid_credentials() would sign the user out on every launch.
 # - classroom.rosters.readonly lists the students enrolled in a course.
 #
-# Every scope stays read-only — the app never writes to Google Classroom.
+# Every Classroom scope stays read-only — the app never writes to Google
+# Classroom. The OIDC identity scopes above only identify the signed-in user.
 SCOPES = [
+    "openid",
+    "profile",
+    "email",
     "https://www.googleapis.com/auth/classroom.courses.readonly",
     "https://www.googleapis.com/auth/classroom.student-submissions.me.readonly",
     "https://www.googleapis.com/auth/classroom.student-submissions.students.readonly",

@@ -105,7 +105,7 @@ router = APIRouter(prefix="/api")
 
 # ------------------------------------------------------- user profile (§17)
 
-# The frontend polls the status endpoints every ~1.5 s while logging in, and
+# The frontend polls the status endpoints every ~1.5 s while logging in or following a queued/running sync, and
 # a network roundtrip to Google inside every poll is unacceptable. The
 # profile changes about once a year, so it is cached for five minutes; the
 # network call itself runs OUTSIDE the lock.
@@ -931,7 +931,13 @@ def status(
         authenticated=_is_authenticated(user),
         last_sync=sync_state.last_success_at if sync_state else None,
         last_sync_error=sync_state.last_error if sync_state else None,
-        syncing=bool(sync_state and sync_state.status == sync.SYNC_RUNNING),
+        # A queued job is active from the moment it is requested. The status
+        # row remains ``pending`` until the worker claims it, but the UI must
+        # already show the spinner and follow it through completion.
+        syncing=bool(
+            sync_state
+            and (sync_state.status == sync.SYNC_RUNNING or sync_state.sync_requested)
+        ),
         sync_status=sync_state.status if sync_state else sync.SYNC_PENDING,
         last_sync_started_at=sync_state.last_started_at if sync_state else None,
         last_sync_finished_at=sync_state.last_finished_at if sync_state else None,

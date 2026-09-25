@@ -214,8 +214,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
       if (status === 403) {
         // The server asked for a Turnstile challenge (expired/missing
-        // token). Send the browser back to the sign-in gate with the
-        // challenge flag so the widget is rendered again.
+        // token). Send the browser back to the sign-in gate so the widget
+        // is rendered again.
         if (window.location.search.includes("challenge=required")) {
           window.location.reload();
         } else {
@@ -246,35 +246,63 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, [loadData]);
 
+  // Follow every active server-side sync, including a job that is still queued
+  // after sign-in. The status row is the source of truth: a queued job has
+  // ``sync_status == "pending"`` but ``syncing == true`` until the worker
+  // claims it. There is deliberately no fixed attempt limit here — Classroom
+  // imports can legitimately take longer than 50 seconds. When the status turns
+  // terminal, invalidate teacher resources and reload the cache once.
+  useEffect(() => {
+    if (status?.syncing !== true) {
+      return;
+    }
+
+    let cancelled = false;
+    let timer: number | undefined;
+
+    const schedule = () => {
+      timer = window.setTimeout(() => {
+        void poll();
+      }, 1500);
+    };
+
+    const poll = async () => {
+      try {
+        const next = await api.getStatus();
+        if (cancelled) return;
+        setStatus(next);
+        if (next.syncing) {
+          schedule();
+          return;
+        }
+        // The worker has committed the final status before this request sees
+        // it, so the data reads below observe the completed cache.
+        invalidateAllResources();
+        await loadData();
+      } catch {
+        // A temporary network failure must not turn a real running sync into a
+        // permanently spinning button; retry on the next tick.
+        if (!cancelled) schedule();
+      }
+    };
+
+    schedule();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [loadData, status?.syncing]);
+
   const syncNow = useCallback(async (): Promise<SyncResult | null> => {
     setSyncing(true);
     try {
-      const before = status?.last_sync ?? null;
       const result = await api.sync();
       // Teacher pages read from the resource cache; a fresh sync must drop it
-      // so they refetch instead of showing pre-sync data (ADR-0017).
+      // so they refetch instead of showing pre-sync data (ADR-0017). The final
+      // data reload is performed by the status watcher above once the worker
+      // reaches a terminal state.
       invalidateAllResources();
       await loadData();
-      // Hosted mode (migration stage 10, DDoS plan §9) queues the job: this
-      // POST only flags ``sync_requested`` and returns ``queued=true``. Keep
-      // the spinner on and watch /api/status until the background worker
-      // starts and finishes the run, or the cache actually moves forward.
-      if (result?.queued) {
-        let sawRunning = false;
-        for (let attempt = 0; attempt < 20; attempt += 1) {
-          await new Promise((resolve) => window.setTimeout(resolve, 2500));
-          const next = await api.getStatus();
-          setStatus(next);
-          if (next.sync_status === "running") {
-            sawRunning = true;
-            continue;
-          }
-          if (sawRunning || (next.last_sync ?? null) !== before) {
-            break;
-          }
-        }
-        await loadData();
-      }
       return result;
     } catch (err) {
       setError(
@@ -286,7 +314,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     } finally {
       setSyncing(false);
     }
-  }, [loadData, status?.last_sync]);
+  }, [loadData]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -300,12 +328,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [auth, sessionRequired, login, logout],
   );
 
-  // `syncing` covers BOTH this browser's POST /api/sync and a sync the
-  // background worker is running for this user (sync_status === "running",
-  // migration stage 5/§18): the spinner must not depend on which of the two
-  // triggered the refresh.
+  // A queued job is active from the moment it is requested. The status
+  // row remains `pending` until the worker claims it, but the UI must
+  // already show the spinner and follow it through completion.
   const syncValue = useMemo(() => {
-    const serverRunning = status?.sync_status === "running";
+    // `syncing` covers both a queued job and one the worker has claimed.
+    // The status response keeps `sync_status` as `pending` during the queue,
+    // so relying on that string alone leaves the spinner stale forever.
+    const serverRunning = status?.syncing === true;
     return {
       status,
       loading,

@@ -77,7 +77,8 @@ non-root `app` (§22). `--proxy-headers` у uvicorn СОЗНАТЕЛЬНО вы�
 (и 503 `SERVER_BUSY` при исчерпании интерактивного пула) — это
 зафиксировано в `SyncResult.queued/status` и в тестах.
 Frontend после `queued` держит спиннер и опрашивает `/api/status`, пока
-`sync_status` не пройдёт `running → ok/error` (или не изменится `last_sync`).
+`syncing` не станет `false`; после terminal status он перечитывает cache без
+перезагрузки страницы.
 
 Отклонение от DDoS-дока: там предполагалась отдельная таблица `sync_jobs` и
 `enqueue_user_sync`; мы переиспользовали существующую `sync_status` с

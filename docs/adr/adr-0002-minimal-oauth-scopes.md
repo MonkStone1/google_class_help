@@ -13,28 +13,49 @@
 
 ## Решение
 
-Запрашиваются ровно два scope:
+Запрашиваются scopes двух разных групп.
+
+### Идентификация пользователя
+
+Hosted- и desktop-входы вызывают Google OIDC userinfo, чтобы получить
+стабильный `sub`, имя и email. Для этого Google требует `openid` и `profile`;
+для email дополнительно запрашивается `email`:
+
+- `openid`
+- `profile`
+- `email`
+
+Эти scopes используются только для профиля и не дают доступа к записи в
+Google Classroom.
+
+### Данные Classroom
+
+Запрашиваются ровно четыре read-only Classroom scope:
 
 - `classroom.courses.readonly`
 - `classroom.student-submissions.me.readonly`
+- `classroom.student-submissions.students.readonly`
+- `classroom.rosters.readonly`
 
 Основание: Google объединил права чтения coursework и собственных submissions —
 scope `classroom.student-submissions.me.readonly` сейчас даёт тот же доступ,
 что раньше давал `classroom.coursework.me.readonly`, поэтому отдельный
-coursework-scope не запрашивается. Все scope read-only: приложение никогда
-ничего не изменяет в Google Classroom.
+coursework-scope не запрашивается. Все Classroom scopes read-only: приложение
+никогда ничего не изменяет в Google Classroom.
 
-Токен получается через `InstalledAppFlow.run_local_server` (desktop flow):
-локальный сервер на случайном порту, браузер открывается автоматически, токен
-хранится в `data/token.json` (вне git), освежается автоматически по
-refresh-токену.
+Токен получается через `InstalledAppFlow.run_local_server` (desktop flow) или
+через server-owned web OAuth flow (hosted); в обоих случаях scopes хранятся в
+общем `backend/oauth_transport.py`.
 
 ## Последствия
 
 - Максимум приватности: нет доступа к Drive, почте, профилю сверх выданного.
+- Desktop-токен, выпущенный до добавления `openid`/`profile`/`email`, не
+  проходит проверку полного набора scopes и один раз потребует повторного
+  Google consent; hosted-стенд с новой локальной БД начинается чисто.
 - Если Google в будущем снова разъединит права coursework и submissions,
   понадобится добавить `classroom.coursework.me.readonly` и перелогиниться;
-  точка изменения одна — `backend/auth.py` (SCOPES).
+  точка изменения одна — `backend/oauth_transport.py` (`SCOPES`).
 
 ## Альтернативы
 
