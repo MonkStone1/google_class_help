@@ -122,23 +122,30 @@ export type AssignmentStatusFilter =
   | "overdue"
   | "completed"
   | "graded"
-  | "ungraded"
-  | "no_due";
+  | "ungraded";
 
-/** The five states the assignments filter panel lets you combine. */
+/** The four states the assignments filter panel lets you combine. */
 export type AssignmentFilterStatus = Exclude<
   AssignmentStatusFilter,
   "all" | "ungraded"
 >;
 
 /**
+ * Whether an assignment has a deadline. This is its own facet, not a status:
+ * both values are self-sufficient and are combined with the status facet by
+ * AND, never as an extra condition of a status.
+ */
+export type AssignmentDueFilter = "has_due" | "no_due";
+
+/**
  * Saved "last used" state of the assignments filter panel (ADR-0013), kept in
  * the settings store so leaving the page and coming back does not reset it.
- * Both facets share one convention: `null` = facet off (everything matches),
+ * Every facet shares one convention: `null` = facet off (everything matches),
  * `[]` = nothing selected (nothing matches).
  */
 export type AssignmentsFilter = {
   statuses: AssignmentFilterStatus[] | null;
+  due: AssignmentDueFilter[] | null;
   courses: string[] | null;
 };
 
@@ -178,6 +185,11 @@ export type AppSettings = {
   assignmentsFilter: AssignmentsFilter;
   /** Last used calendar view, so a reload reopens the same one. */
   calendarView: CalendarViewMode;
+  /**
+   * Course ids whose grade groups are collapsed on the Grades tab. Groups not
+   * listed here are expanded, so a fresh profile starts with everything open.
+   */
+  collapsedGradeCourses: string[];
   /** Last used status tab on the subject detail page. */
   subjectTab: AssignmentStatusFilter | "all";
 };
@@ -204,8 +216,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   dismissedNotifications: [],
   assignmentsFilter: {
     statuses: null,
+    due: null,
     courses: null,
   },
   calendarView: "month",
+  collapsedGradeCourses: [],
   subjectTab: "all",
 };

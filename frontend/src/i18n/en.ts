@@ -146,6 +146,11 @@ export const en = {
  "filter.selectAll": "Select all",
  "filter.clearAll": "Clear all",
  "filter.coursesEmpty": "No courses yet",
+ "filter.byDue": "By due date",
+ "filter.hasDue": "Has due date",
+ "filter.combineHint":
+   "Values inside one section are combined with “or”; separate sections are combined with “and”.",
+ "filter.removeChip": "Remove filter {value}",
  "filter.reset": "Reset filters",
  "filter.noMatch": "No assignments match these filters",
  "filter.showing": "Showing {shown} of {total}",
@@ -231,7 +236,6 @@ export const en = {
  "teacher.tab.assignments": "All assignments",
  "teacher.tab.students": "Students",
  "teacher.tab.grades": "Grades",
- "teacher.refresh": "Refresh",
  "teacher.updated": "Updated {time}",
  "teacher.studentsCount": "{count} students",
  "teacher.assignmentsCount": "{count} assignments",
@@ -252,6 +256,7 @@ export const en = {
  "teacher.studentGrades": "Grades for {name}",
  "teacher.noStudentItems": "This student has no assignments in this course.",
  "teacher.assignment.stats": "Statistics",
+ "studentGrades.attachments": "Attachments ({count})",
 
  "status.not_submitted": "Not submitted",
  "status.turned_in": "Turned in",
@@ -273,6 +278,10 @@ export const en = {
  "assignment.stats.graded": "Graded",
  "assignment.stats.notSubmitted": "Not submitted",
  "assignment.notGraded": "Not graded",
+ "assignment.workState": "Assignment status",
+ "workState.published": "Published",
+ "workState.draft": "Draft",
+ "workState.unknown": "Unknown status",
 } as const;
 
 /** Every valid translation key, derived from the English dictionary. */

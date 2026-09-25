@@ -147,6 +147,11 @@ export const ru = {
  "filter.selectAll": "Включить все",
  "filter.clearAll": "Выключить все",
  "filter.coursesEmpty": "Курсов пока нет",
+ "filter.byDue": "По сроку сдачи",
+ "filter.hasDue": "Есть срок сдачи",
+ "filter.combineHint":
+   "Значения внутри одной секции объединяются по «или», разные секции — по «и».",
+ "filter.removeChip": "Убрать фильтр «{value}»",
  "filter.reset": "Сбросить фильтры",
  "filter.noMatch": "Нет заданий по этим фильтрам",
  "filter.showing": "Показано {shown} из {total}",
@@ -233,7 +238,6 @@ export const ru = {
  "teacher.tab.assignments": "Все задания",
  "teacher.tab.students": "Студенты",
  "teacher.tab.grades": "Оценки",
- "teacher.refresh": "Обновить",
  "teacher.updated": "Обновлено {time}",
  "teacher.studentsCount": "{count} студентов",
  "teacher.assignmentsCount": "{count} заданий",
@@ -254,6 +258,7 @@ export const ru = {
  "teacher.studentGrades": "Оценки: {name}",
  "teacher.noStudentItems": "У этого студента нет заданий в курсе.",
  "teacher.assignment.stats": "Статистика",
+ "studentGrades.attachments": "Вложения ({count})",
 
  "status.not_submitted": "Не сдано",
  "status.turned_in": "Сдано",
@@ -275,4 +280,8 @@ export const ru = {
  "assignment.stats.graded": "Оценено",
  "assignment.stats.notSubmitted": "Не сдано",
  "assignment.notGraded": "Не оценено",
+ "assignment.workState": "Статус задания",
+ "workState.published": "Опубликовано",
+ "workState.draft": "Черновик",
+ "workState.unknown": "Неизвестный статус",
 } satisfies Record<I18nKey, string>;

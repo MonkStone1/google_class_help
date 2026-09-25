@@ -263,7 +263,9 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-width: 720px;
+  /* The day view has room to breathe: the page frame is wider than a card
+     grid, and a narrow bubble squeezed a long course name against its edge. */
+  width: 100%;
 }
 .day-list-item {
   display: flex;
@@ -273,11 +275,41 @@
   font: inherit;
   color: inherit;
   text-align: left;
+  min-width: 0;
+  border-left: 3px solid var(--border);
+}
+/* Both children must be allowed to shrink, otherwise a long course name
+   pushes the title out of the bubble instead of being clipped inside it. */
+.day-list-course {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.day-list-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.day-list-item.day-list-done {
+  background: var(--success-soft);
+  border-left-color: var(--success);
+}
+.day-list-item.day-list-overdue {
+  background: var(--danger-soft);
+  border-left-color: var(--danger);
 }
 .day-list-points {
   margin-left: auto;
+  padding-left: 12px;
   color: var(--text-muted);
   font-size: 12.5px;
+  white-space: nowrap;
+  flex: none;
 }
 /* Grades ---------------------------------------------------------------------------------- */
 
@@ -297,6 +329,47 @@
 .grade-group-header h2 {
   font-size: 16px;
   margin: 0;
+}
+/* The whole header is the disclosure control, so the chevron, the course name
+   and the average stay on one clickable row with a visible focus ring. */
+.grade-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.grade-group-toggle:hover .grade-group-name {
+  color: var(--accent);
+}
+.grade-group-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.grade-group-chevron {
+  flex: none;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+.grade-group-name {
+  font-size: 16px;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grade-group-average {
+  flex: none;
 }
 .grade-average {
   font-weight: 650;
@@ -336,6 +409,36 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* Active filter chips (ADR-0013): each one removes exactly its own value. */
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.filter-chip:hover {
+  background: var(--bg-muted);
+  border-color: var(--text-muted);
+  color: var(--text);
+}
+.filter-chip svg {
+  flex: none;
 }
 .grade-value {
   font-weight: 600;
@@ -563,44 +666,63 @@
 .teacher-overview h2 {
   margin: 0;
 }
-.student-grade-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+/* Student grades: one compact row per assignment instead of a tall card, so a
+   course with many assignments is scannable without a long scroll. */
+.student-grades-table {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.student-grades-table th,
+.student-grades-table td {
+  vertical-align: middle;
+}
+.student-grades-table .student-grade-title {
+  display: inline-block;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.student-grade-cell {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 3px;
+  min-width: 0;
 }
-.student-grade-card {
+.student-grade-links {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.student-grade-head {
-  display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: 10px;
+  font-size: 12px;
+  color: var(--text-muted);
 }
-.student-grade-title {
-  font-weight: 600;
-  color: var(--text);
-  text-decoration: none;
+.student-grade-links summary {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  list-style: none;
 }
-.student-grade-title:hover {
+.student-grade-links summary::-webkit-details-marker {
+  display: none;
+}
+.student-grade-links summary:hover {
   color: var(--accent);
 }
-.student-grade-meta {
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
-  font-size: 12.5px;
+.student-grade-classroom {
   color: var(--text-muted);
+  display: inline-flex;
   align-items: center;
 }
-.student-grade-score {
-  font-weight: 600;
-  color: var(--text);
+.student-grade-classroom:hover {
+  color: var(--accent);
+}
+.student-grade-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 .student-grade-attachments {
   font-size: 12.5px;

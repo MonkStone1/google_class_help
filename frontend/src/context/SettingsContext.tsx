@@ -9,7 +9,9 @@ import {
 } from "react";
 
 import {
+  normalizeCollapsedCourses,
   normalizeCourseFilter,
+  normalizeDueFilter,
   normalizeStatusFilter,
 } from "../lib/assignmentFilters.ts";
 import {
@@ -25,7 +27,8 @@ import { LOCALE, detectLanguage, setLocale } from "../dates.ts";
 const STORAGE_KEY = "gc-settings";
 
 const CALENDAR_VIEWS: readonly CalendarViewMode[] = ["month", "week", "day"];
-// "no_due" is panel-only: the subject page keeps its original set of tabs.
+// The subject page keeps its own tab set; the "has due / no due" pair is a
+// separate facet of the assignments filter panel (ADR-0013).
 const SUBJECT_TABS: readonly (AssignmentStatusFilter | "all")[] = [
   "all",
   "todo",
@@ -93,9 +96,13 @@ function loadSettings(): AppSettings {
         : DEFAULT_SETTINGS.dismissedNotifications,
       assignmentsFilter: {
         statuses: normalizeStatusFilter(parsed.assignmentsFilter?.statuses),
+        due: normalizeDueFilter(parsed.assignmentsFilter?.due),
         courses: normalizeCourseFilter(parsed.assignmentsFilter?.courses),
       },
       calendarView: normalizeCalendarView(parsed.calendarView),
+      collapsedGradeCourses: normalizeCollapsedCourses(
+        parsed.collapsedGradeCourses,
+      ),
       subjectTab: normalizeSubjectTab(parsed.subjectTab),
     };
   } catch {

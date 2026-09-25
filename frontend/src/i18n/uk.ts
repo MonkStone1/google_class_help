@@ -147,6 +147,11 @@ export const uk = {
  "filter.selectAll": "Увімкнути всі",
  "filter.clearAll": "Вимкнути всі",
  "filter.coursesEmpty": "Курсів ще немає",
+ "filter.byDue": "За терміном здачі",
+ "filter.hasDue": "Є термін здачі",
+ "filter.combineHint":
+   "Значення в одній секції поєднуються за «або», різні секції — за «і».",
+ "filter.removeChip": "Прибрати фільтр «{value}»",
  "filter.reset": "Скинути фільтри",
  "filter.noMatch": "Немає завдань за цими фільтрами",
  "filter.showing": "Показано {shown} з {total}",
@@ -233,7 +238,6 @@ export const uk = {
  "teacher.tab.assignments": "Усі завдання",
  "teacher.tab.students": "Студенти",
  "teacher.tab.grades": "Оцінки",
- "teacher.refresh": "Оновити",
  "teacher.updated": "Оновлено {time}",
  "teacher.studentsCount": "{count} студентів",
  "teacher.assignmentsCount": "{count} завдань",
@@ -254,6 +258,7 @@ export const uk = {
  "teacher.studentGrades": "Оцінки: {name}",
  "teacher.noStudentItems": "У цього студента немає завдань у курсі.",
  "teacher.assignment.stats": "Статистика",
+ "studentGrades.attachments": "Вкладення ({count})",
 
  "status.not_submitted": "Не здано",
  "status.turned_in": "Здано",
@@ -275,4 +280,8 @@ export const uk = {
  "assignment.stats.graded": "Оцінено",
  "assignment.stats.notSubmitted": "Не здано",
  "assignment.notGraded": "Не оцінено",
+ "assignment.workState": "Статус завдання",
+ "workState.published": "Опубліковано",
+ "workState.draft": "Чернетка",
+ "workState.unknown": "Невідомий статус",
 } satisfies Record<I18nKey, string>;
