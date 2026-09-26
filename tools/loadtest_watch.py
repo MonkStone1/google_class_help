@@ -131,15 +131,29 @@ def _run(cmd: list[str], timeout: float = 20.0) -> str:
     return done.stdout if done.returncode == 0 else ""
 
 
-def _cpu_quotas() -> dict[str, float]:
-    """Container name → CPU quota in cores (nanocpus/1e9), 0.0 = unlimited.
+# CPU quota sentinel: a container can be capped, genuinely uncapped, or simply
+# unresolvable (it showed up in `docker stats` after the `docker ps` listing that
+# feeds this map — a one-off `docker compose run` helper does exactly that).
+# Collapsing the last case into "0.0 = uncapped" is what produced a bogus
+# "--=0% (uncapped)" row in the report.
+CPU_QUOTA_UNKNOWN = -1.0
 
-    Why the tool needs this: a container capped at ``cpus: 0.35`` can never
-    report more than ~35% on `docker stats`, so the checklist's "CPU is not at
-    100%" is vacuous on the resource-capped stand. The meaningful reading is
-    "how close to its own quota did it get" — a web container pinned at its
-    limit was throttled for the whole run, which is a saturation signal even
-    though no number looks high.
+
+def _cpu_quotas() -> dict[str, float]:
+    """Container name → CPU quota in cores.
+
+    Three states, and they must stay distinguishable:
+
+    - ``> 0``  — a real quota (e.g. ``cpus: 0.55``);
+    - ``0.0``  — confirmed uncapped (neither NanoCpus nor CpuQuota set);
+    - ``-1.0`` — unknown: ``docker inspect`` did not answer.
+
+    Why the tool needs this at all: a container capped at ``cpus: 0.55`` can
+    never report more than ~55% on `docker stats``, so the checklist's "CPU is
+    not at 100%" is vacuous on the resource-capped stand. The meaningful
+    reading is "how close to its own quota did it get" — a web container
+    pinned at its limit was throttled for the whole run, which is a saturation
+    signal even though no number looks high.
     """
     out = _run(["docker", "ps", "--format", "{{.Names}}"])
     quotas: dict[str, float] = {}
@@ -155,6 +169,7 @@ def _cpu_quotas() -> dict[str, float]:
             timeout=10.0,
         ).strip()
         if not detail:
+            quotas[name] = CPU_QUOTA_UNKNOWN
             continue
         nano, quota, period = (detail.split() + ["0", "0", "0"])[:3]
         try:
@@ -162,7 +177,7 @@ def _cpu_quotas() -> dict[str, float]:
             if value <= 0 and int(quota) > 0 and int(period) > 0:
                 value = int(quota) / int(period)
         except ValueError:
-            value = 0.0
+            value = CPU_QUOTA_UNKNOWN
         quotas[name] = round(value, 3)
     return quotas
 
@@ -200,7 +215,7 @@ def _docker_stats() -> list[Sample]:
                 cpu_percent=cpu_value,
                 mem_mb=round(used, 1),
                 mem_limit_mb=round(limit, 1),
-                cpu_limit_cores=quotas.get(name, 0.0),
+                cpu_limit_cores=quotas.get(name, CPU_QUOTA_UNKNOWN),
                 db_connections=-1,
                 sync_queue_depth=-1,
             )

@@ -350,7 +350,35 @@ def _build_assignment_out(
     )
 
 
-def _load_assignments(db: Session, owner_id: int) -> list[AssignmentOut]:
+def _all_courses(db: Session, owner_id: int) -> dict[str, Course]:
+    """Every cached course of the owner, keyed by id, with NO state filter.
+
+    The archived-course rule is deliberately not applied here: the callers need
+    two different ones and they disagree on a NULL ``course_state`` — the
+    coursework listing keeps it, the per-course rollup in ``grades`` has always
+    dropped it. Filtering in SQL here would silently pick a winner and change
+    one of the two responses.
+    """
+    return {c.id: c for c in db.query(Course).filter_by(user_id=owner_id).all()}
+
+
+def _active_courses(db: Session, owner_id: int) -> dict[str, Course]:
+    """Non-archived courses of the owner, filtered Python-side (ADR-0003).
+
+    Python-side, not SQL: ``None != "ARCHIVED"`` is True, so a course whose
+    ``course_state`` is NULL is kept. That is the long-standing behaviour of
+    every endpoint that lists coursework.
+    """
+    return {
+        course_id: course
+        for course_id, course in _all_courses(db, owner_id).items()
+        if course.course_state != "ARCHIVED"
+    }
+
+
+def _load_assignments(
+    db: Session, owner_id: int, courses: dict[str, Course] | None = None
+) -> list[AssignmentOut]:
     """Load the owner's cached assignments merged with role-appropriate details.
 
     Student courses (the existing dashboard) merge their own submission into
@@ -365,11 +393,8 @@ def _load_assignments(db: Session, owner_id: int) -> list[AssignmentOut]:
     _course_stats_sql/_student_totals_sql additionally equate user_id so a
     same-named row of another user can never leak into an aggregate (§67).
     """
-    courses = {
-        c.id: c
-        for c in db.query(Course).filter_by(user_id=owner_id).all()
-        if c.course_state != "ARCHIVED"
-    }
+    if courses is None:
+        courses = _active_courses(db, owner_id)
     roles = _role_map(db, owner_id)
     submissions = {
         (s.course_id, s.coursework_id): s
@@ -732,12 +757,33 @@ def overdue(
 def grades(
     owner_id: int = Depends(current_user_id), db: Session = Depends(get_db)
 ) -> list[CourseGrades]:
-    assignments = _student_only(_load_assignments(db, owner_id))
-    courses = (
-        db.query(Course)
-        .filter(Course.user_id == owner_id, Course.course_state != "ARCHIVED")
-        .order_by(Course.name)
-        .all()
+    # One course query for the whole request instead of two: _load_assignments
+    # re-read the courses table, and this endpoint read it a second time.
+    #
+    # The two readers apply DIFFERENT archived rules and both are kept exactly as
+    # they were: the coursework list keeps a NULL course_state (Python `!=`),
+    # while this rollup has always dropped it (SQL `!=` never matches NULL).
+    # Unifying them would either add a course to /api/grades or remove its
+    # coursework from /api/assignments.
+    cached_courses = _all_courses(db, owner_id)
+    assignments = _student_only(
+        _load_assignments(
+            db,
+            owner_id,
+            {
+                course_id: course
+                for course_id, course in cached_courses.items()
+                if course.course_state != "ARCHIVED"
+            },
+        )
+    )
+    courses = sorted(
+        (
+            course
+            for course in cached_courses.values()
+            if course.course_state not in (None, "ARCHIVED")
+        ),
+        key=lambda course: course.name,
     )
     out: list[CourseGrades] = []
     for course in courses:

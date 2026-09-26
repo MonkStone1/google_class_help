@@ -129,16 +129,20 @@ compose, глубина очереди синка не растёт, `quota_erro
 - [ ] **[PC]** `python tools\loadtest_watch.py --duration 180 --out loadtest`
       параллельно с нагрузкой; итог — `python tools\loadtest_report.py
       --dir loadtest --collect-logs` → `VERDICT: PASS`.
-- [ ] **[PC]** Seed без Google-логина:
+- [ ] **[PC]** Seed без Google-логина (путь `/loadtest/…` обязателен — контейнер
+      одноразовый, артефакт иначе пропадёт):
       `docker compose --env-file .env.local -f compose.local.yml
       -f compose.loadtest.yml run --rm --entrypoint python web
-      /tools/loadtest_seed.py --users 20 --teachers 4`.
+      /tools/loadtest_seed.py --users 20 --teachers 4
+      --out /loadtest/session-cookies.txt`.
 - [ ] **[PC]** Сценарии S1–S5, S7 (см. таблицу в `docs/LOAD_TEST_LOCAL.md`).
 - [ ] **[PC]** S6 (лимиты §39) — на чистом `compose.local.yml`, с
       `--expect-status 429`: лимитер обязан сработать, 5xx быть не должно.
 
 - [ ] **[VPS]** Параллельно с нагрузкой: `docker stats --no-stream` —
-      `web` ≤ 256M, `worker` ≤ 384M, `postgres` ≤ 384M, CPU не в 100%.
+      `web` ≤ 256M, `worker` ≤ 160M, `postgres` ≤ 288M, CPU не в 100%.
+      `worker` — самое плотное измерение (83M из 160M), следить за ним
+      первым (ADR‑0028 §2.2.1).
 - [ ] **[PC]** Без аутентификации (пусть идёт с Cloudflare):
   `python tools/load_test.py --base-url https://monkstonecor.pp.ua --path /api/health --path /api/ready --requests 1000 --concurrency 30`
   → PASS (p95 ≤ 500 ms, 0 5xx).

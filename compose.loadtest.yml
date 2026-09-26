@@ -60,8 +60,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.35"
-          memory: 384M
+          cpus: "0.30"
+          memory: 288M
 
   web:
     environment:
@@ -71,10 +71,16 @@ services:
       # Инструменты нагрузки нужны внутри сети: seed и loadgen ходят к БД и к
       # web напрямую, минуя проброс портов Docker Desktop. Read-only.
       - ./tools:/tools:ro
+      # Каталог артефактов прогона. НЕ read-only: сюда seed пишет cookie
+      # сессий, и без монтирования файл остался бы внутри одноразового
+      # контейнера и пропал при выходе. На хосте это git-игнорируемый
+      # каталог `loadtest/`, который `tools/load_test.py --cookie-file`
+      # затем читает напрямую.
+      - ./loadtest:/loadtest
     deploy:
       resources:
         limits:
-          cpus: "0.35"
+          cpus: "0.55"
           memory: 256M
 
   worker:
@@ -86,8 +92,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.45"
-          memory: 384M
+          cpus: "0.15"
+          memory: 160M
 
   loadgen:
     # Генератор нагрузки как контейнер в той же сети `local` (профиль

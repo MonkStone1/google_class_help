@@ -19,6 +19,7 @@ Pins the decisions of this stage:
   (Option A static strategy, §35).
 """
 
+import inspect
 import logging
 import os
 import re
@@ -218,6 +219,36 @@ def test_safe_methods_ignore_fetch_metadata(hosted_client):
         "/api/health", headers={"Sec-Fetch-Site": "cross-site"}
     )
     assert response.status_code == 200
+
+
+def test_session_gate_dispatches_its_database_lookup_to_a_thread():
+    """The session gate must not resolve the session inline in async middleware.
+
+    Regression for a hard deadlock found by the local load stand
+    (docs/LOAD_TEST_LOCAL.md §6): ``require_session`` is an ``async``
+    middleware, so calling the blocking ``resolve_session_user`` directly froze
+    the event loop for the length of the query. With the production pool of 5
+    (ADR-0028 §2.2) the loop then blocked in ``QueuePool.get()`` — and because
+    endpoint cleanup runs on that loop, no connection ever came back, so the
+    process stopped answering even ``/api/health`` until it was restarted.
+
+    The check is structural, like ``test_desktop_startup_still_loads_background_sync``
+    above: a thread-identity assertion cannot work here because ``TestClient``
+    drives the app from its own portal thread. The behavioural proof is the
+    load run in docs/LOAD_TEST_LOCAL.md §3; this test only keeps the mistake
+    from being reintroduced silently.
+    """
+    source = inspect.getsource(main.create_app)
+    gate = source.split("async def require_session", 1)[1].split("@app.middleware", 1)[
+        0
+    ]
+    # The exact call, not just the name: the surrounding comment mentions
+    # run_in_threadpool by name and must not satisfy this check.
+    assert "await run_in_threadpool(" in gate, (
+        "require_session must dispatch the blocking session lookup with "
+        "`await run_in_threadpool(...)`; running it inline deadlocks the "
+        "connection pool at capacity"
+    )
 
 
 def test_foreign_origin_unsafe_request_is_rejected(hosted_client):

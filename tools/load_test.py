@@ -98,6 +98,9 @@ class Result:
     # Open-loop only: how many arrivals had to wait for a free slot because
     # the concurrency budget was exhausted (0 in a healthy run).
     scheduler_lag: int = 0
+    # Per-repetition latency summary when --repeat > 1, so a reader can see
+    # the spread instead of one number that hides it.
+    run_summaries: list[dict[str, float]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -311,7 +314,8 @@ def _run_open_loop(
     return result
 
 
-def run(args: argparse.Namespace) -> Result:
+def _run_once(args: argparse.Namespace) -> Result:
+    """One complete measurement (warmup included), as before."""
     specs = _build_specs(args)
     if args.warmup > 0:
         # Cold caches, the first DB connect and first-touch page reads would
@@ -320,6 +324,52 @@ def run(args: argparse.Namespace) -> Result:
     if args.rate > 0:
         return _run_open_loop(specs, args.concurrency, args.rate, args.duration)
     return _run_closed_loop(specs, args.concurrency)
+
+
+def _median(values: list[float]) -> float:
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / 2
+
+
+def run(args: argparse.Namespace) -> Result:
+    """Measure, repeating the whole run when ``--repeat`` is given.
+
+    Repetition is not a tolerance band: the threshold stays exactly as strict,
+    it is applied to the MEDIAN of N independent runs instead of to one noisy
+    sample. Statuses and errors are summed (a single 5xx in any repetition
+    still fails), while latency percentiles are per-run and then median, since
+    a percentile cannot be averaged across runs.
+    """
+    if args.repeat <= 1:
+        return _run_once(args)
+
+    runs = [_run_once(args) for _ in range(args.repeat)]
+    merged = Result()
+    for one in runs:
+        merged.statuses.update(one.statuses)
+        merged.errors += one.errors
+        merged.retry_after.extend(one.retry_after)
+        merged.scheduler_lag += one.scheduler_lag
+    # The headline numbers describe the MEDIAN run — a real measurement, not a
+    # synthetic mixture of runs (percentiles cannot be pooled).
+    representative = runs[len(runs) // 2]
+    merged.latencies_ms = representative.latencies_ms
+    merged.per_path = representative.per_path
+    merged.rps = round(_median([one.rps for one in runs]), 2)
+    merged.run_summaries = [
+        {
+            "p50": _summarize(one.latencies_ms)["p50"],
+            "p95": _summarize(one.latencies_ms)["p95"],
+            "p99": _summarize(one.latencies_ms)["p99"],
+            "rps": one.rps,
+            "errors": one.errors,
+        }
+        for one in runs
+    ]
+    return merged
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -380,6 +430,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="requests to issue and discard before measuring",
     )
     parser.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        help="run the whole measurement N times and judge the MEDIAN p95; a "
+        "single run's p95 moves by tens of milliseconds between repetitions, "
+        "so a strict verdict on one sample is a coin flip near the threshold",
+    )
+    parser.add_argument(
         "--per-path", action="store_true", help="print per-path latency/statuses"
     )
     parser.add_argument(
@@ -430,6 +488,15 @@ def _print_report(args: argparse.Namespace, result: Result, ok: int) -> None:
             f"retry-after   : n={len(result.retry_after)} "
             f"max={max(result.retry_after):.0f}s (throttling active, §39)"
         )
+    if result.run_summaries:
+        runs = result.run_summaries
+        p95s = [one["p95"] for one in runs]
+        print(f"runs          : {len(runs)} repetitions, judged on the median")
+        print(
+            f"  p95 spread  : min={min(p95s):.1f} median={_median(p95s):.1f} "
+            f"max={max(p95s):.1f} ms"
+        )
+        print("  per run     : " + ", ".join(f"p95={one['p95']:.0f}" for one in runs))
     if args.per_path:
         print("per path      :")
         for path, bucket in sorted(result.per_path.items()):
@@ -483,6 +550,8 @@ def _payload(
         "concurrency": args.concurrency,
         "requests": args.requests,
         "warmup": args.warmup,
+        "repeat": args.repeat,
+        "runs": result.run_summaries,
         "cookie_file": args.cookie_file,
         "sessions_used": sessions,
         "ok": ok,
@@ -530,6 +599,9 @@ def main(argv: list[str]) -> int:
         return 2
     if args.rate < 0 or (args.rate > 0 and args.duration <= 0):
         print("--rate requires a positive --duration", file=sys.stderr)
+        return 2
+    if args.repeat <= 0:
+        print("--repeat must be positive", file=sys.stderr)
         return 2
 
     result = run(args)

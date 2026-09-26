@@ -55,8 +55,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.35"
-          memory: 384M
+          cpus: "0.30"
+          memory: 288M
 
   web:
     build:
@@ -88,7 +88,7 @@ services:
       replicas: 1  # Single-replica topology: preserves in-memory token bucket rate limiting without external cache
       resources:
         limits:
-          cpus: "0.35"
+          cpus: "0.55"
           memory: 256M
 
   worker:
@@ -112,8 +112,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.45"
-          memory: 384M
+          cpus: "0.15"
+          memory: 160M
 
   caddy:
     image: caddy:2-alpine
@@ -133,7 +133,7 @@ services:
       resources:
         limits:
           cpus: "0.1"
-          memory: 64M
+          memory: 48M
 
   cloudflared:
     # Outbound-only tunnel: no published ports, no inbound firewall rules
@@ -150,7 +150,7 @@ services:
       resources:
         limits:
           cpus: "0.1"
-          memory: 64M
+          memory: 32M
 
 networks:
   internal:

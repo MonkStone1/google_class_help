@@ -46,7 +46,7 @@ from typing import Any
 # Resource ceilings from compose.yml / compose.loadtest.yml (ADR-0028 §2.2).
 # The load-test override applies exactly these, so a run under it is judged
 # against the production budget rather than the 8-core/32GB developer box.
-DEFAULT_LIMITS_MB = {"web": 256.0, "worker": 384.0, "postgres": 384.0}
+DEFAULT_LIMITS_MB = {"web": 256.0, "worker": 160.0, "postgres": 288.0}
 # Which compose service each container belongs to, by name fragment. The
 # project name prefix ("google-class-help-local-web-1") and the throwaway
 # container name ("gch-lt-web") both have to resolve.
@@ -116,12 +116,20 @@ def _check_latency(report: dict[str, Any]) -> Check:
     limit = (report.get("thresholds") or {}).get("max_p95_ms", 500.0)
     if p95 is None:
         return Check("p95 latency", None, "no latency sample in the report")
-    return Check(
-        "p95 latency",
-        p95 <= limit,
+    detail = (
         f"p95={p95}ms (limit {limit}ms), p50={latency.get('p50')}ms, "
-        f"p99={latency.get('p99')}ms",
+        f"p99={latency.get('p99')}ms"
     )
+    # With --repeat, show the spread: a single sample near the threshold cannot
+    # be told apart from noise, and the whole point of repeating is that spread.
+    runs = report.get("runs") or []
+    if runs:
+        p95s = [one.get("p95", 0) for one in runs if isinstance(one, dict)]
+        if p95s:
+            detail += (
+                f"; {len(p95s)} runs p95 min={min(p95s):.0f} max={max(p95s):.0f} ms"
+            )
+    return Check("p95 latency", p95 <= limit, detail)
 
 
 def _check_errors(report: dict[str, Any]) -> Check:
@@ -233,8 +241,8 @@ def _check_cpu(watch: dict[str, Any]) -> Check:
     """CPU saturation, judged against each container's OWN quota.
 
     The checklist says "CPU is not at 100%". That only means something on an
-    uncapped container: the load-test stand runs web at ``cpus: 0.35``
-    (ADR-0028 §2.2), so its peak can never exceed ~35% and the absolute
+    uncapped container: the load-test stand runs web at ``cpus: 0.55``
+    (ADR-0028 §2.2), so its peak can never exceed ~55% and the absolute
     reading would pass no matter how hard the container was throttled. A
     capped container that reaches 90% of its quota WAS saturated, and that is
     what this reports instead.
@@ -245,9 +253,21 @@ def _check_cpu(watch: dict[str, Any]) -> Check:
     worst = 0.0
     worst_name = ""
     notes: list[str] = []
+    unknown: list[str] = []
+    skipped = 0
     for container, entry in sorted(containers.items()):
+        # Only the stand's own services. A one-off `docker compose run` helper
+        # (the seed, the report) can be sampled while it exists and would
+        # otherwise show up here as an unnamed "container" in the CPU row.
+        if not container.strip() or _service_of(container) is None:
+            skipped += 1
+            continue
         peak = float(entry.get("cpu_peak") or 0)
-        cores = float(entry.get("cpu_limit_cores") or 0)
+        cores = float(
+            entry.get("cpu_limit_cores")
+            if entry.get("cpu_limit_cores") is not None
+            else -1.0
+        )
         if cores > 0:
             # docker stats reports host-CPU percent; a quota is a share of one
             # core, so the comparable figure is cores * 100.
@@ -255,19 +275,35 @@ def _check_cpu(watch: dict[str, Any]) -> Check:
             notes.append(f"{container}={utilisation:.0f}% of {cores} core(s)")
             if utilisation > worst:
                 worst, worst_name = utilisation, container
-        else:
+        elif cores == 0.0:
             notes.append(f"{container}={peak:.0f}% (uncapped)")
             if peak > worst:
                 worst, worst_name = peak, container
+        else:
+            # Quota unreadable: it is NOT the same as "no limit", and guessing
+            # "uncapped" is what produced a bogus row in an earlier run.
+            unknown.append(container)
+    if unknown:
+        notes.append(f"quota unknown for: {', '.join(unknown)}")
+    tail = f" (skipped {skipped} non-service container(s))" if skipped else ""
     return Check(
         "CPU saturation",
-        worst < 90.0,
-        f"worst={worst_name} at {worst:.0f}% of its quota — " + "; ".join(notes),
+        None if not notes else worst < 90.0,
+        f"worst={worst_name} at {worst:.0f}% of its quota — " + "; ".join(notes) + tail,
     )
 
 
-def _check_pool_and_queue(watch: dict[str, Any], pool_budget: int) -> list[Check]:
-    """DB connections vs the pool budget, and the sync queue depth (§88)."""
+def _check_pool_and_queue(
+    watch: dict[str, Any], pool_budget: int, pool_processes: int
+) -> list[Check]:
+    """DB connections vs the pool budget, and the sync queue depth (§88).
+
+    ``DB_POOL_SIZE``/``DB_MAX_OVERFLOW`` describe ONE process, and the hosted
+    deployment has two of them against the same database (``web`` and
+    ``worker``, ADR-0023). ``pg_stat_activity`` counts both plus a few
+    bookkeeping connections of PostgreSQL itself, so comparing the total with a
+    single process budget reports a false failure on a healthy stand.
+    """
     connections = [
         int(entry.get("db_connections_max") or 0)
         for entry in (watch.get("containers") or {}).values()
@@ -282,14 +318,16 @@ def _check_pool_and_queue(watch: dict[str, Any], pool_budget: int) -> list[Check
             Check("sync queue", None, "no queue counters in the watch summary"),
         ]
     top_conn = max(connections)
-    pool_ok = top_conn <= pool_budget
+    total_budget = pool_budget * pool_processes
+    pool_ok = top_conn <= total_budget
     return [
         Check(
             "DB connections",
             pool_ok,
-            f"max={top_conn} (web pool budget {pool_budget} = "
-            "DB_POOL_SIZE + MAX_OVERFLOW)"
-            + ("" if pool_ok else " — the pool was the bottleneck"),
+            f"max={top_conn} (budget {total_budget} = {pool_budget} per process "
+            f"x {pool_processes} app processes: web + worker; also counts a few "
+            "of PostgreSQL's own connections)"
+            + ("" if pool_ok else " — above every pool: the database was the wall"),
         ),
         Check(
             "sync queue depth",
@@ -402,7 +440,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--pool-budget",
         type=int,
         default=5,
-        help="DB_POOL_SIZE + MAX_OVERFLOW of the web process (3+2 in prod)",
+        help="DB_POOL_SIZE + DB_MAX_OVERFLOW of ONE process (3+2 in prod)",
+    )
+    parser.add_argument(
+        "--pool-processes",
+        type=int,
+        default=2,
+        help="app processes sharing the database: web + worker (ADR-0023)",
     )
     parser.add_argument(
         "--web-mem-limit",
@@ -507,7 +551,7 @@ def main(argv: list[str]) -> int:
     if watch:
         checks += _check_memory(watch, limits)
         checks.append(_check_cpu(watch))
-        checks += _check_pool_and_queue(watch, args.pool_budget)
+        checks += _check_pool_and_queue(watch, args.pool_budget, args.pool_processes)
     else:
         checks.append(Check("container resources", None, "loadtest_watch.py not run"))
 

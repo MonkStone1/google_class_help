@@ -42,6 +42,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from access_log import install_query_redaction, install_secret_redaction
@@ -286,6 +287,24 @@ def create_app(hosted: bool = False) -> FastAPI:
 
         # Added FIRST so CORS (added below) wraps the gate: 401 responses
         # still carry CORS headers and the frontend can read them (§7).
+        def _resolve_gate_user(request: Request) -> int:
+            """Session cookie -> user id, in a worker thread.
+
+            Runs the blocking SQLAlchemy lookup OFF the event loop. The gate
+            is an ``async`` middleware, so calling the synchronous
+            ``resolve_session_user`` directly froze the whole loop for the
+            duration of the query — and that turned a brief pool shortage into
+            a permanent one (see the comment at the call site).
+            """
+            db = SessionLocal()
+            try:
+                return resolve_session_user(request, db).id
+            finally:
+                # Releasing the connection HERE is what keeps the pool from
+                # leaking: while the loop was blocked, no endpoint could reach
+                # its ``get_db`` cleanup, so nothing returned a connection.
+                db.close()
+
         @app.middleware("http")
         async def require_session(request: Request, call_next):
             path = request.url.path
@@ -301,18 +320,25 @@ def create_app(hosted: bool = False) -> FastAPI:
                 or path.startswith("/api/auth/")
             ):
                 return await call_next(request)
-            db = SessionLocal()
             try:
-                # Sync call inside async middleware. Since stage 4 the
-                # authoritative user resolution is the get_current_user
-                # dependency inside each endpoint; this gate only fails the
-                # request early, before route dispatch.
-                user = resolve_session_user(request, db)
+                # Since stage 4 the authoritative user resolution is the
+                # get_current_user dependency inside each endpoint; this gate
+                # only fails the request early, before route dispatch.
+                #
+                # run_in_threadpool is not an optimisation, it is the fix for a
+                # hard deadlock found by the local load stand
+                # (docs/LOAD_TEST_LOCAL.md): the production pool is
+                # DB_POOL_SIZE + DB_MAX_OVERFLOW = 5 (ADR-0028 §2.2), and with
+                # the lookup inline the event loop blocked in
+                # QueuePool.get() as soon as those 5 were busy. Endpoint
+                # cleanup (get_db's `finally: db.close()`) runs on the loop, so
+                # a blocked loop meant no connection ever came back: the pool
+                # stayed empty and even /api/health — which touches no database
+                # — stopped answering until the process was restarted.
+                user_id = await run_in_threadpool(_resolve_gate_user, request)
             except StarletteHTTPException:
                 return JSONResponse({"detail": "Not signed in."}, status_code=401)
-            finally:
-                db.close()
-            request.state.user_id = user.id
+            request.state.user_id = user_id
             return await call_next(request)
 
         app.include_router(hosted_router)
