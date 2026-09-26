@@ -122,6 +122,21 @@
 compose, глубина очереди синка не растёт, `quota_errors` в логе не
 увеличивается.
 
+Локальный прогон на Docker-стенде с тем же ресурсным профилем —
+`docs/LOAD_TEST_LOCAL.md`; он проверяет корректность под нагрузкой, но не
+заменяет замер на VPS. Кратко:
+
+- [ ] **[PC]** `python tools\loadtest_watch.py --duration 180 --out loadtest`
+      параллельно с нагрузкой; итог — `python tools\loadtest_report.py
+      --dir loadtest --collect-logs` → `VERDICT: PASS`.
+- [ ] **[PC]** Seed без Google-логина:
+      `docker compose --env-file .env.local -f compose.local.yml
+      -f compose.loadtest.yml run --rm --entrypoint python web
+      /tools/loadtest_seed.py --users 20 --teachers 4`.
+- [ ] **[PC]** Сценарии S1–S5, S7 (см. таблицу в `docs/LOAD_TEST_LOCAL.md`).
+- [ ] **[PC]** S6 (лимиты §39) — на чистом `compose.local.yml`, с
+      `--expect-status 429`: лимитер обязан сработать, 5xx быть не должно.
+
 - [ ] **[VPS]** Параллельно с нагрузкой: `docker stats --no-stream` —
       `web` ≤ 256M, `worker` ≤ 384M, `postgres` ≤ 384M, CPU не в 100%.
 - [ ] **[PC]** Без аутентификации (пусть идёт с Cloudflare):

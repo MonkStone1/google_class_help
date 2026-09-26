@@ -13,6 +13,10 @@ backups/
 *.dump
 *.sql.gz
 
+# Local load-test artifacts (tools/loadtest_seed.py): synthetic session
+# cookies and container-stat CSV dumps. Never commit them.
+loadtest/
+
 # Python
 .venv/
 __pycache__/

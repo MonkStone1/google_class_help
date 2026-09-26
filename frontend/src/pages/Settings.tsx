@@ -5,20 +5,14 @@ import { api } from "../api.ts";
 import { useAuth, useSync } from "../context/DataContext.tsx";
 import { useSettings } from "../context/SettingsContext.tsx";
 import { toLocalDate } from "../dates.ts";
-import { useI18n } from "../i18n.ts";
+import { useI18n, LANGUAGE_OPTIONS } from "../i18n.ts";
 import type { I18nKey } from "../i18n.ts";
-import type { AppSettings, Language, ThemeMode } from "../types.ts";
+import type { AppSettings, ThemeMode } from "../types.ts";
 
 const THEME_OPTIONS: Array<{ mode: ThemeMode; labelKey: I18nKey }> = [
   { mode: "light", labelKey: "settings.light" },
   { mode: "dark", labelKey: "settings.dark" },
   { mode: "system", labelKey: "settings.system" },
-];
-
-const LANGUAGE_OPTIONS: Array<{ code: Language; label: string }> = [
-  { code: "en", label: "English" },
-  { code: "uk", label: "Українська" },
-  { code: "ru", label: "Русский" },
 ];
 
 export function Settings() {

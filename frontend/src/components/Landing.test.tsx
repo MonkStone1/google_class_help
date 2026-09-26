@@ -1,0 +1,207 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { Landing } from "./Landing.tsx";
+import { SettingsProvider } from "../context/SettingsContext.tsx";
+import type { Language } from "../types.ts";
+
+const login = vi.fn();
+const setLanguage = vi.fn();
+const setTheme = vi.fn();
+let currentLanguage: Language = "en";
+
+vi.mock("../context/DataContext.tsx", () => ({
+  useAuth: () => ({ login }),
+}));
+
+vi.mock("../context/SettingsContext.tsx", async () => {
+  const actual = await vi.importActual<
+    typeof import("../context/SettingsContext.tsx")
+  >("../context/SettingsContext.tsx");
+  // Only the hook is driven from here; the real provider still wraps the
+  // page, so the select is rendered by the same code the app uses.
+  return {
+    ...actual,
+    useSettings: () => ({
+      language: currentLanguage,
+      setLanguage,
+      setTheme,
+    }),
+  };
+});
+
+// The challenge hook owns a network call; the landing's own contract is what
+// is under test, so the hook is driven from here.
+const useSignInChallenge = vi.fn();
+vi.mock("../lib/signInChallenge.ts", () => ({
+  useSignInChallenge: () => useSignInChallenge(),
+}));
+
+function noChallenge() {
+  return {
+    token: null,
+    required: false,
+    requested: false,
+    pending: false,
+    widgetRef: { current: null },
+  };
+}
+
+function renderLanding(language: Language) {
+  // The mocked `useSettings` is the single source of `language` here, so the
+  // value has to be set before render — reading the language back out of
+  // localStorage (as the real provider does) would fight the mock.
+  currentLanguage = language;
+  return render(
+    <SettingsProvider>
+      <Landing />
+    </SettingsProvider>,
+  );
+}
+
+describe("Landing", () => {
+  beforeEach(() => {
+    login.mockReset();
+    setLanguage.mockReset();
+    setTheme.mockReset();
+    useSignInChallenge.mockReset();
+    useSignInChallenge.mockReturnValue(noChallenge());
+  });
+
+  it("explains the site and links to the privacy policy", () => {
+    renderLanding("uk");
+
+    expect(
+      screen.getByRole("heading", {
+        name: "Ваш Google Classroom на одному екрані",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Що це за сайт")).toBeInTheDocument();
+    expect(screen.getByText("Що він уміє")).toBeInTheDocument();
+    expect(screen.getByText("Як це працює")).toBeInTheDocument();
+    expect(screen.getByText("Ваші дані")).toBeInTheDocument();
+
+    // The privacy page is a STATIC file outside the SPA router, so it must
+    // be a plain anchor to the real path — a router link would render the
+    // dashboard shell instead of the document.
+    const privacy = screen.getAllByRole("link", {
+      name: /Політика конфіденційності/,
+    });
+    expect(privacy.length).toBeGreaterThan(0);
+    for (const link of privacy) {
+      expect(link).toHaveAttribute("href", "/privacy/");
+    }
+  });
+
+  it("renders in the stored language", () => {
+    renderLanding("en");
+    expect(
+      screen.getByRole("heading", {
+        name: "Your Google Classroom in one place",
+      }),
+    ).toBeInTheDocument();
+
+    renderLanding("ru");
+    expect(
+      screen.getAllByRole("heading", {
+        name: "Ваш Google Classroom на одном экране",
+      }).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("offers sign-in in the header and again after the information", () => {
+    renderLanding("uk");
+
+    const buttons = screen.getAllByRole("button", {
+      name: /Увійти через Google/,
+    });
+    // Two entry points: the sticky header and the closing call to action.
+    expect(buttons).toHaveLength(2);
+  });
+
+  it("starts the sign-in flow from either button", () => {
+    renderLanding("uk");
+
+    const [header] = screen.getAllByRole("button", {
+      name: /Увійти через Google/,
+    });
+    fireEvent.click(header);
+
+    expect(login).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes the solved challenge token to the sign-in call", () => {
+    useSignInChallenge.mockReturnValue({
+      ...noChallenge(),
+      token: "solved-token",
+      required: true,
+    });
+    renderLanding("uk");
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /Увійти через Google/ })[0],
+    );
+
+    expect(login).toHaveBeenCalledWith("solved-token");
+  });
+
+  it("does not start a login while the challenge is still unsolved", () => {
+    useSignInChallenge.mockReturnValue({
+      ...noChallenge(),
+      required: true,
+      pending: true,
+    });
+    // jsdom implements no layout, so scrolling does not exist there.
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    renderLanding("uk");
+
+    // The buttons stay clickable on purpose: the click scrolls the widget
+    // into view instead of firing a request the server would reject.
+    const [header] = screen.getAllByRole("button", {
+      name: /Увійти через Google/,
+    });
+    expect(header).not.toBeDisabled();
+    fireEvent.click(header);
+
+    expect(login).not.toHaveBeenCalled();
+    expect(scrollIntoView).toHaveBeenCalled();
+  });
+
+  it("shows the widget only when the server requires a challenge", () => {
+    const { rerender } = renderLanding("uk");
+    expect(
+      screen.queryByText(/Пройдіть перевірку нижче/),
+    ).not.toBeInTheDocument();
+
+    useSignInChallenge.mockReturnValue({
+      ...noChallenge(),
+      required: true,
+      pending: true,
+    });
+    rerender(
+      <SettingsProvider>
+        <Landing />
+      </SettingsProvider>,
+    );
+
+    expect(
+      screen.getByText(/Пройдіть перевірку нижче/),
+    ).toBeInTheDocument();
+  });
+
+  it("switches the language from the header", async () => {
+    renderLanding("uk");
+
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "ru" },
+    });
+
+    await waitFor(() => expect(setLanguage).toHaveBeenCalledWith("ru"));
+  });
+
+  it("declares the language on the document element", () => {
+    renderLanding("uk");
+    expect(document.documentElement.lang).toBe("uk");
+  });
+});

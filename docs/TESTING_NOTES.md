@@ -7,6 +7,50 @@
 
 ---
 
+## 0. Нагрузочный прогон на локальном Docker-стенде
+
+Полная процедура — `docs/LOAD_TEST_LOCAL.md`. Кратко, здесь только то, что
+нужно знать перед любым другим тестом.
+
+Инструменты нагрузки (только стандартная библиотека, ничего нового в образ
+не попадает, §73):
+
+| Файл | Роль |
+| --- | --- |
+| `tools/load_test.py` | нагрузка: p50/p95/p99, статусы, RPS, open/closed loop |
+| `tools/loadtest_seed.py` | синтетические пользователи, сессии и кэш |
+| `tools/loadtest_watch.py` | CPU/RAM контейнеров + счётчики PostgreSQL в CSV |
+| `tools/loadtest_report.py` | сводный вердикт PASS/FAIL по критериям §88 |
+| `compose.loadtest.yml` | override с прод-профилем ресурсов (1 vCPU / 1 ГБ) |
+
+Артефакты (cookie сессий, CSV метрик) пишутся в `loadtest/`, который в
+`.gitignore`.
+
+```powershell
+# стенд с прод-профилем (лимиты CPU/RAM как на VPS 1 vCPU / 1 ГБ)
+docker compose --env-file .env.local -f compose.local.yml -f compose.loadtest.yml build web
+docker compose --env-file .env.local -f compose.local.yml -f compose.loadtest.yml up -d postgres
+docker compose --env-file .env.local -f compose.local.yml -f compose.loadtest.yml run --rm --workdir /app web alembic -c /app/alembic.ini upgrade head
+docker compose --env-file .env.local -f compose.local.yml -f compose.loadtest.yml up -d web worker
+
+# сессии: настоящий Google-логин не нужен, в БД лежит только SHA-256 токена
+docker compose --env-file .env.local -f compose.local.yml -f compose.loadtest.yml run --rm --entrypoint python web /tools/loadtest_seed.py --users 20 --teachers 4
+
+# окно 1 — ресурсы, окно 2 — нагрузка
+python tools\loadtest_watch.py --duration 180 --out loadtest
+python tools\load_test.py --base-url http://127.0.0.1:8000 --cookie-file loadtest\session-cookies.txt --per-path --path /api/status --path /api/courses --requests 2000 --concurrency 4 --warmup 100 --json-out loadtest\run.json
+
+# вердикт
+python tools\loadtest_report.py --dir loadtest --collect-logs
+```
+
+Локальный прогон отвечает на вопрос «не ломается ли сервис под нагрузкой»,
+а не «сколько пользователей выдержит прод»: Docker Desktop/WSL2, нет Caddy
+и Cloudflare, нет сетевой задержки. Абсолютные цифры ёмкости — на VPS,
+по чек-листу §8.
+
+---
+
 ## 1. Запускать pytest через инструмент только с явным таймаутом
 
 **Симптом:** `python -m pytest` уходит в бесконечность; весь ход агента/CI

@@ -1,0 +1,124 @@
+# Google Class Help — ЛИМИТ-ОВЕРРИД для локального прогона нагрузки (§88).
+#
+# Это НЕ ещё один deployment. Это измерение: тот же локальный стенд
+# (compose.local.yml), но с ресурсным профилем и настройками, повторяющими
+# прод-VPS 1 vCPU / 1 GB (ADR-0028 §2.2), плюс генератор нагрузки внутри
+# docker-сети.
+#
+#   docker compose --env-file .env.local -f compose.local.yml -f compose.loadtest.yml config --quiet
+#   ... build web
+#   ... up -d postgres
+#   ... run --rm --workdir /app web alembic -c /app/alembic.ini upgrade head
+#   ... up -d web worker
+#   ... --profile loadtest run --rm loadgen --path /api/status --requests 2000 --concurrency 20
+#
+# Чего этот файл НЕ делает намеренно:
+#
+# - НЕ поднимает Caddy/Cloudflare: статику отдаёт uvicorn, без gzip и без
+#   лимита тела запроса — локальный прогон измеряет web+postgres, а не edge;
+# - НЕ ослабляет то, что проверяется отдельным сценарием S6: лимиты §39 и
+#   per-user cooldown включаются обратно, когда сценарий идёт на ЧИСТОМ
+#   compose.local.yml (см. docs/LOAD_TEST_LOCAL.md);
+# - НЕ трогает .env.local: секреты и OAuth-клиент остаются в одном месте.
+
+name: google-class-help-local
+
+# Настройки процесса для web И worker. Anchor, чтобы не дублировать списком.
+x-loadtest-env: &loadtest-env
+  # Прод-пул (ADR-0028 §2.2): 3 соединения + 2 в очереди. Именно этот узкий
+  # пул — ожидаемое место деградации под конкуренцией (QueuePool timeout при
+  # pool_timeout=30), поэтому он и измеряется, а не увеличивается.
+  GC_DASHBOARD_DB_POOL_SIZE: "3"
+  GC_DASHBOARD_DB_MAX_OVERFLOW: "2"
+  # Бюджет синка 2 x 1 = 2 потока (ADR-0027 §3).
+  GC_DASHBOARD_SYNC_WORKERS: "2"
+  GC_DASHBOARD_SYNC_MAX_CONCURRENT_USERS: "1"
+  # Лимиты §39 и cooldown ВЫКЛЮЧЕНЫ на время прогона: иначе S2-S4 упираются
+  # в 429 и измеряют лимитер, а не web+PostgreSQL. Проверка самих лимитов —
+  # отдельный прогон на чистом compose.local.yml (S6).
+  GC_DASHBOARD_RATE_LIMIT_LOGIN_PER_MINUTE: "600"
+  GC_DASHBOARD_RATE_LIMIT_SYNC_PER_MINUTE: "600"
+  GC_DASHBOARD_RATE_LIMIT_CACHE_CLEAR_PER_MINUTE: "600"
+  GC_DASHBOARD_SYNC_MANUAL_COOLDOWN_SECONDS: "0"
+
+services:
+  postgres:
+    # Те же флаги, что в compose.yml: локальный стенд иначе измеряет Postgres с
+    # другими shared_buffers/work_mem, и цифры несопоставимы с продом.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - max_connections=30
+      - -c
+      - effective_cache_size=512MB
+    deploy:
+      resources:
+        limits:
+          cpus: "0.35"
+          memory: 384M
+
+  web:
+    environment:
+      <<: *loadtest-env
+    volumes:
+      - local_appdata:/data
+      # Инструменты нагрузки нужны внутри сети: seed и loadgen ходят к БД и к
+      # web напрямую, минуя проброс портов Docker Desktop. Read-only.
+      - ./tools:/tools:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "0.35"
+          memory: 256M
+
+  worker:
+    environment:
+      <<: *loadtest-env
+    volumes:
+      - local_appdata:/data
+      - ./tools:/tools:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "0.45"
+          memory: 384M
+
+  loadgen:
+    # Генератор нагрузки как контейнер в той же сети `local` (профиль
+    # `loadtest`, в обычном `up -d` не стартует). Причины:
+    #   - запрос идёт на web:8000 по внутренней сети, без WSL2/проброса портов;
+    #   - Rate-limit ключ — TCP peer: с контейнера все запросы приходят с
+    #     одного IP, ровно как от одного браузера/школы за NAT (ADR-0027 §2);
+    #   - хостовые ядра не конкурируют с web за CPU.
+    # Он ограничен 0.5 CPU сознательно: неограниченный генератор на 8-ядерной
+    # машине измерял бы себя, а не приложение.
+    image: google-class-help:local-dev
+    profiles: ["loadtest"]
+    depends_on:
+      web:
+        condition: service_healthy
+    entrypoint: ["python", "/tools/load_test.py"]
+    command:
+      - "--base-url"
+      - "http://web:8000"
+      - "--path"
+      - "/api/status"
+      - "--requests"
+      - "500"
+      - "--concurrency"
+      - "20"
+    volumes:
+      - ./tools:/tools:ro
+    networks:
+      - local
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M

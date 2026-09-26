@@ -1,12 +1,83 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   createdTime,
+  detectLanguage,
   formatTime,
   parseDue,
   relativeDayLabel,
   toLocalDate,
 } from "./dates.ts";
+
+/**
+ * jsdom's `navigator.language` is read-only, so the preference list is
+ * redefined per test. Only these two properties are touched; everything else
+ * on the real navigator (matchMedia, languages) is left alone by restoring
+ * the original descriptors in afterEach.
+ */
+const originalLanguage = Object.getOwnPropertyDescriptor(
+  globalThis.navigator,
+  "language",
+);
+const originalLanguages = Object.getOwnPropertyDescriptor(
+  globalThis.navigator,
+  "languages",
+);
+
+function withLanguages(...tags: string[]): void {
+  Object.defineProperty(globalThis.navigator, "language", {
+    value: tags[0],
+    configurable: true,
+  });
+  Object.defineProperty(globalThis.navigator, "languages", {
+    value: tags,
+    configurable: true,
+  });
+}
+
+afterEach(() => {
+  if (originalLanguage) {
+    Object.defineProperty(globalThis.navigator, "language", originalLanguage);
+  }
+  if (originalLanguages) {
+    Object.defineProperty(globalThis.navigator, "languages", originalLanguages);
+  }
+});
+
+describe("detectLanguage", () => {
+  it("maps a regional tag to its dictionary", () => {
+    withLanguages("uk-UA");
+    expect(detectLanguage()).toBe("uk");
+
+    withLanguages("ru-RU");
+    expect(detectLanguage()).toBe("ru");
+
+    withLanguages("en-GB");
+    expect(detectLanguage()).toBe("en");
+  });
+
+  it("walks the whole preference list instead of only the first tag", () => {
+    // A German UI with Ukrainian second is a better guess than English.
+    withLanguages("de-DE", "uk-UA", "en-US");
+    expect(detectLanguage()).toBe("uk");
+
+    withLanguages("fr-FR", "pl-PL", "ru-RU");
+    expect(detectLanguage()).toBe("ru");
+  });
+
+  it("falls back to English when nothing in the list is supported", () => {
+    withLanguages("de-DE", "fr-FR", "pl-PL");
+    expect(detectLanguage()).toBe("en");
+  });
+
+  it("falls back to English when the list is empty", () => {
+    Object.defineProperty(globalThis.navigator, "languages", {
+      value: [],
+      configurable: true,
+    });
+    expect(detectLanguage()).toBe("en");
+  });
+});
 
 describe("parseDue", () => {
   it("parses naive FastAPI datetimes as local time", () => {
