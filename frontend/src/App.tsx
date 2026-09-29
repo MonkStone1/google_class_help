@@ -6,6 +6,8 @@ import { TopBar } from "./components/TopBar.tsx";
 import { BootSplash } from "./components/BootSplash.tsx";
 import { Landing } from "./components/Landing.tsx";
 import { SignIn } from "./components/SignIn.tsx";
+import { SyncToaster } from "./components/SyncToaster.tsx";
+import { Toaster } from "./components/Toaster.tsx";
 import { DataProvider, useAuth, useSync } from "./context/DataContext.tsx";
 import { SettingsProvider } from "./context/SettingsContext.tsx";
 import { DashboardBoundary } from "./components/ErrorBoundary.tsx";
@@ -25,6 +27,15 @@ export default function App() {
   return (
     <SettingsProvider>
       <DataProvider>
+        {/*
+          The toast host lives here, next to AppShell and not inside it: the
+          shell returns early for the splash, the landing and the sign-in gate,
+          and a sync that finishes in the background must be announced on the
+          surface the user actually came back to. `<Toaster />` needs the
+          settings (theme + language), `<SyncToaster />` the sync state.
+        */}
+        <Toaster />
+        <SyncToaster />
         <AppShell />
       </DataProvider>
     </SettingsProvider>

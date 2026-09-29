@@ -13,7 +13,7 @@ import { DataProvider, useAuth, useCourses, useSync } from "./DataContext.tsx";
 
 function Probe() {
   const { auth, sessionRequired } = useAuth();
-  const { status, syncing, syncNow } = useSync();
+  const { status, syncing, syncStuck, syncNow } = useSync();
   const { assignments } = useCourses();
   return (
     <div>
@@ -28,6 +28,7 @@ function Probe() {
         {syncing ? "syncing" : "idle"}:{status?.sync_status ?? "none"}:
         {assignments.length}
       </span>
+      <span data-testid="stuck-state">{syncStuck ? "stuck" : "ok"}</span>
       <button type="button" onClick={() => void syncNow()}>
         Sync
       </button>
@@ -213,6 +214,76 @@ describe("DataProvider sync lifecycle", () => {
     expect(screen.getByTestId("sync-state")).toHaveTextContent("idle:ok:1");
     expect(statusCalls).toBeGreaterThan(25);
     expect(getAssignments).toHaveBeenCalledTimes(3);
+  });
+
+  it("flags a sync that the server keeps reporting as running", async () => {
+    // A worker killed mid-sync leaves the row `running` forever: the status
+    // poll keeps answering "syncing" while nothing happens. The user must get
+    // an explanation instead of an endless spinner.
+    vi.spyOn(api, "getAuthStatus").mockResolvedValue(AUTH);
+    vi.spyOn(api, "getCourses").mockResolvedValue([]);
+    vi.spyOn(api, "getAssignments").mockResolvedValue([]);
+    // Naive UTC, as the backend serializes it (ADR-0004).
+    const staleStart = new Date(Date.now() - 20 * 60 * 1000)
+      .toISOString()
+      .replace("Z", "");
+    const stuck: AppStatus = {
+      ...RUNNING,
+      last_sync_started_at: staleStart,
+    };
+    vi.spyOn(api, "getStatus").mockResolvedValue(stuck);
+
+    renderProvider();
+    await advanceTimers(0);
+
+    expect(screen.getByTestId("sync-state")).toHaveTextContent(
+      "syncing:running:0",
+    );
+    // The threshold is 5 minutes and the claim is already 20 minutes old, so
+    // the verdict is immediate.
+    expect(screen.getByTestId("stuck-state")).toHaveTextContent("stuck");
+  });
+
+  it("does not flag a sync that started just now", async () => {
+    vi.spyOn(api, "getAuthStatus").mockResolvedValue(AUTH);
+    vi.spyOn(api, "getCourses").mockResolvedValue([]);
+    vi.spyOn(api, "getAssignments").mockResolvedValue([]);
+    const freshStart = new Date().toISOString().replace("Z", "");
+    vi.spyOn(api, "getStatus").mockResolvedValue({
+      ...RUNNING,
+      last_sync_started_at: freshStart,
+    });
+
+    renderProvider();
+    await advanceTimers(0);
+
+    expect(screen.getByTestId("sync-state")).toHaveTextContent(
+      "syncing:running:0",
+    );
+    // A large Classroom import legitimately takes minutes: no premature alarm.
+    expect(screen.getByTestId("stuck-state")).toHaveTextContent("ok");
+    await advanceTimers(60_000);
+    expect(screen.getByTestId("stuck-state")).toHaveTextContent("ok");
+  });
+
+  it("clears the stuck flag once the sync finishes", async () => {
+    vi.spyOn(api, "getAuthStatus").mockResolvedValue(AUTH);
+    vi.spyOn(api, "getCourses").mockResolvedValue([]);
+    vi.spyOn(api, "getAssignments").mockResolvedValue([]);
+    const staleStart = new Date(Date.now() - 20 * 60 * 1000)
+      .toISOString()
+      .replace("Z", "");
+    const getStatus = vi.spyOn(api, "getStatus");
+    getStatus
+      .mockResolvedValueOnce({ ...RUNNING, last_sync_started_at: staleStart })
+      .mockResolvedValue(FINISHED);
+
+    renderProvider();
+    await advanceTimers(0);
+    expect(screen.getByTestId("stuck-state")).toHaveTextContent("stuck");
+
+    await advanceTimers(1500);
+    expect(screen.getByTestId("stuck-state")).toHaveTextContent("ok");
   });
 });
 

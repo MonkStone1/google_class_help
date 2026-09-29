@@ -24,11 +24,22 @@ export const en = {
  "topbar.cachedData": "Cached data",
  "topbar.sync": "Sync",
   "topbar.syncing": "Syncing…",
+  "topbar.syncStuck":
+    "This sync is taking unusually long. It may be stuck — if it does not finish, try syncing again in a few minutes.",
   "topbar.signInAgain": "Sign in again",
   "topbar.needsReauthHint":
     "Google access has expired. Sign in again to resume synchronization.",
  "topbar.notifications": "Notifications",
  "topbar.toggleTheme": "Toggle theme",
+
+  // Toasts (ADR-0030). `region` and `dismiss` replace sonner's own hardcoded
+  // English aria labels, so no untranslated string reaches a screen reader.
+  "toast.region": "Notifications",
+  "toast.dismiss": "Dismiss notification",
+  "toast.syncCompleted": "Synchronization complete",
+  "toast.syncCompletedAt": "Classroom data updated at {time}",
+  "toast.syncFailed": "Synchronization failed",
+  "toast.syncNeedsReauth": "Google access expired",
 
   "signin.turnstileRequired":
     "Please complete the verification challenge to continue.",
@@ -258,6 +269,7 @@ export const en = {
  "settings.openConsent": "Open the Google sign-in page",
  "settings.signOutConfirm":
   "Sign out and remove the stored Google token from this PC?",
+  "settings.signOutFailed": "Sign-out failed. Please try again.",
  "settings.lastSync": "Last synchronization",
  "settings.never": "Never",
  "settings.syncNow": "Sync now",

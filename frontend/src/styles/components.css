@@ -715,6 +715,83 @@
   color: var(--accent);
   font-weight: 550;
 }
+/*
+ * Sonner toasts (ADR-0030) -------------------------------------------------
+ *
+ * Sonner ships its own palette as custom properties on
+ * `[data-sonner-toaster][data-sonner-theme=light|dark]`, and it injects that
+ * stylesheet from the module body — which means the <style> tag lands in <head>
+ * *after* our bundle, and a same-specificity rule of ours would lose in the
+ * production build. Every selector below therefore adds `:root[data-theme=…]`
+ * (specificity 0,3,0 against sonner's 0,2,0) instead of relying on import
+ * order, and the palette is replaced by the app's own tokens so the dark theme
+ * needs no second set of rules.
+ *
+ * The tone backgrounds are `color-mix(…)` of the tone into `--bg-elevated`,
+ * NOT the project's `--*-soft` tokens. Those are alpha washes (0.10–0.14)
+ * meant to sit on an opaque card; a toast is a `position: fixed` overlay, so a
+ * 12%-alpha background let the page text underneath show straight through it.
+ * Mixing into the opaque surface keeps the same pale tint and the same tone
+ * text on top of it, but the panel itself is now solid: nothing behind the
+ * toast is readable, at any tone, in either theme.
+ *
+ * The mix is 20% rather than a higher share on purpose: the toast text is
+ * painted in the *tone* colour (`--success-text` etc.), so a heavily tinted
+ * background would drop that pair below a readable contrast. 20% of the tone
+ * into the surface is the most saturated value that still keeps the existing
+ * text/background pair intact — i.e. the toast became opaque without
+ * redesigning its palette.
+ */
+:root[data-theme="light"] [data-sonner-toaster][data-sonner-theme="light"],
+:root[data-theme="dark"] [data-sonner-toaster][data-sonner-theme="dark"] {
+  --normal-bg: var(--bg-elevated);
+  --normal-border: var(--border);
+  --normal-text: var(--text);
+  /* Each tone: a `*-soft` line first, then the opaque mix over it. A browser
+     without `color-mix` drops the second declaration as invalid and keeps the
+     soft one — a slightly translucent toast, but never a fully transparent
+     panel. The fallback is not dead weight: an unsupported value makes the
+     whole custom property guaranteed-invalid, and `background: var(…)` against
+     an invalid token computes to `initial`, i.e. no background at all. */
+  --success-bg: var(--success-soft);
+  --success-bg: color-mix(in srgb, var(--success) 20%, var(--bg-elevated));
+  --success-border: var(--border);
+  --success-text: var(--success);
+  --error-bg: var(--danger-soft);
+  --error-bg: color-mix(in srgb, var(--danger) 20%, var(--bg-elevated));
+  --error-border: var(--border);
+  --error-text: var(--danger);
+  --warning-bg: var(--warning-soft);
+  --warning-bg: color-mix(in srgb, var(--warning) 20%, var(--bg-elevated));
+  --warning-border: var(--border);
+  --warning-text: var(--warning);
+  --info-bg: var(--accent-soft);
+  --info-bg: color-mix(in srgb, var(--accent) 20%, var(--bg-elevated));
+  --info-border: var(--border);
+  --info-text: var(--accent);
+  --border-radius: var(--radius-sm);
+}
+/* The description inherits the tone; sonner hardcodes a grey for it. */
+:root[data-theme="light"]
+  [data-sonner-toaster][data-sonner-theme="light"]
+  [data-description],
+:root[data-theme="dark"]
+  [data-sonner-toaster][data-sonner-theme="dark"]
+  [data-description] {
+  color: inherit;
+  opacity: 0.85;
+}
+:root [data-sonner-toast][data-styled="true"] {
+  box-shadow: var(--shadow);
+  padding: 12px 14px;
+}
+:root [data-sonner-toaster] {
+  z-index: 70;
+}
+:root [data-sonner-toast] [data-close-button] {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
 /* Notification center ------------------------------------------------------------------ */
 
 .notif-backdrop,

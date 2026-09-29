@@ -174,6 +174,38 @@ def mark_sync_pending(db: Session, user_id: int, now: datetime) -> None:
     db.commit()
 
 
+def release_claim(db: Session, user_id: int, now: datetime) -> bool:
+    """Release one user's claim without an error, if it is still ours.
+
+    Used on SIGTERM (sync_worker.run_forever) so a graceful stop hands the
+    account back to the schedule instead of parking it in ``running`` until
+    the claim's stale window expires. The conditional guard is the same idea
+    as :func:`claim_sync` in reverse: only a row that is still ``running``
+    AND was started at or before ``now`` is released, so a shutdown in one
+    worker can never cancel a job another process has already re-claimed.
+
+    Returns True when a row was actually released. Releasing is best effort —
+    a caller shutting down treats ``False`` as "nothing of mine to undo".
+    """
+    result = cast(
+        CursorResult,
+        db.execute(
+            update(SyncStatus)
+            .where(SyncStatus.user_id == user_id)
+            .where(SyncStatus.status == SYNC_RUNNING)
+            .where(
+                or_(
+                    SyncStatus.last_started_at.is_(None),
+                    SyncStatus.last_started_at <= now,
+                )
+            )
+            .values(status=SYNC_PENDING)
+        ),
+    )
+    db.commit()
+    return bool(result.rowcount)
+
+
 def last_sync_time(db: Session, user_id: int) -> datetime | None:
     """When this user's cache was last filled successfully."""
     row = db.get(SyncStatus, user_id)

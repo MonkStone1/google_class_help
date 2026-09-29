@@ -44,6 +44,22 @@ x-local-service-environment: &local-service-environment
   GC_DASHBOARD_SYNC_SCAN_INTERVAL_SECONDS: "10"
   GC_DASHBOARD_SYNC_STARTUP_STAGGER_SECONDS: "0"
   GC_DASHBOARD_SYNC_MAX_CONCURRENT_USERS: "1"
+  # Локальный стенд обслуживает ОДНОГО пользователя, поэтому параллелизм
+  # внутри синка можно поднять: quota Classroom (1200 запросов/мин на
+  # пользователя) от этого не страдает. Прод-профиль в compose.yml НЕ трогаем —
+  # там по ADR-0027 остаётся 2 x 1 = 2 потока на VPS 1 vCPU / 1 ГБ.
+  #
+  # Почему это ускоряет: у student-курсов courseWork.list недоступен, поэтому
+  # backend/sync_service.py делает point-get courseWork.get на КАЖДУЮ работу
+  # (у типичного аккаунта это сотни запросов). Замер из контейнера: RTT до
+  # classroom.googleapis.com 150-670 мс, так что при 4 потоках только эти
+  # point-get'ы занимают десятки секунд. 8 потоков делят тот же объём пополам.
+  GC_DASHBOARD_SYNC_WORKERS: "8"
+  # Окно «мёртвого» claim'а. Синк не может длиться час, а падать он может:
+  # SIGKILL по таймауту оставлял строку в running, и пользователь не мог
+  # запустить новый синк все SYNC_CLAIM_STALE_SECONDS (дефолт 3600). 600 секунд
+  # — с запасом больше худшего реального синка, но втрое быстрее восстановление.
+  GC_DASHBOARD_SYNC_CLAIM_STALE_SECONDS: "600"
 
 services:
   postgres:
@@ -101,6 +117,12 @@ services:
     image: google-class-help:local-dev
     restart: unless-stopped
     command: ["python", "sync_worker.py"]
+    # Docker по умолчанию шлёт SIGKILL через 10 секунд после SIGTERM — намного
+    # меньше, чем длится Classroom-синк. Воркер получал kill прямо посреди
+    # синка, и строка sync_status оставалась в running без процесса за ней.
+    # 300с > SHUTDOWN_GRACE_SECONDS (240s в sync_worker.py), поэтому успевает
+    # отработать graceful-выход и освободить claim.
+    stop_grace_period: 5m
     env_file:
       - .env.local
     environment:

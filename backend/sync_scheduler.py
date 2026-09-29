@@ -56,6 +56,7 @@ from sqlalchemy.orm import Session
 import maintenance
 import metrics
 import sync_service
+import sync_store
 from config import (
     RETENTION_SWEEP_SECONDS,
     SYNC_INTERVAL_MINUTES,
@@ -280,6 +281,12 @@ class SyncScheduler:
 
     # ------------------------------------------------------------- runtime
 
+    @property
+    def in_flight_count(self) -> int:
+        """How many users this scheduler is syncing right now."""
+        with self._guard:
+            return len(self._in_flight)
+
     def run_maintenance(self) -> dict[str, int]:
         """Retention sweep + metrics summary (§44/§60); never fatal."""
         removed: dict[str, int] = {}
@@ -330,15 +337,19 @@ class SyncScheduler:
         with self._guard:
             self._in_flight.discard(user_id)
 
-    def wait(self, timeout: float | None = None) -> None:
-        """Block until no job submitted by this scheduler is in flight."""
+    def wait(self, timeout: float | None = None) -> bool:
+        """Block until no job submitted by this scheduler is in flight.
+
+        Returns True when the pool drained, False on timeout. Used by the
+        SIGTERM path so a graceful stop can wait for the sync it is finishing.
+        """
         deadline = None if timeout is None else time.monotonic() + timeout
         while True:
             with self._guard:
                 if not self._in_flight:
-                    return
+                    return True
             if deadline is not None and time.monotonic() >= deadline:
-                return
+                return False
             time.sleep(0.05)
 
     def start(self) -> None:
@@ -380,6 +391,35 @@ class SyncScheduler:
             loop.join(timeout=5)
             self._loop = None
         self._pool.shutdown(wait=False, cancel_futures=False)
+
+    def release_in_flight_claims(self) -> int:
+        """Hand every in-flight user's claim back to the schedule (§19).
+
+        A hard kill (Docker's default 10s stop grace period expires long
+        before a long Classroom fan-out finishes) used to leave the account
+        in ``running`` with no process behind it, and the row then blocked
+        every later attempt for the whole SYNC_CLAIM_STALE_SECONDS window —
+        a spinner the user could not clear. Called on SIGTERM after the jobs
+        are given a chance to finish, this is the difference between "the
+        next scan retries" and "the account is parked for an hour".
+
+        The jobs themselves release their own claim when they finish; this
+        only matters for the ones still running when we are being told to go
+        away. Never raises: a shutdown path must not fail on the database.
+        """
+        with self._guard:
+            in_flight = sorted(self._in_flight)
+        released = 0
+        for user_id in in_flight:
+            try:
+                with SessionLocal() as db:
+                    if sync_store.release_claim(db, user_id, _now()):
+                        released += 1
+            except Exception:  # best effort during shutdown
+                logger.exception("Could not release the sync claim of user %s", user_id)
+        if released:
+            logger.info("Released %s in-flight sync claim(s) on shutdown.", released)
+        return released
 
     def shutdown(self) -> None:
         """Alias for :meth:`stop` (used by one-shot callers)."""

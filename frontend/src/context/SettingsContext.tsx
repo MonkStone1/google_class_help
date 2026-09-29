@@ -27,6 +27,16 @@ import { LOCALE, detectLanguage, setLocale } from "../dates.ts";
 const STORAGE_KEY = "gc-settings";
 
 const CALENDAR_VIEWS: readonly CalendarViewMode[] = ["month", "week", "day"];
+
+/**
+ * The theme actually painted on `<html>`, as opposed to the `system` /
+ * `light` / `dark` mode the user picked. Components that must hand a literal
+ * `"light" | "dark"` to a third-party API (sonner's `Toaster`) read this from
+ * the context instead of sniffing `document.documentElement` during render:
+ * the attribute is written by an effect, so a render triggered by the mode
+ * change would still observe the previous value.
+ */
+export type ResolvedTheme = "light" | "dark";
 // The subject page keeps its own tab set; the "has due / no due" pair is a
 // separate facet of the assignments filter panel (ADR-0013).
 const SUBJECT_TABS: readonly (AssignmentStatusFilter | "all")[] = [
@@ -57,6 +67,8 @@ function normalizeSubjectTab(
 }
 
 type SettingsState = AppSettings & {
+  /** The theme currently painted on `<html>` (see {@link ResolvedTheme}). */
+  resolvedTheme: ResolvedTheme;
   setTheme: (theme: ThemeMode) => void;
   setLanguage: (language: Language) => void;
   update: (patch: Partial<AppSettings>) => void;
@@ -110,18 +122,26 @@ function loadSettings(): AppSettings {
   }
 }
 
-function applyTheme(mode: ThemeMode) {
+function applyTheme(mode: ThemeMode): ResolvedTheme {
   const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
   const dark = mode === "dark" || (mode === "system" && prefersDark);
-  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  const resolved: ResolvedTheme = dark ? "dark" : "light";
+  document.documentElement.dataset.theme = resolved;
+  return resolved;
 }
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(loadSettings);
+  // The inline script in index.html has already painted the correct theme
+  // before the first React render, so the attribute is a truthful seed here
+  // and the first paint of a toast never flickers to the wrong side.
+  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(
+    () => (document.documentElement.dataset.theme === "dark" ? "dark" : "light"),
+  );
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-    applyTheme(settings.theme);
+    setResolvedTheme(applyTheme(settings.theme));
     setLocale(LOCALE[settings.language]);
   }, [settings]);
 
@@ -131,7 +151,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       return;
     }
     const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const listener = () => applyTheme("system");
+    const listener = () => setResolvedTheme(applyTheme("system"));
     media.addEventListener("change", listener);
     return () => media.removeEventListener("change", listener);
   }, [settings.theme]);
@@ -201,6 +221,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       ...settings,
+      resolvedTheme,
       setTheme,
       setLanguage,
       update,
@@ -212,6 +233,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }),
     [
       settings,
+      resolvedTheme,
       setTheme,
       setLanguage,
       update,

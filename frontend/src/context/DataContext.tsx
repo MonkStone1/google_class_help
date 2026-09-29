@@ -38,7 +38,12 @@ type AuthState = {
    * challenge-free hosted flows ignore it.
    */
   login: (turnToken?: string) => Promise<void>;
-  logout: () => Promise<void>;
+  /**
+   * Sign out. Resolves to `false` when the request failed: the reason goes to
+   * the shared `error`, but a failed sign-out is visually a no-op, so the page
+   * that asked for it is the only place that can tell the user (ADR-0030).
+   */
+  logout: () => Promise<boolean>;
 };
 
 /**
@@ -50,6 +55,14 @@ type SyncState = {
   status: AppStatus | null;
   loading: boolean;
   syncing: boolean;
+  /**
+   * True when the server still reports a sync in flight but it has been
+   * running for longer than `STUCK_SYNC_SECONDS` without finishing. A real
+   * Classroom import of a few hundred courses takes a couple of minutes, so
+   * the threshold is deliberately generous — this is the "something is wrong,
+   * tell the user" signal, not a timeout that cancels anything.
+   */
+  syncStuck: boolean;
   error: string | null;
   syncNow: () => Promise<SyncResult | null>;
   refresh: () => Promise<void>;
@@ -64,6 +77,32 @@ type CoursesState = {
 };
 
 export type DataState = AuthState & SyncState & CoursesState;
+
+/**
+ * How long a server-reported sync may stay in flight before the UI admits it
+ * is probably stuck. A large Classroom account (hundreds of courses, one
+ * point-get per assignment) legitimately needs a couple of minutes, so this is
+ * well past a normal run: it exists to turn an infinite spinner into an
+ * explanation, not to cancel work the backend is still doing.
+ */
+const STUCK_SYNC_SECONDS = 5 * 60;
+
+/**
+ * Start of the current sync in epoch milliseconds, or 0 when unknown.
+ *
+ * `last_sync_started_at` is naive UTC (ADR-0004), so `Z` is appended; a value
+ * that already carries an offset is parsed as-is. A queued job that the worker
+ * has not claimed yet has no start time — 0 means "no evidence", which keeps
+ * the stuck flag off until a real claim exists.
+ */
+function startedAtMs(status: AppStatus): number {
+  const raw = status.last_sync_started_at;
+  if (!raw) {
+    return 0;
+  }
+  const parsed = Date.parse(raw.endsWith("Z") ? raw : `${raw}Z`);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
 
 const AuthContext = createContext<AuthState | null>(null);
 const SyncContext = createContext<SyncState | null>(null);
@@ -112,6 +151,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [syncStuck, setSyncStuck] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
@@ -231,18 +271,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, [loadData]);
 
-  const logout = useCallback(async () => {
+  const logout = useCallback(async (): Promise<boolean> => {
     try {
       await api.logout();
       // Only drop the teacher cache once the sign-out actually succeeded.
       invalidateAllResources();
       await loadData();
+      return true;
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
           : "Sign-out failed. Please try again.",
       );
+      return false;
     }
   }, [loadData]);
 
@@ -275,6 +317,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           schedule();
           return;
         }
+        setSyncStuck(false);
         // The worker has committed the final status before this request sees
         // it, so the data reads below observe the completed cache.
         invalidateAllResources();
@@ -292,6 +335,33 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (timer !== undefined) window.clearTimeout(timer);
     };
   }, [loadData, status?.syncing]);
+
+  // Flag a sync that the server still calls active long after it started. The
+  // status watcher above re-renders on every tick, but the stuck verdict also
+  // has to appear when NO new status arrives (a killed worker answers with the
+  // same row forever, and the browser clock is what crosses the threshold), so
+  // it is a separate one-shot timer rather than part of that loop. Nothing is
+  // cancelled: the backend keeps working, this only tells the user what to
+  // expect instead of leaving a spinner with no explanation.
+  useEffect(() => {
+    if (status?.syncing !== true) {
+      setSyncStuck(false);
+      return;
+    }
+    const remaining = Math.max(
+      0,
+      STUCK_SYNC_SECONDS * 1000 - (Date.now() - startedAtMs(status)),
+    );
+    if (remaining === 0) {
+      setSyncStuck(true);
+      return;
+    }
+    setSyncStuck(false);
+    const timer = window.setTimeout(() => setSyncStuck(true), remaining);
+    return () => window.clearTimeout(timer);
+    // `status` as a whole: the effect reads the whole object through
+    // startedAtMs(), and the status watcher replaces it on every poll.
+  }, [status]);
 
   const syncNow = useCallback(async (): Promise<SyncResult | null> => {
     setSyncing(true);
@@ -340,11 +410,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       status,
       loading,
       syncing: syncing || serverRunning,
+      syncStuck: syncStuck && (syncing || serverRunning),
       error,
       syncNow,
       refresh,
     };
-  }, [status, loading, syncing, error, syncNow, refresh]);
+  }, [status, loading, syncing, syncStuck, error, syncNow, refresh]);
 
   const coursesValue = useMemo(
     () => ({ courses, assignments }),

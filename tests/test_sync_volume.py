@@ -14,6 +14,7 @@ service must bound that volume and make it observable:
   ``nextPageToken`` until the last page.
 """
 
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 import sync_service
@@ -102,6 +103,62 @@ def test_scheduled_sync_is_not_limited_by_the_interactive_ceiling(
 
 
 # ------------------------------------------------- §65 observability + paging
+
+
+def test_teacher_roster_is_never_requested_for_a_student_course():
+    """``courses.list`` is shared, but the teacher roster is not (§65).
+
+    A STUDENT course answers HTTP 500 on ``courses.teachers.list`` (not 403),
+    and googleapiclient retries every 5xx three times with a backoff before
+    degrading to an empty list. Asking anyway cost one doomed request plus its
+    retries per student course — on a 23-course account that was the largest
+    avoidable share of a sync's runtime, and the result was discarded anyway.
+    """
+    asked: list[str] = []
+
+    class _Client(ClassroomClient):
+        """A stand-in for the real client: the fan-out only calls these five
+        methods, and none of them touches ``self._service``, so a dummy
+        service is enough to keep the real ``__init__`` contract."""
+
+        def __init__(self) -> None:
+            super().__init__(service=None)
+
+        def list_teachers(self, course_id: str) -> list[dict]:
+            asked.append(course_id)
+            return [{"fullName": "Teacher"}]
+
+        def list_submissions_for_course(self, course_id: str) -> list[dict]:
+            return []
+
+        def list_coursework(
+            self, course_id: str, course_work_states: list[str] | None = None
+        ) -> list[dict] | None:
+            return []
+
+        def list_students(self, course_id: str) -> list[dict] | None:
+            return []
+
+        def list_all_submissions(self, course_id: str) -> list[dict] | None:
+            return []
+
+    courses = [
+        ({"id": "t-course"}, "TEACHER"),
+        ({"id": "s-one"}, "STUDENT"),
+        ({"id": "s-two"}, "STUDENT"),
+    ]
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        teacher_names, payloads = sync_service._fetch_course_payloads(
+            lambda: _Client(), courses, pool
+        )
+
+    assert asked == ["t-course"], (
+        "the teacher roster must only be fetched for TEACHER courses; "
+        f"asked for {asked}"
+    )
+    # The student courses still get their own payload, just no roster.
+    assert teacher_names == {"t-course": ["Teacher"], "s-one": [], "s-two": []}
+    assert set(payloads) == {"t-course", "s-one", "s-two"}
 
 
 def test_course_list_follows_pagination_and_counts_requests():

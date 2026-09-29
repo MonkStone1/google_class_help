@@ -1,5 +1,6 @@
 import { Database, LogOut, RefreshCw, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 
 import { api } from "../api.ts";
 import { useAuth, useSync } from "../context/DataContext.tsx";
@@ -22,16 +23,19 @@ export function Settings() {
   const { t } = useI18n();
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
 
+  // The result of clearing the cache is a momentary event, not a page state:
+  // it used to live in `message` and render as a blue `alert-info` banner that
+  // stayed until the next render — and a *failed* clear was blue too. Both now
+  // go through a toast with the right tone (ADR-0030).
   const clearCache = async () => {
     try {
       await api.clearCache();
       settings.reset();
-      setMessage(t("settings.cleared"));
+      toast.success(t("settings.cleared"));
       await syncNow();
     } catch {
-      setMessage(t("settings.clearFailed"));
+      toast.error(t("settings.clearFailed"));
     }
     setConfirmClear(false);
   };
@@ -39,7 +43,6 @@ export function Settings() {
   return (
     <div className="page settings-page">
       <h1>{t("settings.title")}</h1>
-      {message ? <div className="alert alert-info">{message}</div> : null}
 
       <section className="card settings-card">
         <h2>{t("settings.googleAccount")}</h2>
@@ -101,7 +104,13 @@ export function Settings() {
                 type="button"
                 className="button button-danger"
                 onClick={async () => {
-                  await logout();
+                  const signedOut = await logout();
+                  // A failed sign-out changes nothing on screen, and the shared
+                  // `error` is only rendered on the dashboard — without this the
+                  // user cannot tell that they are still signed in (ADR-0030).
+                  if (!signedOut) {
+                    toast.error(t("settings.signOutFailed"));
+                  }
                   setConfirmLogout(false);
                 }}
               >

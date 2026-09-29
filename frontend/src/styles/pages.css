@@ -551,6 +551,12 @@
     flex-direction: column;
   }
 
+  /* Тот же перенос топбара в две строки поднимает его до ~104px, поэтому
+     тост (ADR-0030) опускается ниже — см. --toast-top в base.css. */
+  :root {
+    --toast-top: 116px;
+  }
+
   .sidebar {
     width: 100%;
     flex-direction: row;

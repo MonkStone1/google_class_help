@@ -95,6 +95,12 @@ services:
     image: google-class-help:local
     restart: unless-stopped
     command: ["python", "sync_worker.py"]
+    # Same reason as the local stand: Docker's default 10s stop grace expires
+    # long before a Classroom fan-out, so a deploy/restart used to SIGKILL the
+    # worker mid-sync and park the account in ``running`` until the claim's
+    # stale window expired. 300s > SHUTDOWN_GRACE_SECONDS (sync_worker.py), so
+    # the graceful release gets to run.
+    stop_grace_period: 5m
     env_file:
       - .env
     environment:

@@ -25,11 +25,22 @@ export const uk = {
  "topbar.cachedData": "Кешовані дані",
  "topbar.sync": "Синхронізувати",
  "topbar.syncing": "Синхронізація…",
+  "topbar.syncStuck":
+    "Синхронізація триває незвично довго. Можливо, вона зависла — якщо не завершиться, спробуйте запустити її ще раз через кілька хвилин.",
  "topbar.signInAgain": "Увійти знову",
  "topbar.needsReauthHint":
   "Доступ до Google закінчився. Увійдіть знову, щоб відновити синхронізацію.",
  "topbar.notifications": "Сповіщення",
  "topbar.toggleTheme": "Змінити тему",
+
+  // Тости (ADR-0030). `region` і `dismiss` замінюють власні англійські
+  // aria-мітки sonner, тож скринридер не почує неперекладеного рядка.
+  "toast.region": "Сповіщення",
+  "toast.dismiss": "Закрити сповіщення",
+  "toast.syncCompleted": "Синхронізацію завершено",
+  "toast.syncCompletedAt": "Дані Classroom оновлено о {time}",
+  "toast.syncFailed": "Не вдалося синхронізувати",
+  "toast.syncNeedsReauth": "Доступ до Google сплив",
 
   "signin.turnstileRequired": "Пройдіть перевірку, щоб продовжити вхід.",
   "signin.turnstilePending": "Перед входом потрібна перевірка.",
@@ -258,6 +269,7 @@ export const uk = {
  "settings.openConsent": "Відкрити сторінку входу Google",
  "settings.signOutConfirm":
   "Вийти та видалити збережений токен Google з цього ПК?",
+  "settings.signOutFailed": "Не вдалося вийти. Спробуйте ще раз.",
  "settings.lastSync": "Остання синхронізація",
  "settings.never": "Ніколи",
  "settings.syncNow": "Синхронізувати зараз",
