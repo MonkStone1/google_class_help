@@ -28,6 +28,9 @@ PG_USER="${POSTGRES_USER:-google_class_help}"
 PG_DB="${POSTGRES_DB:-google_class_help}"
 KEEP="${BACKUP_KEEP:-7}"
 
+# НАСТРОЙКА RCLONE (измените под себя, если назвали удаленный репозиторий иначе)
+RCLONE_REMOTE="my_cloud:GoogleClassHelpBackups" 
+
 compose() {
 	# docker compose reads .env for ${POSTGRES_PASSWORD} interpolation.
 	docker compose "$@"
@@ -40,6 +43,20 @@ cmd_dump() {
 	echo "==> pg_dump (custom format) -> ${target}"
 	compose exec -T postgres pg_dump -U "$PG_USER" -d "$PG_DB" --format=custom >"$target"
 	echo "==> done ($(wc -c <"$target") bytes)"
+	
+	# === ИНТЕГРАЦИЯ С RCLONE ===
+	echo "==> uploading to cloud storage via rclone..."
+	if command -v rclone >/dev/null 2>&1; then
+		rclone copy "$target" "$RCLONE_REMOTE"
+		echo "==> cloud upload successful"
+		
+		# Опционально: удаляем из облака файлы старше 30 дней, чтобы не забивать лимит
+		rclone delete --min-age 30d "$RCLONE_REMOTE" 2>/dev/null || true
+	else
+		echo "WARNING: rclone is not installed or not in PATH, cloud backup skipped!" >&2
+	fi
+	# ===========================
+
 	# Rolling retention: keep the newest $KEEP dumps.
 	ls -1t "${BACKUP_DIR}"/googleclasshelp-*.dump 2>/dev/null | tail -n +"$((KEEP + 1))" | while read -r old; do
 		echo "==> pruning ${old}"
