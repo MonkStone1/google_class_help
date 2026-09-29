@@ -226,7 +226,16 @@ def _fetch_course_payloads(
     keep cached data instead of mistaking an error for an empty course.
     """
 
-    def fetch_teachers(course_id: str) -> tuple[str, list[str]]:
+    def fetch_teachers(course_id: str, role: str) -> tuple[str, list[str]]:
+        # Only a teacher may read the roster of teachers. Asking a STUDENT
+        # course answers HTTP 500 (not 403), and googleapiclient treats a 5xx
+        # as retryable: every such course burned three backoff retries before
+        # finally degrading to an empty list. On a 23-student-course account
+        # that was 23 pointless requests and ~20s of the sync, and it is the
+        # single largest avoidable cost in the fan-out — the returned list is
+        # dropped for these courses anyway.
+        if role != "TEACHER":
+            return course_id, []
         return course_id, [
             teacher.get("fullName", "")
             for teacher in get_client().list_teachers(course_id)
@@ -248,7 +257,7 @@ def _fetch_course_payloads(
         }
 
     teacher_futures = {
-        raw["id"]: pool.submit(fetch_teachers, raw["id"]) for raw, _ in courses
+        raw["id"]: pool.submit(fetch_teachers, raw["id"], role) for raw, role in courses
     }
     payload_futures = {
         raw["id"]: pool.submit(fetch_payload, raw["id"], role) for raw, role in courses

@@ -34,3 +34,6 @@
 | [ADR-0025](adr-0025-frontend-config-production.md) | Production frontend и session boundary — env-Host/CORS/trusted proxy, cookie-флаги и `/data` | Accepted |
 | [ADR-0026](adr-0026-desktop-hosted-coexistence-production-edge.md) | Desktop/hosted coexistence и production edge — разделение модулей, Option A, HTTPS/CSRF/headers, privacy/terms | Accepted |
 | [ADR-0027](adr-0027-rate-limits-capacity-retention.md) | Rate limits, capacity и retention — токен-бакеты, бюджет синка 4×2, retention/удаление, короткие транзакции | Accepted |
+| [ADR-0028](adr-0028-docker-caddy-cloudflare-deployment.md) | Docker/Compose/Caddy + Cloudflare Tunnel деплой — 1 vCPU/1 GB, queued manual sync, `/api/ready`, бэкапы | Accepted |
+| [ADR-0029](adr-0029-public-landing-page.md) | Публичная посадочная страница вместо карточки входа, язык по браузеру | Accepted |
+| [ADR-0030](adr-0030-sync-completion-toast.md) | Тосты о завершении синхронизации на sonner; триггер — серверная отметка `last_sync_finished_at` | Accepted |

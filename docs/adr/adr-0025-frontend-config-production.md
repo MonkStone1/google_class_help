@@ -136,8 +136,9 @@ schema. Пока сессии нет, `user = None` (в том числе в des
 Схема `SyncStatus` (этап 5, §18) пришла в UI в этом этапе:
 
 - `DataContext.syncing` = локальный `POST /api/sync` **или**
-  `status.sync_status === "running"` — спиннер не зависит от того, кто
-  запустил синк (фоновый воркер или эта вкладка);
+  `status.syncing` (queued либо running) — спиннер не зависит от того, кто
+  запустил синк; единый watcher без фиксированного лимита опросов следит до
+  terminal status и перечитывает cache;
 - `sync_status === "error"` → ретрай-подсказка в TopBar с
   санитизированным `last_sync_error` в `title`; причина из БД, а не
   сырое исключение (§18);

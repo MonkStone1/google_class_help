@@ -29,6 +29,7 @@ from sync_store import (  # noqa: F401
     get_submission,
     last_sync_error,
     last_sync_time,
+    request_sync,
     reset_cache,
     sync_status,
 )

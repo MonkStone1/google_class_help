@@ -59,6 +59,113 @@ Vite dev-сервер: <http://localhost:5173> — проксирует `/api` �
 production web-клиент (`APP_ENV` и `GC_DASHBOARD_ALLOWED_HOSTS`/
 `GC_DASHBOARD_CORS_ORIGINS` не задаются — дефолты development-режима).
 
+### Локальный Docker с Google OAuth
+
+Локальный hosted-стенд запускает тот же Docker image, что и production, но
+без Caddy и Cloudflare. Браузер обращается к `http://127.0.0.1:8000`, а
+PostgreSQL, web и worker общаются по отдельной Docker-сети. Это позволяет
+проверить настоящий Google OAuth, сессии, шифрование токенов, Alembic и
+синхронизацию Classroom, не используя production-домен или tunnel-токен.
+
+#### Настройка Google Cloud
+
+1. В **API & Services → Library** включите **Google Classroom API**.
+2. Настройте OAuth consent screen/Audience как **External → Testing** и
+   добавьте свой Google-аккаунт в **Test users**. Полная verification для
+   локального тестового пользователя не нужна.
+3. Создайте **отдельный OAuth client типа Web application**. Не используйте
+   desktop-клиент из `backend/credentials.json`: hosted-режим берёт web
+   client ID/secret только из environment.
+4. В качестве Authorized redirect URI укажите ровно:
+
+   ```text
+   http://127.0.0.1:8000/api/auth/callback
+   ```
+
+   Google разрешает HTTP для loopback IP у web-приложения. Не используйте
+   `localhost` в этом URI: адрес и порт должны точно совпадать с тем, что
+   отправляет приложение. Сайт также открывайте по `127.0.0.1`, иначе
+   OAuth-cookie и callback будут привязаны к другому hostname.
+
+Приложение запрашивает OIDC scopes `openid`, `profile`, `email` для
+идентификации профиля и четыре read-only Classroom scope:
+`classroom.courses.readonly`, `classroom.student-submissions.me.readonly`,
+`classroom.student-submissions.students.readonly` и
+`classroom.rosters.readonly`. Оно никогда не изменяет данные Classroom.
+
+#### Подготовка environment
+
+Из корня проекта:
+
+```bat
+cd D:\Documents\google_class_help
+Copy-Item .env.local.example .env.local
+```
+
+Откройте `.env.local` и заполните `GOOGLE_CLIENT_ID`,
+`GOOGLE_CLIENT_SECRET` и `POSTGRES_PASSWORD`. Затем сгенерируйте ключ:
+
+```bat
+.venv\Scripts\python.exe tools\generate_hosted_secrets.py
+```
+
+Скопируйте выведенное значение `GC_DASHBOARD_OAUTH_TOKEN_ENCRYPTION_KEY` в
+`.env.local`. Не перезаписывайте этот ключ при обычных перезапусках: он нужен
+для расшифровки уже сохранённых OAuth-токенов. Файл `.env.local` игнорируется
+Git и не попадает в Docker image.
+
+Локальный `compose.local.yml` сам включает `GC_DASHBOARD_HOSTED=1`,
+`APP_ENV=development`, PostgreSQL и отдельный worker. Он намеренно не включает
+Caddy/Cloudflare, production `.env`, HSTS и Secure-cookie: Google OAuth здесь
+использует разрешённый loopback HTTP callback.
+
+#### Сборка и запуск
+
+Во всех командах нужен один и тот же `--env-file`: Compose использует его и
+для подстановки пароля PostgreSQL, и для переменных контейнеров.
+
+```bat
+docker compose --env-file .env.local -f compose.local.yml config --quiet
+docker compose --env-file .env.local -f compose.local.yml build web
+docker compose --env-file .env.local -f compose.local.yml up -d postgres
+docker compose --env-file .env.local -f compose.local.yml run --rm --workdir /app web alembic -c /app/alembic.ini upgrade head
+docker compose --env-file .env.local -f compose.local.yml up -d web worker
+```
+
+Откройте <http://127.0.0.1:8000> и войдите через Google. После callback
+worker автоматически выполнит первый запрос синхронизации (в локальном
+compose уменьшены задержки сканирования). Проверить состояние контейнеров и
+логи можно командами:
+
+```bat
+docker compose --env-file .env.local -f compose.local.yml ps
+docker compose --env-file .env.local -f compose.local.yml logs --tail=100 web worker
+Invoke-RestMethod http://127.0.0.1:8000/api/health
+Invoke-RestMethod http://127.0.0.1:8000/api/ready
+```
+
+Ожидаемые ответы health/ready: `ok = True`, а у `/api/ready` также
+`db = up`. Если Google сообщает `redirect_uri_mismatch`, проверьте, что в
+Google Cloud указан именно `http://127.0.0.1:8000/api/auth/callback`, а в
+`compose.local.yml` задан тот же `GOOGLE_REDIRECT_URI`.
+
+Остановить стенд, сохранив локальную БД и OAuth-токены:
+
+```bat
+docker compose --env-file .env.local -f compose.local.yml down
+```
+
+Полностью удалить **только локальные** volumes БД и данных приложения:
+
+```bat
+docker compose --env-file .env.local -f compose.local.yml down --volumes
+```
+
+Этот вариант не проверяет Caddy, Cloudflare, публичный HTTPS и HSTS —
+для них нужен отдельный deployment-контур. Он проверяет локальный Docker и
+реальный Google OAuth end-to-end.
+
+
 ### Hosted production edge (миграция на хостинг, этап 8, ADR-0026)
 
 - Статика — Option A: FastAPI раздаёт `frontend/dist` (Caddy → FastAPI);
@@ -75,6 +182,9 @@ production web-клиент (`APP_ENV` и `GC_DASHBOARD_ALLOWED_HOSTS`/
   (`POST /api/auth/logout`, `POST /api/sync`, `DELETE /api/cache`); CORS
   защитой не считается, подписанный токен не требуется (см. ADR-0026).
 - Публичные страницы для Google OAuth verification: `/privacy/`, `/terms/`.
+  Без сессии корень `/` отдаёт посадочную страницу с описанием сервиса
+  и входом через Google (ADR-0029); ссылка на `/privacy/` есть и в её
+  футере, и в разделе о данных.
 - Секреты: desktop-клиент встраивается в exe (base64 — обфускация, не
   защита); hosted-секрет (`GOOGLE_CLIENT_SECRET`, ключ Fernet) — только
   env сервера, никогда в браузере, `frontend/dist`, Nuitka-артефактах и Git.
@@ -84,13 +194,19 @@ production web-клиент (`APP_ENV` и `GC_DASHBOARD_ALLOWED_HOSTS`/
 - **Лимиты (только hosted):** токен-бакеты по (поверхность, client IP) —
   логин 30/мин, отклонённые OAuth-callback'и 20/мин, ручной синк 60/мин
   **плюс cooldown 60 с на пользователя**, очистка кэша 10/мин; превышение
-  → 429 + `Retry-After`. IP из `X-Forwarded-For` верится только от
-  доверенного прокси. Desktop не лимитируется.
-- **Бюджет синка:** `SYNC_MAX_WORKERS=4` × `SYNC_MAX_CONCURRENT_USERS=2`
-  = 8 потоков на воркер; для ~1000 пользователей и 25 учителей при
-  интервале 10 мин — ~600 запросов Google/мин (~10 QPS, порядок ниже
-  квоты проекта). Арифметика в `backend/capacity.py`; рост лимитов —
-  только вместе со счётчиками `quota_errors`/`server_errors` в логе синка.
+  → 429 + `Retry-After`. IP из `CF-Connecting-IP`/`X-Forwarded-For`
+  верится только от доверенного прокси. Desktop не лимитируется.
+  Прод-`.env` для 1 vCPU / 1 GB ставит консервативнее: логин 10/мин, синк
+  10/мин.
+- **Бюджет синка:** `SYNC_MAX_WORKERS` × `SYNC_MAX_CONCURRENT_USERS`;
+  на целевом VPS 1 vCPU / 1 GB это `2 × 1 = 2` потока, интервал 30 мин,
+  стартовый stagger 600 с — очередь вместо залпа. Арифметика в
+  `backend/capacity.py`; рост лимитов — только вместе со счётчиками
+  `quota_errors`/`server_errors` в логе синка.
+- **Ручной синк — queued:** `POST /api/sync` только ставит
+  `sync_requested` и сразу отвечает `{"ok": true, "queued": true}`;
+  работу выполняет воркер. Уже идущий синк → 409, cooldown → 429.
+  Desktop сохраняет inline-поведение (503 при исчерпании пула).
 - **Токены Google:** `invalid_grant` удаляет грант только этого
   пользователя и ставит `needs_reauth`; остальные аккаунты не затрагиваются.
 - **Логи hosted:** stdout (Docker/systemd), с редакцией query-строк и
@@ -102,7 +218,42 @@ production web-клиент (`APP_ENV` и `GC_DASHBOARD_ALLOWED_HOSTS`/
   всем кэшем), оба с `confirm=true` и только про вызывающего;
   `DELETE /api/me/cache` — явный алиас очистки кэша.
 - **Транзакции:** синк не держит соединение PostgreSQL через сетевой фетч
-  (короткие транзакции на фазы); пул `5+5` соединений под 1 vCPU / 1 GB.
+  (короткие транзакции на фазы); пул `3+2` соединений на 1 vCPU / 1 GB.
+
+### Развёртывание на хостинге (миграция этап 10, ADR-0028)
+
+Прод — пять контейнеров на приватной docker-сети, наружу ничего:
+
+```text
+Internet → Cloudflare (TLS, DDoS) → Tunnel → cloudflared
+                                                 ↓
+                                            caddy:80 → web:8000 → postgres:5432
+                                                       worker  → postgres:5432
+```
+
+Ключевые файлы: `Dockerfile` (Node-сборка фронта + python:3.12-slim,
+non-root, pinned `backend/requirements-prod.txt`), `compose.yml`,
+`Caddyfile` (внутренний HTTP-хоп, `max_size 2MB`), `.dockerignore`,
+`tools/backup_postgres.sh`, `.env.example`.
+
+Порядок выката и приёмка — `docs/DEPLOYMENT_CHECKLIST.md`
+(Cloudflare → VPS/firewall → `.env` → `docker compose build` →
+`alembic upgrade head` → health/ready → OAuth → изоляция → бэкапы).
+
+- **Health/readiness:** `GET /api/health` (публичный, `{"ok": true}`) и
+  `GET /api/ready` (`SELECT 1`, 200/503, без деталей инфраструктуры) —
+  используются healthcheck'ом контейнера и туннелем.
+- **Origin скрыт:** публичных портов у VPS нет, PostgreSQL и uvicorn
+  доступны только внутри `internal`-сети; SSH — по ключам.
+- **Бэкапы:** `pg_dump --format=custom` в `backups/` (rolling 7), restore
+  останавливает web/worker, затем `alembic upgrade head`; `.env`
+  (Fernet-ключ, Google secret, tunnel token) хранится отдельно и
+  зашифрованно, дампы никогда не попадают в Git.
+- **Turnstile** реализован и включается заполнением
+  `TURNSTILE_SITE_KEY`/`TURNSTILE_SECRET_KEY` (пустые ключи — проверка
+  выключена); **HSTS включён** (`GC_DASHBOARD_HSTS_MAX_AGE=31536000`,
+  только по https).
+
 
 ---
 
@@ -153,11 +304,10 @@ build.bat
    запуск активирует работающий дашборд (фокус уже открытого окна, новая
    вкладка — только если окна нет) и завершается (ADR-0018). Если дашборд
    открыт в закреплённой/фоновой вкладке (её не видно в заголовке окна),
-   новая вкладка показывает уведомление «дашборд уже открыт» с кнопкой
-   *Switch to it*: переключение выполняется через service worker, потому что
-   браузеры перемещают вкладку только при свежем клике — если автопопытка не
-   удалась, достаточно нажать кнопку; при неудаче подсказка предложит закрыть
-   вкладку вручную.
+   откроется лишняя вкладка: бэкенд при этом всё равно один — защиту
+   держит мьютекс. Раньше вкладка пыталась вернуть фокус прежней, но на
+   захощенном домене это уведомление было лишним, поэтому слой presence
+   удалён (ADR-0029).
 3. После старта в системном трее появляется иконка: **Open dashboard**
    (двойной клик) и **Exit**. Прячется она вместе с выходом приложения;
    без `pystray`/`Pillow` приложение работает как раньше, без иконки.
@@ -218,7 +368,8 @@ build.bat
 - любой локальный процесс пользователя может вызывать API (чтение кэша и
   запуск синхронизации) — приложение не защищает машину от своего же
   пользователя и на это не претендует;
-- все OAuth-scopes — read-only; приложение никогда ничего не изменяет в
+- Classroom OAuth-scopes — только read-only; OIDC scopes дают лишь профиль
+  текущего Google-пользователя. Приложение никогда ничего не изменяет в
   Google Classroom.
 
 ### Windows-интеграция (опционально, не автоматизировано)

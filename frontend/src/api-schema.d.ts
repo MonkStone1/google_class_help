@@ -224,25 +224,19 @@ export interface paths {
         put?: never;
         /**
          * Run Sync
-         * @description Synchronize the calling user's cache with THEIR Google credentials.
+         * @description Queue (hosted) or run (desktop) a sync of the calling user's cache.
          *
          *     §12: /api/sync must never touch another user's data. Desktop: the local
-         *     owner (token.json). Hosted: the session user's oauth_tokens — sync_now
-         *     resolves the cache owner and credentials from this user. Since the
-         *     per-user scheduler (stage 5, §18) a manual sync only conflicts with
-         *     THIS user's own running sync (background or another manual call); any
-         *     other user syncs independently.
+         *     owner (token.json) — sync runs inline as before. Hosted: the session
+         *     user's oauth_tokens — the request only flags ``sync_requested`` and
+         *     answers ``{"ok": True, "queued": True, "status": "queued"}`` immediately;
+         *     the worker container performs the actual Classroom fan-out (DDoS plan
+         *     §9: never run the full sync inside the HTTP request).
          *
-         *     §65: a manual sync is interactive work and is bounded by the process's
-         *     global concurrency ceiling (``SYNC_MAX_CONCURRENT_USERS``). When every
-         *     slot is taken the request is answered with 503 and a Retry-Later-style
-         *     phrase instead of queueing behind other users' syncs.
-         *
-         *     Stage 9 (§39): hosted manual syncs additionally carry a per-user
-         *     cooldown (``SYNC_MANUAL_COOLDOWN_SECONDS``). Holding the Sync button
-         *     reuses the in-flight run (409) or gets 429 instead of launching a
-         *     second full Classroom fan-out; one user cannot eat the whole Google
-         *     quota this way. The background scheduler bypasses the cooldown.
+         *     Hosted conflict mapping: a sync already in flight for THIS user → 409;
+         *     a manual request inside the per-user cooldown → 429 + Retry-After; the
+         *     background scheduler bypasses the cooldown. Other users sync
+         *     independently. Rate-limit buckets (§39) stay in middleware.
          */
         post: operations["run_sync_api_sync_post"];
         delete?: never;
@@ -460,6 +454,30 @@ export interface paths {
         };
         /** Health */
         get: operations["health_api_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ready
+         * @description Readiness check (migration stage 10, §58 / DDoS plan §24).
+         *
+         *     Verifies that the database connection pool and engine are operational
+         *     without leaking infrastructure details, environment variables, or credentials.
+         *     Returns 200 {"ok": True, "db": "up"} or 503 {"ok": False, "db": "down"}.
+         */
+        get: operations["ready_api_ready_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -978,6 +996,13 @@ export interface components {
             assignments: number;
             /** Error */
             error?: string | null;
+            /**
+             * Queued
+             * @default false
+             */
+            queued: boolean;
+            /** Status */
+            status?: string | null;
         };
         /** SyncStatus */
         SyncStatus: {
@@ -1733,6 +1758,26 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    ready_api_ready_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

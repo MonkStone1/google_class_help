@@ -60,11 +60,18 @@ import httplib2
 import oauth_transport
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 import metrics
 import sync_store
-from config import COOKIE_HOST_PREFIX, COOKIE_SAMESITE, COOKIE_SECURE
+from config import (
+    COOKIE_HOST_PREFIX,
+    COOKIE_SAMESITE,
+    COOKIE_SECURE,
+    TURNSTILE_SECRET_KEY,
+    TURNSTILE_SITE_KEY,
+)
 from database import get_db
 from models_auth import OAuthLoginState, User, UserSession
 from proxy import external_scheme, peer_is_trusted_proxy
@@ -317,12 +324,73 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     return user
 
 
+# ------------------------------------------------- Turnstile (DDoS plan §17)
+
+_TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+# SPA landing that tells the frontend a challenge is required (safe relative
+# path only — _safe_relative would reject an absolute URL anyway).
+_TURNSTILE_LANDING = "/?challenge=required"
+
+
+class LoginStartIn(BaseModel):
+    """Body of POST /api/auth/login/start (DDoS plan §17)."""
+
+    token: str | None = None
+
+
+def _turnstile_enabled() -> bool:
+    """Both keys must be configured (config.TURNSTILE_ENABLED at startup).
+
+    Read through the module attributes so tests can toggle the combination
+    without re-importing the application.
+    """
+    return bool(TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY)
+
+
+def _verify_turnstile(token: str) -> bool:
+    """Verify one Turnstile response token against Cloudflare siteverify.
+
+    Fail-closed: any transport/parse problem counts as a rejection. The
+    token and the secret key are never logged (DDoS plan §21).
+    """
+    if not _turnstile_enabled():
+        return True
+    body = urlencode({"secret": TURNSTILE_SECRET_KEY, "response": token}).encode(
+        "utf-8"
+    )
+    http = httplib2.Http(timeout=oauth_transport.TOKEN_TIMEOUT_SECONDS)
+    try:
+        response, content = http.request(
+            _TURNSTILE_VERIFY_URL,
+            "POST",
+            body=body,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        payload = json.loads(content.decode("utf-8"))
+    except Exception:  # noqa: BLE001 — fail closed on any verification error
+        logger.warning("Turnstile verification failed: siteverify unreachable")
+        return False
+    return response.status == 200 and bool(payload.get("success"))
+
+
 # ---------------------------------------------------------------- endpoints
 
 
-@router.get("/login")
-def login(request: Request, db: Session = Depends(get_db)) -> RedirectResponse:
-    """Start a login attempt: create server-side state, redirect to Google."""
+@router.get("/turnstile")
+def turnstile_config() -> dict:
+    """Tell the frontend whether login needs a challenge (site key is public)."""
+    if _turnstile_enabled():
+        return {"enabled": True, "site_key": TURNSTILE_SITE_KEY}
+    return {"enabled": False, "site_key": None}
+
+
+def _begin_login(request: Request, db: Session) -> tuple[str, str]:
+    """Create server-side state for one login attempt.
+
+    Returns ``(google_authorization_url, nonce)`` — the caller attaches the
+    nonce cookie itself (RedirectResponse vs JSONResponse differ between the
+    plain GET flow and the Turnstile-guarded POST /login/start).
+    """
     client_config = google_credentials.require_client_config()
     state = secrets.token_urlsafe(32)
     nonce = secrets.token_urlsafe(32)
@@ -345,12 +413,18 @@ def login(request: Request, db: Session = Depends(get_db)) -> RedirectResponse:
     auth_url = _build_authorization_url(
         client_config, state, challenge, client_config["redirect_uri"]
     )
-    response = RedirectResponse(auth_url, status_code=302)
-    # Binds the OAuth attempt to this browser: the callback must present
-    # the same nonce (migration prompt §5: state bound to the initiator).
-    # The nonce cookie must survive the cross-site redirect back from
-    # Google, so it always stays SameSite=Lax — COOKIE_SAMESITE applies to
-    # the session cookie, not to this one.
+    return auth_url, nonce
+
+
+def _attach_nonce(
+    response: RedirectResponse | JSONResponse, request: Request, nonce: str
+) -> None:
+    """Bind the OAuth attempt to this browser (migration prompt §5).
+
+    The nonce cookie must survive the cross-site redirect back from Google,
+    so it always stays SameSite=Lax — COOKIE_SAMESITE applies to the session
+    cookie, not to this one.
+    """
     response.set_cookie(
         NONCE_COOKIE_NAME,
         nonce,
@@ -361,6 +435,51 @@ def login(request: Request, db: Session = Depends(get_db)) -> RedirectResponse:
         httponly=True,
         samesite="lax",
     )
+
+
+@router.get("/login")
+def login(request: Request, db: Session = Depends(get_db)) -> RedirectResponse:
+    """Start a login attempt: create server-side state, redirect to Google."""
+    if _turnstile_enabled():
+        # DDoS plan §17: when a challenge is configured, the direct GET
+        # bypass must not exist — send the browser to the SPA, which renders
+        # the widget and POSTs the solved token to /login/start.
+        return RedirectResponse(_TURNSTILE_LANDING, status_code=302)
+    auth_url, nonce = _begin_login(request, db)
+    response = RedirectResponse(auth_url, status_code=302)
+    _attach_nonce(response, request, nonce)
+    return response
+
+
+@router.post("/login/start")
+def login_start(
+    payload: LoginStartIn, request: Request, db: Session = Depends(get_db)
+) -> JSONResponse:
+    """Turnstile-guarded login start (DDoS plan §17).
+
+    Flow: widget → browser POSTs the solved ``token`` → backend verifies it
+    at Cloudflare siteverify (fail-closed) → same server-side state as the
+    plain GET flow → JSON ``{"redirect_url": …}`` the SPA navigates to.
+    With Turnstile disabled (empty keys) the endpoint still works and only
+    requires no token, so the frontend has one code path.
+    """
+    if _turnstile_enabled():
+        token = (payload.token or "").strip()
+        if not token:
+            metrics.record("turnstile_rejected")
+            raise HTTPException(
+                status_code=403, detail="Verification challenge required."
+            )
+        if not _verify_turnstile(token):
+            metrics.record("turnstile_rejected")
+            logger.warning("Turnstile challenge rejected for a login start")
+            raise HTTPException(
+                status_code=403, detail="Verification challenge failed."
+            )
+        metrics.record("turnstile_accepted")
+    auth_url, nonce = _begin_login(request, db)
+    response = JSONResponse({"redirect_url": auth_url})
+    _attach_nonce(response, request, nonce)
     return response
 
 

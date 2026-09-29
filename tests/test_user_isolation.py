@@ -207,38 +207,36 @@ def test_cache_delete_only_clears_the_caller(hosted_client, db):
 
 
 def test_sync_targets_the_session_user_only(hosted_client, db, monkeypatch):
-    """§12: /api/sync works on the caller's credentials and cache only."""
+    """§12/DDoS §9: /api/sync queues the CALLER's job only, nothing else's."""
     alice = _make_user(db, "sub-alice")
     bob = _make_user(db, "sub-bob")
     _seed_course(db, alice.id, "Alice's course")
     _add_session(db, bob, "raw-bob-token")
 
-    calls: list[User] = []
-
-    def spy(db: Session, user: User):
-        calls.append(user)
-
-    monkeypatch.setattr(google_credentials, "get_google_credentials", spy)
     hosted_client.cookies.set("gch_session", "raw-bob-token")
     response = hosted_client.post("/api/sync")
     assert response.status_code == 200
     body = response.json()
-    assert body["ok"] is False
-    assert body["error"] == "Not signed in to Google."
-    # Exactly one credential resolution — the session user's, nobody else's.
-    assert [user.id for user in calls] == [bob.id]
-    # Alice's sync state was never touched.
+    assert body["ok"] is True
+    assert body["queued"] is True
+    assert body["status"] == "queued"
+    # Only the session user's flag was set — nobody else's.
     from models import SyncStatus
 
     alice_state = db.get(SyncStatus, alice.id)
     assert alice_state is not None
     assert alice_state.last_success_at == _utc(2026, 9, 19)
     assert alice_state.status == sync_store.SYNC_OK
-    # Bob's run was recorded against HIS row only: it released his claim
-    # without reporting an error (he simply has no Google grant yet).
+    assert alice_state.sync_requested is False
     bob_state = db.get(SyncStatus, bob.id)
-    assert bob_state is not None and bob_state.status == sync_store.SYNC_PENDING
-    assert bob_state.last_error is None
+    assert bob_state is not None
+    assert bob_state.sync_requested is True
+    # The queue is already an active UI operation even before the worker
+    # claims it; the frontend must not wait for `status == running` to start
+    # watching and must not keep the old cache as the final view.
+    queued_status = hosted_client.get("/api/status").json()
+    assert queued_status["sync_status"] == sync_store.SYNC_PENDING
+    assert queued_status["syncing"] is True
 
 
 # ----------------------------------------------------- §16 per-session state

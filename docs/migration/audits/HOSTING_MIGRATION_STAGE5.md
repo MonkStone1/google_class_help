@@ -137,8 +137,9 @@
 
 - **Этап 6 (API surface)**: `Teacher Mode and API Surface` — текущие
   учительские ручки уже user-scoped, но сверка списка §21+ будет там.
-- **Этап 7 (фронтенд/конфиг)**: UI для `sync_status` (спиннер на `running`,
-  ретрай-подсказка на `error`, «войдите снова» на `needs_reauth`), рендер
+- **Этап 7 (фронтенд/конфиг)**: UI для sync-состояний (спиннер для queued/running
+  через `syncing`, ретрай-подсказка на `error`, «войдите снова» на
+  `needs_reauth`), рендер
   UTC-таймстемпов `last_sync` в локальной зоне, env-Host/CORS/trusted
   proxy, CSRF/security headers.
 - **Этап 8 (desktop coexistence)**: смоук desktop-пути на собранном exe

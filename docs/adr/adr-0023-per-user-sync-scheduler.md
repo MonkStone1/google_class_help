@@ -120,9 +120,10 @@ stack-trace остаётся в логе; в `last_error` и в API попада
 - `GET /api/status` и detail-ручки читают `last_sync` = `last_success_at`,
   `last_sync_error` = `last_error`; добавлены `sync_status`
   (`pending/running/ok/error/needs_reauth`), `last_sync_started_at`,
-  `last_sync_finished_at`; `syncing` теперь вычисляется из статуса, а не
-  всегда `false`. `frontend/src/api-schema.d.ts` перегенерирован
-  (`npm run gen:api:file`), `tsc` проходит.
+  `last_sync_finished_at`; `syncing` теперь вычисляется из `sync_status` и
+  `sync_requested`: это позволяет UI начать следить за queued-задачей ещё до
+  того, как worker переведёт её в `running`. `frontend/src/api-schema.d.ts`
+  перегенерирован (`npm run gen:api:file`), `tsc` проходит.
 - `POST /api/sync` не менялся: конфликт теперь только с синком **того же**
   пользователя.
 - Desktop-путь не изменён по поведению: `background_sync.py` остаётся

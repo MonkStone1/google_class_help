@@ -418,8 +418,21 @@ if COOKIE_HOST_PREFIX and COOKIE_SECURE is not True and not IS_PRODUCTION:
 # §36/§48: HSTS is opt-in. Send it only after HTTPS behaviour is confirmed
 # (migration stage 10); the value is max-age seconds, 0 = header off.
 # The reverse proxy may set the header instead — then keep this at 0 to
-# avoid duplicates.
+# avoid duplicates. Production .env.example ships 31536000 (1 year).
 HSTS_MAX_AGE = _int_env("GC_DASHBOARD_HSTS_MAX_AGE", 0)
+
+# --------------------------------------------- Turnstile (DDoS plan §17)
+# Cloudflare Turnstile guards ONLY login initiation, and only when both keys
+# are configured — empty values (the default) keep the flow unchanged, so
+# development and tests never talk to Cloudflare. The SECRET key is
+# server-only: it never reaches the React bundle, logs or Git; the site key
+# is public by design (it goes to the browser widget).
+TURNSTILE_SITE_KEY = os.environ.get("TURNSTILE_SITE_KEY", "").strip()
+TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY", "").strip()
+# Enabled only when BOTH are present: a site key without a secret would show
+# the challenge but let the backend skip verification (fail-open) — refuse
+# that combination instead.
+TURNSTILE_ENABLED = bool(TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY)
 
 
 def hosted_oauth_client_config() -> dict | None:

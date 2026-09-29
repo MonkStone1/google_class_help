@@ -29,9 +29,26 @@ export function CalendarPage() {
   // The last used view is persisted in the settings store, so a reload or the
   // next visit reopens the calendar exactly as it was left (ADR-0006).
   const view = calendarView;
-  const setView = (mode: CalendarViewMode) => update({ calendarView: mode });
   const [cursor, setCursor] = useState(() => startOfDay(new Date()));
   const [selected, setSelected] = useState<Assignment | null>(null);
+
+  /**
+   * Switching to the day view always lands on today, while the month and week
+   * views keep the cursor where the user navigated to. `openDay` is the
+   * separate path used by a calendar cell: it opens the day that was clicked,
+   * not today.
+   */
+  const setView = (mode: CalendarViewMode) => {
+    if (mode === "day") {
+      setCursor(startOfDay(new Date()));
+    }
+    update({ calendarView: mode });
+  };
+
+  const openDay = (day: Date) => {
+    setCursor(startOfDay(day));
+    update({ calendarView: "day" });
+  };
 
   const byDay = useMemo(() => {
     const map = new Map<string, Assignment[]>();
@@ -175,7 +192,20 @@ export function CalendarPage() {
                   isToday && "today",
                   items.length > 0 && "has-items",
                 )}
-                onClick={() => setCursor(day)}
+                onClick={() => openDay(day)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    openDay(day);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+                aria-label={day.toLocaleDateString(locale, {
+                  weekday: "long",
+                  day: "numeric",
+                  month: "long",
+                })}
               >
                 <div className="calendar-day-number">{day.getDate()}</div>
                 <div className="calendar-items">
@@ -241,11 +271,21 @@ function DayList({
         <button
           key={assignment.id}
           type="button"
-          className="card day-list-item"
+          className={cn(
+            "card day-list-item",
+            // Same colour language as the month/week chips (ADR-0009).
+            assignment.is_overdue && "day-list-overdue",
+            assignment.submitted && "day-list-done",
+          )}
           onClick={() => onOpen(assignment)}
         >
-          <span className="subject-chip">{assignment.course_name}</span>
-          <span>{assignment.title}</span>
+          <span
+            className="subject-chip day-list-course"
+            title={assignment.course_name}
+          >
+            {assignment.course_name}
+          </span>
+          <span className="day-list-title">{assignment.title}</span>
           {assignment.max_points === null ? null : (
             <span className="day-list-points">
               {t("calendar.points", { count: assignment.max_points })}

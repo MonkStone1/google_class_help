@@ -28,6 +28,19 @@ const DICTS = {
 
 export type I18nVars = Record<string, string | number>;
 
+/**
+ * The languages the settings can be switched between. Lives here, not in
+ * Settings.tsx, because the public landing page (ADR-0029) offers the same
+ * choice to a visitor who has no session and therefore never sees Settings.
+ * Endonyms on purpose: someone looking for their language scans for their own
+ * word, not for its translation.
+ */
+export const LANGUAGE_OPTIONS: Array<{ code: Language; label: string }> = [
+  { code: "en", label: "English" },
+  { code: "uk", label: "Українська" },
+  { code: "ru", label: "Русский" },
+];
+
 export function useI18n() {
   const { language, setLanguage } = useSettings();
   const dict = DICTS[language] ?? en;

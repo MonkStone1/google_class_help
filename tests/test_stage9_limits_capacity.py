@@ -167,12 +167,8 @@ def test_rate_limiter_capacity_change_replaces_the_bucket():
 def test_hosted_sync_endpoint_is_throttled_per_ip(hosted_client, db, monkeypatch):
     """§39: repeated manual syncs from one client hit 429 with Retry-After."""
     import main
-    import sync
 
     monkeypatch.setattr(main, "RATE_LIMIT_SYNC_PER_MINUTE", 2)
-    monkeypatch.setattr(
-        sync, "sync_now", lambda user=None, **kwargs: {"ok": True, "courses": 0}
-    )
     user = _make_user(db, "sub-alice")
     _add_session(db, user, "raw-alice")
     hosted_client.cookies.set("gch_session", "raw-alice")
@@ -194,7 +190,10 @@ def test_desktop_sync_endpoint_is_not_throttled(client, monkeypatch):
         sync, "sync_now", lambda user=None, **kwargs: {"ok": True, "courses": 0}
     )
     assert client.post("/api/sync").status_code == 200
-    assert client.post("/api/sync").status_code == 200
+    # Second call: still 200 or an inline-sync 409 — never a hosted 429,
+    # because the desktop path has no throttle middleware and no cooldown.
+    second = client.post("/api/sync")
+    assert second.status_code in (200, 409)
 
 
 def test_hosted_login_redirect_is_throttled(hosted_client, monkeypatch):
@@ -243,7 +242,6 @@ def test_manual_sync_cooldown_refuses_the_same_user(hosted_client, db):
 
 
 def test_manual_sync_cooldown_expires(hosted_client, db, monkeypatch):
-    import sync
     from config import SYNC_MANUAL_COOLDOWN_SECONDS
 
     user = _make_user(db, "sub-alice")
@@ -259,17 +257,16 @@ def test_manual_sync_cooldown_expires(hosted_client, db, monkeypatch):
         )
     )
     db.commit()
-    monkeypatch.setattr(
-        sync, "sync_now", lambda user=None, **kwargs: {"ok": True, "courses": 0}
-    )
     hosted_client.cookies.set("gch_session", "raw-alice")
-    assert hosted_client.post("/api/sync").status_code == 200
+    response = hosted_client.post("/api/sync")
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert response.json()["queued"] is True
+    assert response.json()["status"] == "queued"
 
 
 def test_cooldown_is_per_user(hosted_client, db, monkeypatch):
     """§39: one user's recent sync must not block another account."""
-    import sync
-
     recent = _make_user(db, "sub-recent")
     other = _make_user(db, "sub-other")
     _add_session(db, other, "raw-other")
@@ -283,11 +280,12 @@ def test_cooldown_is_per_user(hosted_client, db, monkeypatch):
         )
     )
     db.commit()
-    monkeypatch.setattr(
-        sync, "sync_now", lambda user=None, **kwargs: {"ok": True, "courses": 0}
-    )
     hosted_client.cookies.set("gch_session", "raw-other")
-    assert hosted_client.post("/api/sync").status_code == 200
+    response = hosted_client.post("/api/sync")
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert response.json()["queued"] is True
+    assert response.json()["status"] == "queued"
 
 
 # ------------------------------------------- §41 dead grant stays per-user

@@ -104,7 +104,14 @@ def test_login_redirect_carries_state_pkce_and_binds_the_browser(
     assert params["redirect_uri"] == [REDIRECT]
     assert params["code_challenge_method"] == ["S256"]
     assert params["access_type"] == ["offline"]
-    assert "classroom.courses.readonly" in params["scope"][0]
+    requested_scopes = set(params["scope"][0].split())
+    assert requested_scopes == set(oauth_transport.SCOPES)
+    # Identity scopes are required for the OIDC userinfo lookup; Classroom
+    # scopes remain read-only and are what the application uses for data.
+    assert {"openid", "profile", "email"}.issubset(requested_scopes)
+    assert (
+        "https://www.googleapis.com/auth/classroom.courses.readonly" in requested_scopes
+    )
     # State and nonce are independent random values, stored server-side.
     set_cookie = response.headers["set-cookie"]
     assert "gch_oauth_nonce=" in set_cookie

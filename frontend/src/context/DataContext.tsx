@@ -32,8 +32,18 @@ import type {
 type AuthState = {
   auth: AuthStatus | null;
   sessionRequired: boolean;
-  login: () => Promise<void>;
-  logout: () => Promise<void>;
+  /**
+   * Start sign-in. `turnToken` is a solved Turnstile widget token — passed
+   * only when the server reports a challenge (DDoS plan §17); desktop and
+   * challenge-free hosted flows ignore it.
+   */
+  login: (turnToken?: string) => Promise<void>;
+  /**
+   * Sign out. Resolves to `false` when the request failed: the reason goes to
+   * the shared `error`, but a failed sign-out is visually a no-op, so the page
+   * that asked for it is the only place that can tell the user (ADR-0030).
+   */
+  logout: () => Promise<boolean>;
 };
 
 /**
@@ -45,6 +55,14 @@ type SyncState = {
   status: AppStatus | null;
   loading: boolean;
   syncing: boolean;
+  /**
+   * True when the server still reports a sync in flight but it has been
+   * running for longer than `STUCK_SYNC_SECONDS` without finishing. A real
+   * Classroom import of a few hundred courses takes a couple of minutes, so
+   * the threshold is deliberately generous — this is the "something is wrong,
+   * tell the user" signal, not a timeout that cancels anything.
+   */
+  syncStuck: boolean;
   error: string | null;
   syncNow: () => Promise<SyncResult | null>;
   refresh: () => Promise<void>;
@@ -59,6 +77,32 @@ type CoursesState = {
 };
 
 export type DataState = AuthState & SyncState & CoursesState;
+
+/**
+ * How long a server-reported sync may stay in flight before the UI admits it
+ * is probably stuck. A large Classroom account (hundreds of courses, one
+ * point-get per assignment) legitimately needs a couple of minutes, so this is
+ * well past a normal run: it exists to turn an infinite spinner into an
+ * explanation, not to cancel work the backend is still doing.
+ */
+const STUCK_SYNC_SECONDS = 5 * 60;
+
+/**
+ * Start of the current sync in epoch milliseconds, or 0 when unknown.
+ *
+ * `last_sync_started_at` is naive UTC (ADR-0004), so `Z` is appended; a value
+ * that already carries an offset is parsed as-is. A queued job that the worker
+ * has not claimed yet has no start time — 0 means "no evidence", which keeps
+ * the stuck flag off until a real claim exists.
+ */
+function startedAtMs(status: AppStatus): number {
+  const raw = status.last_sync_started_at;
+  if (!raw) {
+    return 0;
+  }
+  const parsed = Date.parse(raw.endsWith("Z") ? raw : `${raw}Z`);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
 
 const AuthContext = createContext<AuthState | null>(null);
 const SyncContext = createContext<SyncState | null>(null);
@@ -107,6 +151,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [syncStuck, setSyncStuck] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
@@ -185,18 +230,37 @@ export function DataProvider({ children }: { children: ReactNode }) {
     };
   }, [auth?.login_in_progress, loadData]);
 
-  const login = useCallback(async () => {
+  const login = useCallback(async (turnToken?: string) => {
     invalidateAllResources();
     setError(null);
     try {
+      if (turnToken) {
+        // Turnstile challenge solved (DDoS plan §17): the backend verified
+        // the token at Cloudflare and handed back the Google consent URL.
+        const { redirect_url } = await api.loginStart(turnToken);
+        window.location.assign(redirect_url);
+        return;
+      }
       await api.login();
       await loadData();
     } catch (err) {
+      const status = err instanceof Error ? (err as ApiError).status : 0;
       // Hosted mode deliberately disables POST /auth/login (405): the only
       // way in is a full-page navigation into the server-owned OAuth flow,
       // where the browser never touches the Google token (§25/§26).
-      if (err instanceof Error && (err as ApiError).status === 405) {
+      if (status === 405) {
         window.location.assign(LOGIN_URL);
+        return;
+      }
+      if (status === 403) {
+        // The server asked for a Turnstile challenge (expired/missing
+        // token). Send the browser back to the sign-in gate so the widget
+        // is rendered again.
+        if (window.location.search.includes("challenge=required")) {
+          window.location.reload();
+        } else {
+          window.location.assign("/?challenge=required");
+        }
         return;
       }
       setError(
@@ -207,27 +271,106 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, [loadData]);
 
-  const logout = useCallback(async () => {
+  const logout = useCallback(async (): Promise<boolean> => {
     try {
       await api.logout();
       // Only drop the teacher cache once the sign-out actually succeeded.
       invalidateAllResources();
       await loadData();
+      return true;
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
           : "Sign-out failed. Please try again.",
       );
+      return false;
     }
   }, [loadData]);
+
+  // Follow every active server-side sync, including a job that is still queued
+  // after sign-in. The status row is the source of truth: a queued job has
+  // ``sync_status == "pending"`` but ``syncing == true`` until the worker
+  // claims it. There is deliberately no fixed attempt limit here — Classroom
+  // imports can legitimately take longer than 50 seconds. When the status turns
+  // terminal, invalidate teacher resources and reload the cache once.
+  useEffect(() => {
+    if (status?.syncing !== true) {
+      return;
+    }
+
+    let cancelled = false;
+    let timer: number | undefined;
+
+    const schedule = () => {
+      timer = window.setTimeout(() => {
+        void poll();
+      }, 1500);
+    };
+
+    const poll = async () => {
+      try {
+        const next = await api.getStatus();
+        if (cancelled) return;
+        setStatus(next);
+        if (next.syncing) {
+          schedule();
+          return;
+        }
+        setSyncStuck(false);
+        // The worker has committed the final status before this request sees
+        // it, so the data reads below observe the completed cache.
+        invalidateAllResources();
+        await loadData();
+      } catch {
+        // A temporary network failure must not turn a real running sync into a
+        // permanently spinning button; retry on the next tick.
+        if (!cancelled) schedule();
+      }
+    };
+
+    schedule();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [loadData, status?.syncing]);
+
+  // Flag a sync that the server still calls active long after it started. The
+  // status watcher above re-renders on every tick, but the stuck verdict also
+  // has to appear when NO new status arrives (a killed worker answers with the
+  // same row forever, and the browser clock is what crosses the threshold), so
+  // it is a separate one-shot timer rather than part of that loop. Nothing is
+  // cancelled: the backend keeps working, this only tells the user what to
+  // expect instead of leaving a spinner with no explanation.
+  useEffect(() => {
+    if (status?.syncing !== true) {
+      setSyncStuck(false);
+      return;
+    }
+    const remaining = Math.max(
+      0,
+      STUCK_SYNC_SECONDS * 1000 - (Date.now() - startedAtMs(status)),
+    );
+    if (remaining === 0) {
+      setSyncStuck(true);
+      return;
+    }
+    setSyncStuck(false);
+    const timer = window.setTimeout(() => setSyncStuck(true), remaining);
+    return () => window.clearTimeout(timer);
+    // `status` as a whole: the effect reads the whole object through
+    // startedAtMs(), and the status watcher replaces it on every poll.
+  }, [status]);
 
   const syncNow = useCallback(async (): Promise<SyncResult | null> => {
     setSyncing(true);
     try {
       const result = await api.sync();
       // Teacher pages read from the resource cache; a fresh sync must drop it
-      // so they refetch instead of showing pre-sync data (ADR-0017).
+      // so they refetch instead of showing pre-sync data (ADR-0017). The final
+      // data reload is performed by the status watcher above once the worker
+      // reaches a terminal state.
       invalidateAllResources();
       await loadData();
       return result;
@@ -255,21 +398,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [auth, sessionRequired, login, logout],
   );
 
-  // `syncing` covers BOTH this browser's POST /api/sync and a sync the
-  // background worker is running for this user (sync_status === "running",
-  // migration stage 5/§18): the spinner must not depend on which of the two
-  // triggered the refresh.
+  // A queued job is active from the moment it is requested. The status
+  // row remains `pending` until the worker claims it, but the UI must
+  // already show the spinner and follow it through completion.
   const syncValue = useMemo(() => {
-    const serverRunning = status?.sync_status === "running";
+    // `syncing` covers both a queued job and one the worker has claimed.
+    // The status response keeps `sync_status` as `pending` during the queue,
+    // so relying on that string alone leaves the spinner stale forever.
+    const serverRunning = status?.syncing === true;
     return {
       status,
       loading,
       syncing: syncing || serverRunning,
+      syncStuck: syncStuck && (syncing || serverRunning),
       error,
       syncNow,
       refresh,
     };
-  }, [status, loading, syncing, error, syncNow, refresh]);
+  }, [status, loading, syncing, syncStuck, error, syncNow, refresh]);
 
   const coursesValue = useMemo(
     () => ({ courses, assignments }),

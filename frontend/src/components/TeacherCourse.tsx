@@ -2,7 +2,6 @@ import {
   ArrowLeft,
   ClipboardList,
   GraduationCap,
-  RefreshCw,
   Users,
 } from "lucide-react";
 import { useState } from "react";
@@ -13,7 +12,7 @@ import { AssignmentCard } from "./AssignmentCard.tsx";
 import { EmptyState, SectionSkeleton } from "./Skeletons.tsx";
 import { useSettings } from "../context/SettingsContext.tsx";
 import { useI18n } from "../i18n.ts";
-import { invalidateResources, useResource } from "../lib/resource.ts";
+import { useResource } from "../lib/resource.ts";
 import type { Assignment, Course, StudentGradeRow } from "../types.ts";
 
 type Tab = "assignments" | "students" | "grades";
@@ -38,11 +37,6 @@ export function TeacherCourse({ course }: { course: Course }) {
 
   const updatedAt =
     Math.max(coursework.updatedAt ?? 0, grades.updatedAt ?? 0) || null;
-  const refresh = () => {
-    invalidateResources(`course:${course.id}:`);
-    coursework.refresh();
-    grades.refresh();
-  };
 
   const students = grades.data?.rows ?? [];
 
@@ -90,9 +84,6 @@ export function TeacherCourse({ course }: { course: Course }) {
               })}
             </span>
           ) : null}
-          <button type="button" className="button" onClick={refresh}>
-            <RefreshCw size={15} /> {t("teacher.refresh")}
-          </button>
         </div>
       </div>
 

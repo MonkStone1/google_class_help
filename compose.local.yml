@@ -1,0 +1,148 @@
+# Google Class Help — локальный hosted-стенд с Google OAuth.
+#
+# Это НЕ production compose.yml. Здесь нет Caddy и Cloudflare: браузер
+# обращается только к 127.0.0.1, PostgreSQL и worker доступны внутри
+# отдельной bridge-сети. Снаружи опубликован только loopback-порт web.
+#
+# Запуск (PowerShell):
+#   Copy-Item .env.local.example .env.local
+#   # заполнить .env.local и сгенерировать Fernet-ключ
+#   docker compose --env-file .env.local -f compose.local.yml config --quiet
+#   docker compose --env-file .env.local -f compose.local.yml build web
+#   docker compose --env-file .env.local -f compose.local.yml up -d postgres
+#   docker compose --env-file .env.local -f compose.local.yml run --rm --workdir /app web alembic -c /app/alembic.ini upgrade head
+#   docker compose --env-file .env.local -f compose.local.yml up -d web worker
+
+name: google-class-help-local
+
+x-local-service-environment: &local-service-environment
+  # Локальный HTTP разрешён только потому, что это development-режим и
+  # callback указывает на loopback IP. Production hosted требует HTTPS.
+  APP_ENV: development
+  GC_DASHBOARD_HOSTED: "1"
+  APP_BASE_URL: http://127.0.0.1:8000
+  GOOGLE_REDIRECT_URI: http://127.0.0.1:8000/api/auth/callback
+  # localhost нужен внутреннему healthcheck; браузер следует открывать по
+  # 127.0.0.1, чтобы совпадать с OAuth redirect URI.
+  GC_DASHBOARD_ALLOWED_HOSTS: "127.0.0.1,localhost"
+  # Один origin: отдельный Vite/CORS-прокси в этом стенде не нужен.
+  GC_DASHBOARD_CORS_ORIGINS: ""
+  # За web напрямую подключён браузер через Docker port mapping, не Caddy.
+  GC_DASHBOARD_TRUSTED_PROXIES: ""
+  # OAuth идёт через loopback HTTP, поэтому Secure-cookie и HSTS выключены.
+  COOKIE_SECURE: "false"
+  COOKIE_SAMESITE: lax
+  GC_DASHBOARD_COOKIE_HOST_PREFIX: "0"
+  GC_DASHBOARD_HSTS_MAX_AGE: "0"
+  # Не подключать локально Cloudflare Turnstile и не включать scheduler в web.
+  TURNSTILE_SITE_KEY: ""
+  TURNSTILE_SECRET_KEY: ""
+  GC_DASHBOARD_EMBEDDED_SCHEDULER: "0"
+  GC_DASHBOARD_DATA_DIR: /data
+  # Быстрый локальный цикл: первый запрос после входа не ждёт VPS-стартовый
+  # stagger, а worker проверяет очередь каждые 10 секунд.
+  GC_DASHBOARD_SYNC_SCAN_INTERVAL_SECONDS: "10"
+  GC_DASHBOARD_SYNC_STARTUP_STAGGER_SECONDS: "0"
+  GC_DASHBOARD_SYNC_MAX_CONCURRENT_USERS: "1"
+  # Локальный стенд обслуживает ОДНОГО пользователя, поэтому параллелизм
+  # внутри синка можно поднять: quota Classroom (1200 запросов/мин на
+  # пользователя) от этого не страдает. Прод-профиль в compose.yml НЕ трогаем —
+  # там по ADR-0027 остаётся 2 x 1 = 2 потока на VPS 1 vCPU / 1 ГБ.
+  #
+  # Почему это ускоряет: у student-курсов courseWork.list недоступен, поэтому
+  # backend/sync_service.py делает point-get courseWork.get на КАЖДУЮ работу
+  # (у типичного аккаунта это сотни запросов). Замер из контейнера: RTT до
+  # classroom.googleapis.com 150-670 мс, так что при 4 потоках только эти
+  # point-get'ы занимают десятки секунд. 8 потоков делят тот же объём пополам.
+  GC_DASHBOARD_SYNC_WORKERS: "8"
+  # Окно «мёртвого» claim'а. Синк не может длиться час, а падать он может:
+  # SIGKILL по таймауту оставлял строку в running, и пользователь не мог
+  # запустить новый синк все SYNC_CLAIM_STALE_SECONDS (дефолт 3600). 600 секунд
+  # — с запасом больше худшего реального синка, но втрое быстрее восстановление.
+  GC_DASHBOARD_SYNC_CLAIM_STALE_SECONDS: "600"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-google_class_help_local}
+      POSTGRES_USER: ${POSTGRES_USER:-google_class_help_local}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required in .env.local}
+      # Совпадает с production: индексы миграций не зависят от локали хоста.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - local_pgdata:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-google_class_help_local} -d ${POSTGRES_DB:-google_class_help_local}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - local
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: google-class-help:local-dev
+    restart: unless-stopped
+    env_file:
+      - .env.local
+    environment:
+      <<: *local-service-environment
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-google_class_help_local}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-google_class_help_local}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      # Не используйте 0.0.0.0: локальный OAuth-стенд доступен только
+      # браузеру на этой машине.
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - local_appdata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - local
+
+  worker:
+    image: google-class-help:local-dev
+    restart: unless-stopped
+    command: ["python", "sync_worker.py"]
+    # Docker по умолчанию шлёт SIGKILL через 10 секунд после SIGTERM — намного
+    # меньше, чем длится Classroom-синк. Воркер получал kill прямо посреди
+    # синка, и строка sync_status оставалась в running без процесса за ней.
+    # 300с > SHUTDOWN_GRACE_SECONDS (240s в sync_worker.py), поэтому успевает
+    # отработать graceful-выход и освободить claim.
+    stop_grace_period: 5m
+    env_file:
+      - .env.local
+    environment:
+      <<: *local-service-environment
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-google_class_help_local}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-google_class_help_local}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      web:
+        # Не запускать worker, пока web не закончит Alembic-инициализацию.
+        condition: service_healthy
+    volumes:
+      - local_appdata:/data
+    networks:
+      - local
+
+networks:
+  local:
+    driver: bridge
+
+volumes:
+  local_pgdata:
+  local_appdata:

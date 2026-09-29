@@ -5,7 +5,17 @@ data/token.json
 data/*.db
 # Hosted deployment secrets (migration stage 2): only .env.example is tracked.
 .env
+.env.local
 backend/.env
+!.env.example
+# Database dumps and any other backup artifacts (migration stage 10, §57).
+backups/
+*.dump
+*.sql.gz
+
+# Local load-test artifacts (tools/loadtest_seed.py): synthetic session
+# cookies and container-stat CSV dumps. Never commit them.
+loadtest/
 
 # Python
 .venv/
@@ -25,3 +35,4 @@ release/
 assets/
 logs/
 data/
+skills/

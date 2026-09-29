@@ -1,0 +1,598 @@
+[
+  {
+    "agent_id": "hunter-availability",
+    "attack_class": "Denial of service",
+    "attempts": [],
+    "boundary": "anonymous low-trust request versus shared service and operator spend",
+    "canonical_refs": {
+      "attack_class": "ATTACK-CLASSES.md#Denial of service",
+      "boundary": "anonymous low-trust request versus shared service and operator spend",
+      "subsystem": "hosted HTTP plus sync plus proxy edge",
+      "surface": "availability-abuse"
+    },
+    "coverage_id": "availability-abuse::anonymous%20low-trust%20request%20versus%20shared%20service%20and%20operator%20spend::hosted%20HTTP%20plus%20sync%20plus%20proxy%20edge::ATTACK-CLASSES.md%23Denial%20of%20service",
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Access control",
+        "reason": "Covered by web and isolation units."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Injection",
+        "reason": "No request-controlled syntax sink."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Cryptography and secrets",
+        "reason": "Assigned to deployment-configuration."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Business logic",
+        "reason": "Assessed through quota/claim/cooldown behavior."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Information disclosure",
+        "reason": "Only retry consequences checked here."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Obvious things",
+        "reason": "Folded into grounded checks."
+      }
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-availability",
+        "reviewed_paths": [
+          "backend/classroom_api.py",
+          "backend/config.py",
+          "backend/hosted_auth.py",
+          "backend/main.py",
+          "backend/oauth_transport.py",
+          "backend/proxy.py",
+          "backend/rate_limit.py",
+          "backend/sync_scheduler.py",
+          "backend/sync_service.py",
+          "backend/sync_worker.py",
+          "Caddyfile",
+          "compose.yml"
+        ],
+        "invariant": "Security boundary and control invariants are enforced.",
+        "method": "source",
+        "result": "Identified potential deviation; candidate generated and grounded in source trace.",
+        "artifact": null
+      }
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Denial of service",
+    "prior_status": "none",
+    "result_fingerprints": [
+      "gch/turnstile-siteverify-no-timeout",
+      "gch/inmemory-ratelimit-diverges-across-replicas"
+    ],
+    "reviewed_paths": [
+      "backend/classroom_api.py",
+      "backend/config.py",
+      "backend/hosted_auth.py",
+      "backend/main.py",
+      "backend/oauth_transport.py",
+      "backend/proxy.py",
+      "backend/rate_limit.py",
+      "backend/sync_scheduler.py",
+      "backend/sync_service.py",
+      "backend/sync_worker.py",
+      "Caddyfile",
+      "compose.yml"
+    ],
+    "selected_companion_blocks": [
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Core discipline",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Pre-authentication work imbalance",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Quota-accounting scope and reset gaps",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Worker, pool, and priority starvation",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Reachable fatal error or deadlock",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Retry storm and fail-open amplification",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Universal moves",
+      "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#Validation rules"
+    ],
+    "status": "candidate",
+    "subsystem": "hosted HTTP plus sync plus proxy edge",
+    "surface": "availability-abuse",
+    "unresolved": [],
+    "wave": 1,
+    "starting_paths": [
+      "backend/hosted_auth.py",
+      "backend/rate_limit.py"
+    ]
+  },
+  {
+    "agent_id": "hunter-client",
+    "attack_class": "Cross-site scripting",
+    "attempts": [],
+    "boundary": "browser attacker content versus victim session origin persistence",
+    "canonical_refs": {
+      "attack_class": "ATTACK-CLASSES.md#Cross-site scripting",
+      "boundary": "browser attacker content versus victim session origin persistence",
+      "subsystem": "React frontend",
+      "surface": "client-session-handling"
+    },
+    "coverage_id": "client-session-handling::browser%20attacker%20content%20versus%20victim%20session%20origin%20persistence::React%20frontend::ATTACK-CLASSES.md%23Cross-site%20scripting",
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Access control",
+        "reason": "Server auth covered by backend units."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Injection",
+        "reason": "Server sinks covered elsewhere."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Cryptography and secrets",
+        "reason": "No browser crypto boundary."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Business logic",
+        "reason": "No independent client authority grant."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Denial of service",
+        "reason": "No shared-service impact."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Information disclosure",
+        "reason": "Evaluated through DOM/storage sinks."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Obvious things",
+        "reason": "Folded into grounded checks."
+      }
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-client",
+        "reviewed_paths": [
+          "backend/main.py",
+          "frontend/index.html",
+          "frontend/src/api.ts",
+          "frontend/src/components/SignIn.tsx",
+          "frontend/src/context/DataContext.tsx",
+          "frontend/vite.config.ts"
+        ],
+        "invariant": "Security boundary and control invariants are enforced.",
+        "method": "source",
+        "result": "Invariants hold cleanly; no deviations identified across reviewed paths.",
+        "artifact": null
+      }
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Cross-site scripting",
+    "prior_status": "none",
+    "result_fingerprints": [],
+    "reviewed_paths": [
+      "backend/main.py",
+      "frontend/index.html",
+      "frontend/src/api.ts",
+      "frontend/src/components/SignIn.tsx",
+      "frontend/src/context/DataContext.tsx",
+      "frontend/vite.config.ts"
+    ],
+    "selected_companion_blocks": [
+      "CLIENT-SIDE.md#Core discipline",
+      "CLIENT-SIDE.md#DOM-based XSS",
+      "CLIENT-SIDE.md#Credentialed CORS trust",
+      "CLIENT-SIDE.md#Sensitive data in browser storage",
+      "CLIENT-SIDE.md#Clickjacking",
+      "CLIENT-SIDE.md#Client-side navigation confusion",
+      "CLIENT-SIDE.md#Universal moves",
+      "CLIENT-SIDE.md#Validation rules"
+    ],
+    "status": "covered",
+    "subsystem": "React frontend",
+    "surface": "client-session-handling",
+    "unresolved": [],
+    "wave": 1,
+    "starting_paths": [
+      "frontend/src/App.tsx",
+      "frontend/src/api.ts"
+    ]
+  },
+  {
+    "agent_id": "hunter-isolation",
+    "attack_class": "Access control",
+    "attempts": [],
+    "boundary": "user A versus user B cache session token boundary",
+    "canonical_refs": {
+      "attack_class": "ATTACK-CLASSES.md#Access control",
+      "boundary": "user A versus user B cache session token boundary",
+      "subsystem": "user-scoped persistence plus APIs",
+      "surface": "data-isolation-lifecycle"
+    },
+    "coverage_id": "data-isolation-lifecycle::user%20A%20versus%20user%20B%20cache%20session%20token%20boundary::user-scoped%20persistence%20plus%20APIs::ATTACK-CLASSES.md%23Access%20control",
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Injection",
+        "reason": "IDs are bound parameters and composite keys."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Cryptography and secrets",
+        "reason": "Assigned to deployment-configuration."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Business logic",
+        "reason": "Role transitions checked as authorization paths."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Denial of service",
+        "reason": "Assigned to availability-abuse."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Information disclosure",
+        "reason": "Evaluated as missing-tenant consequence."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Cross-site scripting",
+        "reason": "No browser sink in API scope."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Third-party code",
+        "reason": "Assigned to supply-chain-release."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Obvious things",
+        "reason": "Folded into grounded checks."
+      }
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-isolation",
+        "reviewed_paths": [
+          "backend/api.py",
+          "backend/database.py",
+          "backend/google_credentials.py",
+          "backend/hosted_auth.py",
+          "backend/maintenance.py",
+          "backend/models.py",
+          "backend/models_auth.py",
+          "backend/ownership.py",
+          "backend/sync_service.py",
+          "backend/sync_store.py"
+        ],
+        "invariant": "Security boundary and control invariants are enforced.",
+        "method": "source",
+        "result": "Invariants hold cleanly; no deviations identified across reviewed paths.",
+        "artifact": null
+      }
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+    "prior_status": "none",
+    "result_fingerprints": [],
+    "reviewed_paths": [
+      "backend/api.py",
+      "backend/database.py",
+      "backend/google_credentials.py",
+      "backend/hosted_auth.py",
+      "backend/maintenance.py",
+      "backend/models.py",
+      "backend/models_auth.py",
+      "backend/ownership.py",
+      "backend/sync_service.py",
+      "backend/sync_store.py"
+    ],
+    "selected_companion_blocks": [
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Core discipline",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Missing tenant or owner enforcement",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Composite-key and namespace collision",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Policy and query disagreement",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Enumeration and aggregate oracles",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Soft-delete and tombstone bypass",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Stale authorization and derived copy use",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Retention and queued-work overrun",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Universal moves",
+      "DATA-ISOLATION-AND-LIFECYCLE.md#Validation rules"
+    ],
+    "status": "covered",
+    "subsystem": "user-scoped persistence plus APIs",
+    "surface": "data-isolation-lifecycle",
+    "unresolved": [],
+    "wave": 1,
+    "starting_paths": [
+      "backend/ownership.py",
+      "backend/api.py"
+    ]
+  },
+  {
+    "agent_id": "hunter-deployment",
+    "attack_class": "Cryptography and secrets",
+    "attempts": [],
+    "boundary": "internet deployment input versus workload identity secrets network",
+    "canonical_refs": {
+      "attack_class": "ATTACK-CLASSES.md#Cryptography and secrets",
+      "boundary": "internet deployment input versus workload identity secrets network",
+      "subsystem": "hosted deployment plus containers",
+      "surface": "deployment-configuration"
+    },
+    "coverage_id": "deployment-configuration::internet%20deployment%20input%20versus%20workload%20identity%20secrets%20network::hosted%20deployment%20plus%20containers::ATTACK-CLASSES.md%23Cryptography%20and%20secrets",
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Access control",
+        "reason": "Runtime auth covered by backend units."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Injection",
+        "reason": "Compose interpolation is operator-controlled."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Business logic",
+        "reason": "Covered by availability/isolation units."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Denial of service",
+        "reason": "Assigned to availability-abuse."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Information disclosure",
+        "reason": "Evaluated as secret exposure here."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Cross-site scripting",
+        "reason": "No browser sink in deployment scope."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Third-party code",
+        "reason": "Assigned to supply-chain-release."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Obvious things",
+        "reason": "Folded into grounded checks."
+      }
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-deployment",
+        "reviewed_paths": [
+          ".dockerignore",
+          ".env.example",
+          ".gitleaks.toml",
+          "backend/access_log.py",
+          "backend/config.py",
+          "backend/hosted_auth.py",
+          "backend/main.py",
+          "backend/proxy.py",
+          "backend/token_crypto.py",
+          "Caddyfile",
+          "compose.yml",
+          "Dockerfile",
+          "tools/backup_postgres.sh"
+        ],
+        "invariant": "Security boundary and control invariants are enforced.",
+        "method": "source",
+        "result": "Identified potential deviation; candidate generated and grounded in source trace.",
+        "artifact": null
+      }
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Cryptography and secrets",
+    "prior_status": "none",
+    "result_fingerprints": [
+      "gch/unpinned-cloudflared-image-tag"
+    ],
+    "reviewed_paths": [
+      ".dockerignore",
+      ".env.example",
+      ".gitleaks.toml",
+      "backend/access_log.py",
+      "backend/config.py",
+      "backend/hosted_auth.py",
+      "backend/main.py",
+      "backend/proxy.py",
+      "backend/token_crypto.py",
+      "Caddyfile",
+      "compose.yml",
+      "Dockerfile",
+      "tools/backup_postgres.sh"
+    ],
+    "selected_companion_blocks": [
+      "CLOUD-AND-DEPLOYMENT.md#Core discipline",
+      "CLOUD-AND-DEPLOYMENT.md#Unexpected service or management-plane reachability",
+      "CLOUD-AND-DEPLOYMENT.md#Trusted-proxy and mesh identity bypass",
+      "CLOUD-AND-DEPLOYMENT.md#Security-control precedence drift",
+      "CLOUD-AND-DEPLOYMENT.md#Secret exposure across workload boundaries",
+      "CLOUD-AND-DEPLOYMENT.md#Credential renewal and outage fallback",
+      "CLOUD-AND-DEPLOYMENT.md#Universal moves",
+      "CLOUD-AND-DEPLOYMENT.md#Validation rules"
+    ],
+    "status": "candidate",
+    "subsystem": "hosted deployment plus containers",
+    "surface": "deployment-configuration",
+    "unresolved": [],
+    "wave": 1,
+    "starting_paths": [
+      "compose.yml",
+      "backend/config.py"
+    ]
+  },
+  {
+    "agent_id": "hunter-supplychain",
+    "attack_class": "Third-party code",
+    "attempts": [],
+    "boundary": "lower-trust source dependency CI input versus released artifact",
+    "canonical_refs": {
+      "attack_class": "ATTACK-CLASSES.md#Third-party code",
+      "boundary": "lower-trust source dependency CI input versus released artifact",
+      "subsystem": "build release pipeline",
+      "surface": "supply-chain-release"
+    },
+    "coverage_id": "supply-chain-release::lower-trust%20source%20dependency%20CI%20input%20versus%20released%20artifact::build%20release%20pipeline::ATTACK-CLASSES.md%23Third-party%20code",
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Access control",
+        "reason": "Runtime auth covered by backend units."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Injection",
+        "reason": "No build input reaches runtime sink."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Cryptography and secrets",
+        "reason": "Assigned to deployment-configuration."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Business logic",
+        "reason": "No release workflow grants app authority."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Denial of service",
+        "reason": "Assigned to availability-abuse."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Information disclosure",
+        "reason": "Artifact disclosure evaluated here."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Cross-site scripting",
+        "reason": "No browser sink in build scope."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Obvious things",
+        "reason": "Folded into grounded checks."
+      }
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-supplychain",
+        "reviewed_paths": [
+          ".dockerignore",
+          ".github/workflows/ci.yml",
+          ".gitleaks.toml",
+          "backend/requirements-prod.txt",
+          "compose.yml",
+          "Dockerfile",
+          "frontend/package-lock.json",
+          "frontend/package.json"
+        ],
+        "invariant": "Security boundary and control invariants are enforced.",
+        "method": "source",
+        "result": "Invariants hold cleanly; no deviations identified across reviewed paths.",
+        "artifact": null
+      }
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Third-party code",
+    "prior_status": "none",
+    "result_fingerprints": [],
+    "reviewed_paths": [
+      ".dockerignore",
+      ".github/workflows/ci.yml",
+      ".gitleaks.toml",
+      "backend/requirements-prod.txt",
+      "compose.yml",
+      "Dockerfile",
+      "frontend/package-lock.json",
+      "frontend/package.json"
+    ],
+    "selected_companion_blocks": [
+      "SUPPLY-CHAIN-AND-RELEASE.md#Core discipline",
+      "SUPPLY-CHAIN-AND-RELEASE.md#Mutable and unbound build inputs",
+      "SUPPLY-CHAIN-AND-RELEASE.md#Build-context inclusion",
+      "SUPPLY-CHAIN-AND-RELEASE.md#Untrusted code in a privileged workflow",
+      "SUPPLY-CHAIN-AND-RELEASE.md#Universal moves",
+      "SUPPLY-CHAIN-AND-RELEASE.md#Validation rules"
+    ],
+    "status": "covered",
+    "subsystem": "build release pipeline",
+    "surface": "supply-chain-release",
+    "unresolved": [],
+    "wave": 1,
+    "starting_paths": [
+      "package.json",
+      "backend/requirements-prod.txt"
+    ]
+  },
+  {
+    "agent_id": "hunter-webauth",
+    "attack_class": "Access control",
+    "attempts": [],
+    "boundary": "hosted browser session boundary",
+    "canonical_refs": {
+      "attack_class": "ATTACK-CLASSES.md#Access control",
+      "boundary": "hosted browser session boundary",
+      "subsystem": "hosted auth plus API",
+      "surface": "web-oauth-session"
+    },
+    "coverage_id": "web-oauth-session::hosted%20browser%20session%20boundary::hosted%20auth%20plus%20API::ATTACK-CLASSES.md%23Access%20control",
+    "excluded_blocks": [
+      {
+        "block": "ATTACK-CLASSES.md#Injection",
+        "reason": "No request-controlled SQL/shell/template sink on this path."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Cryptography and secrets",
+        "reason": "Assigned to deployment-configuration."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Business logic",
+        "reason": "Folded into session state checks."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Denial of service",
+        "reason": "Assigned to availability-abuse."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Information disclosure",
+        "reason": "Checked only as bypass consequence."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Cross-site scripting",
+        "reason": "Assigned to client-session-handling."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Third-party code",
+        "reason": "Assigned to supply-chain-release."
+      },
+      {
+        "block": "ATTACK-CLASSES.md#Obvious things",
+        "reason": "Folded into grounded checks."
+      }
+    ],
+    "local_checks": [
+      {
+        "agent_id": "hunter-webauth",
+        "reviewed_paths": [
+          "backend/api.py",
+          "backend/config.py",
+          "backend/hosted_auth.py",
+          "backend/main.py",
+          "backend/oauth_transport.py",
+          "backend/ownership.py",
+          "backend/proxy.py"
+        ],
+        "invariant": "Security boundary and control invariants are enforced.",
+        "method": "source",
+        "result": "Invariants hold cleanly; no deviations identified across reviewed paths.",
+        "artifact": null
+      }
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+    "prior_status": "none",
+    "result_fingerprints": [],
+    "reviewed_paths": [
+      "backend/api.py",
+      "backend/config.py",
+      "backend/hosted_auth.py",
+      "backend/main.py",
+      "backend/oauth_transport.py",
+      "backend/ownership.py",
+      "backend/proxy.py"
+    ],
+    "selected_companion_blocks": [
+      "WEB-PROTOCOL-AND-AUTH.md#Core discipline",
+      "WEB-PROTOCOL-AND-AUTH.md#Host and forwarded-header trust",
+      "WEB-PROTOCOL-AND-AUTH.md#Session fixation and session lifecycle",
+      "WEB-PROTOCOL-AND-AUTH.md#OAuth and OIDC account binding",
+      "WEB-PROTOCOL-AND-AUTH.md#Cross-site request forgery",
+      "WEB-PROTOCOL-AND-AUTH.md#Universal moves",
+      "WEB-PROTOCOL-AND-AUTH.md#Validation rules"
+    ],
+    "status": "covered",
+    "subsystem": "hosted auth plus API",
+    "surface": "web-oauth-session",
+    "unresolved": [],
+    "wave": 1,
+    "starting_paths": [
+      "backend/hosted_auth.py",
+      "backend/api.py"
+    ]
+  }
+]

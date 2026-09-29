@@ -38,7 +38,7 @@ export function TopBar({
   search: string;
   onSearch: (value: string) => void;
 }) {
-  const { status, syncing, syncNow, error } = useSync();
+  const { status, syncing, syncStuck, syncNow, error } = useSync();
   const { login } = useAuth();
   const { assignments, courses } = useCourses();
   const {
@@ -206,6 +206,11 @@ export function TopBar({
           </button>
         ) : null}
         <SyncTime lastSync={status?.last_sync ?? null} />
+        {syncStuck ? (
+          <span className="sync-time" role="status">
+            {t("topbar.syncStuck")}
+          </span>
+        ) : null}
         <button
           type="button"
           className="button button-primary"

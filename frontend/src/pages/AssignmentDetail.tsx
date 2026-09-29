@@ -1,4 +1,4 @@
-import { ArrowLeft, ExternalLink, Paperclip, RefreshCw } from "lucide-react";
+import { ArrowLeft, ExternalLink, Paperclip } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api.ts";
@@ -10,9 +10,20 @@ import {
   formatTime,
   parseDue,
 } from "../dates.ts";
+import type { I18nKey } from "../i18n.ts";
 import { useI18n } from "../i18n.ts";
-import { invalidateResources, useResource } from "../lib/resource.ts";
+import { useResource } from "../lib/resource.ts";
 import type { Submission } from "../types.ts";
+
+/**
+ * Google returns the coursework state as a raw enum. It is mapped to a label
+ * here (a view concern, ADR-0011); an unknown value falls back to the raw
+ * string rather than being hidden.
+ */
+const WORK_STATE_KEYS: Record<string, I18nKey> = {
+  PUBLISHED: "workState.published",
+  DRAFT: "workState.draft",
+};
 
 /**
  * Dedicated assignment page (sections 8–12): full metadata, materials and the
@@ -30,13 +41,11 @@ export function AssignmentDetail() {
     (signal) => api.getAssignmentDetail(courseId, courseworkId, signal),
   );
 
-  const refresh = () => {
-    invalidateResources(`course:${courseId}:work:${courseworkId}`);
-    detail.refresh();
-  };
-
   const data = detail.data;
   const due = parseDue(data?.due_at ?? null);
+  const workState = data?.state
+    ? t(WORK_STATE_KEYS[data.state] ?? "workState.unknown")
+    : "—";
 
   return (
     <div className="page">
@@ -62,9 +71,6 @@ export function AssignmentDetail() {
               })}
             </span>
           ) : null}
-          <button type="button" className="button" onClick={refresh}>
-            <RefreshCw size={15} /> {t("teacher.refresh")}
-          </button>
         </div>
       </div>
 
@@ -108,8 +114,8 @@ export function AssignmentDetail() {
                 </dd>
               </div>
               <div>
-                <dt>{t("assignment.column.status")}</dt>
-                <dd>{data.state ?? "—"}</dd>
+                <dt>{t("assignment.workState")}</dt>
+                <dd>{workState}</dd>
               </div>
             </dl>
 

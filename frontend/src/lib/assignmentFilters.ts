@@ -1,10 +1,11 @@
 /**
- * Pure helpers for the assignments filter (status + course facets).
+ * Pure helpers for the assignments filter (status + due date + course facets).
  *
- * Both facets share one convention, which is what makes the panel easy to
+ * Every facet shares one convention, which is what makes the panel easy to
  * explain: `null` means "the facet is off, everything matches", an empty array
  * means "nothing is selected, nothing matches", and a non-empty array is the
- * explicit allow-list.
+ * explicit allow-list. Values inside one facet are a union (OR); the facets
+ * themselves are combined with AND.
  *
  * React-free on purpose: the same status semantics are used by the assignments
  * page and by the subject detail page, and the parsing stays testable in
@@ -13,6 +14,7 @@
 
 import type {
  Assignment,
+ AssignmentDueFilter,
  AssignmentFilterStatus,
  AssignmentStatusFilter,
  AssignmentsFilter,
@@ -20,12 +22,17 @@ import type {
 } from "../types.ts";
 import { parseDue, createdTime } from "../dates.ts";
 
-/** Facet order in the filter panel: the five states the dashboard offers. */
+/** Facet order in the filter panel: the four states the dashboard offers. */
 export const STATUS_FILTER_KEYS: readonly AssignmentFilterStatus[] = [
  "todo",
  "overdue",
  "completed",
  "graded",
+];
+
+/** Facet order of the separate due-date filter. */
+export const DUE_FILTER_KEYS: readonly AssignmentDueFilter[] = [
+ "has_due",
  "no_due",
 ];
 
@@ -45,46 +52,39 @@ export function matchesStatus(
    return assignment.graded;
   case "ungraded":
    return !assignment.graded;
-  case "no_due":
-   return !assignment.due_at;
   default:
    return true;
  }
 }
 
 /**
- * Panel-level matching for the status facet (ADR-0013).
+ * Due-date facet matching.
  *
- * `matchesStatus` treats the states as overlapping unions, which is fine for
- * the subject page tabs but not for the panel: an undated task that is not
- * submitted matches both `todo` and `no_due`, so unchecking only one of them
- * would leave the task visible through the other. Inside the panel `no_due` is
- * therefore a **required extra condition** for undated tasks, and a dated task
- * never matches `no_due`:
- *
- * - dated tasks: at least one of the checked `todo|overdue|completed|graded`;
- * - undated tasks: `no_due` checked **and** at least one of the checked
- *   `todo|overdue|completed|graded` (its own state must be selected too).
- *
- * Consequence: `no_due` checked alone selects nothing — undated tasks still
- * need their submission state checked as well.
+ * Unlike the old `no_due`, both values are self-sufficient: each one describes
+ * a complete set on its own, so `no_due` alone shows every undated assignment
+ * regardless of its state. Choosing it together with a state narrows the list
+ * to the intersection ("To do" + "No due date" = not submitted AND undated),
+ * which falls out of the AND between the two facets — no special casing here.
  */
-function matchesPanelStatuses(
+export function matchesDue(
  assignment: Assignment,
- statuses: readonly AssignmentFilterStatus[],
+ due: AssignmentDueFilter,
 ): boolean {
- const selected = new Set(statuses);
- const stateMatches = (
-  ["todo", "overdue", "completed", "graded"] as const
- ).some((status) => selected.has(status) && matchesStatus(assignment, status));
- if (!assignment.due_at) {
-  return selected.has("no_due") && stateMatches;
- }
- return stateMatches;
+ return due === "no_due" ? !assignment.due_at : Boolean(assignment.due_at);
 }
 
-/** Applies both facets: statuses are a union (OR), courses an allow-list.
- *  `no_due` is a required extra condition — see {@link matchesPanelStatuses}. */
+/** One facet of the panel: a plain OR over the selected values. */
+function matchesFacet<T extends string>(
+ values: readonly T[],
+ predicate: (value: T) => boolean,
+): boolean {
+ return values.some(predicate);
+}
+
+/**
+ * Applies all three facets: states and due dates are unions (OR), the facets
+ * themselves are ANDed, and courses stay an explicit allow-list.
+ */
 export function filterAssignments(
  assignments: readonly Assignment[],
  filter: AssignmentsFilter,
@@ -92,9 +92,75 @@ export function filterAssignments(
  return assignments.filter(
   (assignment) =>
    (filter.statuses === null ||
-    matchesPanelStatuses(assignment, filter.statuses)) &&
+    matchesFacet(filter.statuses, (status) =>
+     matchesStatus(assignment, status),
+    )) &&
+   (filter.due === null ||
+    matchesFacet(filter.due, (due) => matchesDue(assignment, due))) &&
    (filter.courses === null || filter.courses.includes(assignment.course_id)),
  );
+}
+
+/**
+ * Number of assignments per state, computed with the *other* facets already
+ * applied — that is what makes a panel count answer "what will I get if I also
+ * tick this one?" instead of repeating the same number everywhere.
+ */
+export function statusCounts(
+ assignments: readonly Assignment[],
+ filter: AssignmentsFilter,
+): Record<AssignmentFilterStatus, number> {
+ const counts = {
+  todo: 0,
+  overdue: 0,
+  completed: 0,
+  graded: 0,
+ } satisfies Record<AssignmentFilterStatus, number>;
+ for (const assignment of assignments) {
+  // The status facet itself is ignored here, so every state is counted
+  // against the same set (due dates + courses).
+  if (
+   (filter.due !== null &&
+    !matchesFacet(filter.due, (due) => matchesDue(assignment, due))) ||
+   (filter.courses !== null && !filter.courses.includes(assignment.course_id))
+  ) {
+   continue;
+  }
+  for (const status of STATUS_FILTER_KEYS) {
+   if (matchesStatus(assignment, status)) {
+    counts[status] += 1;
+   }
+  }
+ }
+ return counts;
+}
+
+/** Number of assignments per due-date value, with status + courses applied. */
+export function dueCounts(
+ assignments: readonly Assignment[],
+ filter: AssignmentsFilter,
+): Record<AssignmentDueFilter, number> {
+ const counts = {
+  has_due: 0,
+  no_due: 0,
+ } satisfies Record<AssignmentDueFilter, number>;
+ for (const assignment of assignments) {
+  if (
+   (filter.statuses !== null &&
+    !matchesFacet(filter.statuses, (status) =>
+     matchesStatus(assignment, status),
+    )) ||
+   (filter.courses !== null && !filter.courses.includes(assignment.course_id))
+  ) {
+   continue;
+  }
+  for (const due of DUE_FILTER_KEYS) {
+   if (matchesDue(assignment, due)) {
+    counts[due] += 1;
+   }
+  }
+ }
+ return counts;
 }
 
 /** Sorts a copy of the list; assignments without a due date sort last. */
@@ -158,6 +224,13 @@ export function canonicalStatuses(
  return STATUS_FILTER_KEYS.filter((key) => values.includes(key));
 }
 
+/** The same canonical order for the due-date facet. */
+export function canonicalDue(
+ values: readonly AssignmentDueFilter[],
+): AssignmentDueFilter[] {
+ return DUE_FILTER_KEYS.filter((key) => values.includes(key));
+}
+
 /**
  * `?status=todo,overdue` → `["todo", "overdue"]`.
  *
@@ -172,7 +245,9 @@ export function parseStatusFilter(
   return null;
  }
  const wanted = new Set(splitList(raw));
- return canonicalStatuses([...STATUS_FILTER_KEYS].filter((k) => wanted.has(k)));
+ return canonicalStatuses(
+  [...STATUS_FILTER_KEYS].filter((k) => wanted.has(k)),
+ );
 }
 
 /** `null` drops the `status` parameter; `""` encodes "nothing selected". */
@@ -180,6 +255,27 @@ export function formatStatusFilter(
  values: readonly AssignmentFilterStatus[] | null,
 ): string | null {
  return values === null ? null : canonicalStatuses(values).join(",");
+}
+
+/**
+ * `?due=no_due` → `["no_due"]`, with the same `null` / `[]` convention as the
+ * status facet.
+ */
+export function parseDueFilter(
+ raw: string | null,
+): AssignmentDueFilter[] | null {
+ if (raw === null || raw.trim() === "all") {
+  return null;
+ }
+ const wanted = new Set(splitList(raw));
+ return canonicalDue([...DUE_FILTER_KEYS].filter((k) => wanted.has(k)));
+}
+
+/** `null` drops the `due` parameter; `""` encodes "nothing selected". */
+export function formatDueFilter(
+ values: readonly AssignmentDueFilter[] | null,
+): string | null {
+ return values === null ? null : canonicalDue(values).join(",");
 }
 
 /**
@@ -215,11 +311,11 @@ function rescueFullyDropped<T extends string>(
 
 /**
  * Saved-selection variant of the pruning above: courses that left the cache are
- * dropped, and a selection that went fully stale falls back to "all" instead of
- * an empty list, which would look like a broken page rather than a filter.
+ * dropped, and a selection that went fully stale falls back to "all" instead
+ * of an empty list, which would look like a broken page rather than a filter.
  */
 export function pruneCourseSelection(
- values: readonly string[] | null,
+ values: string[] | null,
  knownCourseIds: readonly string[],
 ): string[] | null {
  if (values === null) {
@@ -240,11 +336,34 @@ export function normalizeStatusFilter(
  return rescueFullyDropped(value, canonicalStatuses(keys));
 }
 
+/** Defensive read of the due-date facet saved in localStorage. */
+export function normalizeDueFilter(
+ value: AssignmentDueFilter[] | null | undefined,
+): AssignmentDueFilter[] | null {
+ if (!Array.isArray(value)) {
+  return null;
+ }
+ const keys = value.filter((key) => DUE_FILTER_KEYS.includes(key));
+ return rescueFullyDropped(value, canonicalDue(keys));
+}
+
 /** Defensive read of the value persisted in localStorage (ADR-0006). */
 export function normalizeCourseFilter(
  value: string[] | null | undefined,
 ): string[] | null {
  return Array.isArray(value) ? [...value] : null;
+}
+
+/** Defensive read of the collapsed grade groups saved in localStorage. */
+export function normalizeCollapsedCourses(value: unknown): string[] {
+ if (!Array.isArray(value)) {
+  return [];
+ }
+ return [
+  ...new Set(
+   value.filter((id): id is string => typeof id === "string" && id.length > 0),
+  ),
+ ];
 }
 
 function sameList(
@@ -267,6 +386,7 @@ export function sameAssignmentsFilter(
 ): boolean {
  return (
   sameList(left.statuses, right.statuses) &&
+  sameList(left.due, right.due) &&
   sameList(left.courses, right.courses)
  );
 }

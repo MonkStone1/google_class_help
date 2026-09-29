@@ -25,16 +25,91 @@ export const uk = {
  "topbar.cachedData": "Кешовані дані",
  "topbar.sync": "Синхронізувати",
  "topbar.syncing": "Синхронізація…",
+  "topbar.syncStuck":
+    "Синхронізація триває незвично довго. Можливо, вона зависла — якщо не завершиться, спробуйте запустити її ще раз через кілька хвилин.",
  "topbar.signInAgain": "Увійти знову",
  "topbar.needsReauthHint":
   "Доступ до Google закінчився. Увійдіть знову, щоб відновити синхронізацію.",
  "topbar.notifications": "Сповіщення",
  "topbar.toggleTheme": "Змінити тему",
 
- "tabs.alreadyOpen": "Дашборд уже відкрито в іншій вкладці.",
- "tabs.switch": "Перейти до неї",
- "tabs.switchBlocked": "— автоматичне переключення не вдалося, спробуйте ще раз або закрийте цю вкладку.",
- "tabs.dismiss": "Приховати це повідомлення",
+  // Тости (ADR-0030). `region` і `dismiss` замінюють власні англійські
+  // aria-мітки sonner, тож скринридер не почує неперекладеного рядка.
+  "toast.region": "Сповіщення",
+  "toast.dismiss": "Закрити сповіщення",
+  "toast.syncCompleted": "Синхронізацію завершено",
+  "toast.syncCompletedAt": "Дані Classroom оновлено о {time}",
+  "toast.syncFailed": "Не вдалося синхронізувати",
+  "toast.syncNeedsReauth": "Доступ до Google сплив",
+
+  "signin.turnstileRequired": "Пройдіть перевірку, щоб продовжити вхід.",
+  "signin.turnstilePending": "Перед входом потрібна перевірка.",
+  // Публічна головна сторінка (ADR-0029): показується відвідувачам без сесії —
+  // опис сайту, дві точки входу та посилання на політику конфіденційності.
+  "landing.documentTitle":
+    "Classroom Dashboard — ваш Google Classroom на одному екрані",
+  "landing.brand": "Classroom Dashboard",
+  "landing.heroTitle": "Ваш Google Classroom на одному екрані",
+  "landing.heroLead":
+    "Особистий дашборд для Google Classroom: предмети, завдання, дедлайни, оцінки та нагадування — зібрані на одному екрані замість того, щоб шукати їх у вкладках Classroom.",
+  "landing.signIn": "Увійти через Google",
+  "landing.signInHint":
+    "Потрібен Google-акаунт, у якому є класи в Classroom. Запитуваний доступ — лише для читання.",
+
+  "landing.whatTitle": "Що це за сайт",
+  "landing.whatBody":
+    "Це особистий дашборд для Google Classroom. Увійдіть через власний Google-акаунт — і сайт покаже вам ваші дані з Classroom: він читає те, до чого ви й так маєте доступ, тож нічого вводити двічі не потрібно. Це зручний вигляд поверх Google Classroom, а не заміна йому, і сайт не має жодного стосунку до Google.",
+
+  "landing.featuresTitle": "Що він уміє",
+  "landing.feature.subjects.title": "Предмети",
+  "landing.feature.subjects.text":
+    "Усі ваші курси на одному екрані: викладачі, кількість завдань і середній бал за кожним предметом.",
+  "landing.feature.assignments.title": "Завдання й дедлайни",
+  "landing.feature.assignments.text":
+    "Усі завдання з терміном здачі та станом виконання, з фільтрами за статусом, предметом або датою.",
+  "landing.feature.grades.title": "Оцінки",
+  "landing.feature.grades.text":
+    "Загальний середній бал, оцінки за кожним завданням і таблиця успішності з кожного предмета.",
+  "landing.feature.calendar.title": "Календар",
+  "landing.feature.calendar.text":
+    "Перегляд за місяцем, тижнем і днем, щоб усі терміни здачі було видно одразу.",
+  "landing.feature.search.title": "Пошук і нагадування",
+  "landing.feature.search.text":
+    "Пошук серед завдань і предметів, а також список того, що прострочено, на сьогодні й на завтра.",
+  "landing.feature.teacher.title": "Режим викладача",
+  "landing.feature.teacher.text":
+    "Для курсів, які ви ведете: список студентів, здані роботи та таблиця оцінок за курсом.",
+
+  "landing.howTitle": "Як це працює",
+  "landing.how.signIn.title": "Вхід",
+  "landing.how.signIn.text":
+    "Натисніть кнопку й підтвердіть доступ на сторінці Google. Сайт ніколи не бачить ваш пароль.",
+  "landing.how.sync.title": "Дані синхронізуються",
+  "landing.how.sync.text":
+    "Ваші курси, завдання та оцінки завантажуються на сервер і далі оновлюються автоматично у фоні.",
+  "landing.how.dashboard.title": "Ви працюєте в дашборді",
+  "landing.how.dashboard.text":
+    "Терміни, оцінки й прострочені завдання зібрані в одному місці — і сайт ніколи нічого не змінює в самому Classroom.",
+
+  "landing.dataTitle": "Ваші дані",
+  "landing.data.readOnly":
+    "Застосунок просить доступ лише для читання: ваші курси, ваші завдання та власні здані роботи. Нічого іншого.",
+  "landing.data.neverWrites":
+    "Він ніколи не створює, не змінює і не видаляє нічого в Google Classroom і ніколи не пише від вашого імені.",
+  "landing.data.storage":
+    "Ваш профіль, зашифровані токени доступу та кеш даних Classroom зберігаються на сервері й прив'язані до вашого облікового запису. Кеш можна очистити будь-коли в налаштуваннях.",
+  "landing.data.privacyLink": "Прочитати повну політику конфіденційності",
+  "landing.ctaTitle": "Готові почати?",
+  "landing.ctaText":
+    "Увійдіть через Google-акаунт, у якому є ваші класи, — дашборд сам підхопить ваші дані.",
+  "landing.challengeHint": "Пройдіть перевірку нижче, потім увійдіть.",
+  "landing.languageLabel": "Мова",
+  "landing.footer.privacy": "Політика конфіденційності",
+  "landing.footer.terms": "Умови використання",
+  "landing.footer.notGoogle":
+    "Google Classroom є товарним знаком Google LLC. Цей сервіс не має відношення до Google LLC.",
+  "landing.footer.contact": "Питання та запити на видалення даних:",
+  "landing.footer.repository": "github.com/MonkStone1/google_class_help",
 
  "search.label": "Результати пошуку",
  "search.noResults": "Нічого не знайдено за «{query}»",
@@ -143,6 +218,11 @@ export const uk = {
  "filter.selectAll": "Увімкнути всі",
  "filter.clearAll": "Вимкнути всі",
  "filter.coursesEmpty": "Курсів ще немає",
+ "filter.byDue": "За терміном здачі",
+ "filter.hasDue": "Є термін здачі",
+ "filter.combineHint":
+   "Значення в одній секції поєднуються за «або», різні секції — за «і».",
+ "filter.removeChip": "Прибрати фільтр «{value}»",
  "filter.reset": "Скинути фільтри",
  "filter.noMatch": "Немає завдань за цими фільтрами",
  "filter.showing": "Показано {shown} з {total}",
@@ -189,6 +269,7 @@ export const uk = {
  "settings.openConsent": "Відкрити сторінку входу Google",
  "settings.signOutConfirm":
   "Вийти та видалити збережений токен Google з цього ПК?",
+  "settings.signOutFailed": "Не вдалося вийти. Спробуйте ще раз.",
  "settings.lastSync": "Остання синхронізація",
  "settings.never": "Ніколи",
  "settings.syncNow": "Синхронізувати зараз",
@@ -229,7 +310,6 @@ export const uk = {
  "teacher.tab.assignments": "Усі завдання",
  "teacher.tab.students": "Студенти",
  "teacher.tab.grades": "Оцінки",
- "teacher.refresh": "Оновити",
  "teacher.updated": "Оновлено {time}",
  "teacher.studentsCount": "{count} студентів",
  "teacher.assignmentsCount": "{count} завдань",
@@ -250,6 +330,7 @@ export const uk = {
  "teacher.studentGrades": "Оцінки: {name}",
  "teacher.noStudentItems": "У цього студента немає завдань у курсі.",
  "teacher.assignment.stats": "Статистика",
+ "studentGrades.attachments": "Вкладення ({count})",
 
  "status.not_submitted": "Не здано",
  "status.turned_in": "Здано",
@@ -271,4 +352,8 @@ export const uk = {
  "assignment.stats.graded": "Оцінено",
  "assignment.stats.notSubmitted": "Не здано",
  "assignment.notGraded": "Не оцінено",
+ "assignment.workState": "Статус завдання",
+ "workState.published": "Опубліковано",
+ "workState.draft": "Чернетка",
+ "workState.unknown": "Невідомий статус",
 } satisfies Record<I18nKey, string>;

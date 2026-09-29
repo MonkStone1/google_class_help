@@ -5,15 +5,15 @@
 
 The core invariants under test:
 
-- §18: concurrency is per USER — a second call for the same account is
+- В§18: concurrency is per USER вЂ” a second call for the same account is
   rejected ("already running") while another account proceeds; one broken
   account never stops the others, and nothing user-visible carries raw
   exception text;
-- §19: one sync per account across worker containers (DB claim), bounded
+- В§19: one sync per account across worker containers (DB claim), bounded
   batch per scan;
-- §63: only active users with a stored grant are candidates; a broken
+- В§63: only active users with a stored grant are candidates; a broken
   grant pauses the account until the next sign-in; failures back off;
-- §64: never-synced accounts enter the schedule spread over a stagger
+- В§64: never-synced accounts enter the schedule spread over a stagger
   window instead of all at once.
 """
 
@@ -36,7 +36,7 @@ from models_auth import OAuthToken, User
 
 
 def _now() -> datetime:
-    """Naive UTC — the timestamp convention of the user-scoped tables."""
+    """Naive UTC вЂ” the timestamp convention of the user-scoped tables."""
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
@@ -82,7 +82,7 @@ def _select(db: Session, now=None, *, interval=600, limit=None):
     )
 
 
-# --------------------------------------------- §18 per-user concurrency
+# --------------------------------------------- В§18 per-user concurrency
 
 
 def test_same_user_is_rejected_while_another_user_proceeds(db: Session):
@@ -137,7 +137,7 @@ def test_desktop_background_sync_persists_the_local_owner(db: Session):
         assert len(owners) == 1
 
 
-# --------------------------------------------- §18 failure isolation + §18 errors
+# --------------------------------------------- В§18 failure isolation + В§18 errors
 
 
 def test_run_user_never_propagates_a_crash(monkeypatch):
@@ -168,7 +168,7 @@ def test_public_error_never_carries_exception_text():
 
 
 def test_failed_sync_records_a_sanitized_error(db: Session, monkeypatch):
-    """§18: the frontend sees a short sentence, the log keeps the trace."""
+    """В§18: the frontend sees a short sentence, the log keeps the trace."""
     user = _make_user(db, "sub-broken", created_at=_now())
     _add_grant(db, user)
     monkeypatch.setattr(
@@ -193,7 +193,7 @@ def test_failed_sync_records_a_sanitized_error(db: Session, monkeypatch):
     assert row.last_finished_at is not None
 
 
-# --------------------------------------------- §19 cross-process claim
+# --------------------------------------------- В§19 cross-process claim
 
 
 def test_claim_is_atomic_and_expires(db: Session):
@@ -217,7 +217,7 @@ def test_claim_is_atomic_and_expires(db: Session):
     )
 
 
-# --------------------------------------------- §63 candidate selection
+# --------------------------------------------- В§63 candidate selection
 
 
 def test_selection_skips_unusable_accounts(db: Session):
@@ -253,7 +253,7 @@ def test_sync_request_makes_a_user_due_and_lifts_the_pause(db: Session):
     sync_store.request_sync(db, user.id)
     assert _select(db) == [user.id]
 
-    # A paused account is skipped — until the next sign-in requests a sync.
+    # A paused account is skipped вЂ” until the next sign-in requests a sync.
     sync_store.mark_sync_needs_reauth(db, user.id, "needs reauth", _now())
     assert _select(db) == []
     sync_store.request_sync(db, user.id)
@@ -274,7 +274,7 @@ def test_selection_orders_by_due_time_and_respects_the_limit(db: Session):
     third = _make_user(db, "sub-third", created_at=old)
     _add_grant(db, third)
 
-    # Zero interval/stagger → due time equals account creation, so the
+    # Zero interval/stagger в†’ due time equals account creation, so the
     # order is fully deterministic: oldest due first, ties broken by id.
     selected = _select(db, interval=0, limit=2)
     assert selected == [first.id, third.id]
@@ -282,7 +282,7 @@ def test_selection_orders_by_due_time_and_respects_the_limit(db: Session):
     assert _select(db, interval=0, limit=None) == [first.id, third.id, second.id]
 
 
-# --------------------------------------------- §63 backoff / §64 stagger
+# --------------------------------------------- В§63 backoff / В§64 stagger
 
 
 def test_retry_backoff_is_exponential_and_capped():
@@ -318,14 +318,14 @@ def test_stagger_offsets_are_deterministic_and_spread():
     )
     assert 0 <= sync_scheduler.stagger_offset_seconds(7, 600) < 600
     assert sync_scheduler.stagger_offset_seconds(7, 0) == 0
-    # 40 accounts do not land on the same instant (§64 thundering herd).
+    # 40 accounts do not land on the same instant (В§64 thundering herd).
     offsets = {
         sync_scheduler.stagger_offset_seconds(user_id, 600) for user_id in range(1, 41)
     }
     assert len(offsets) >= 10
 
 
-# --------------------------------------------- §19 bounded batch / queue
+# --------------------------------------------- В§19 bounded batch / queue
 
 
 def test_scheduler_submits_at_most_the_free_slots(db: Session, monkeypatch):
@@ -386,6 +386,96 @@ def test_scheduler_does_not_resubmit_a_running_job(db: Session, monkeypatch):
         release.set()
         scheduler.wait(timeout=5)
     finally:
+        scheduler.stop()
+
+
+def test_release_claim_hands_a_killed_workers_account_back(db: Session):
+    """A row left ``running`` by a dead process must not park the account.
+
+    This is the state a SIGKILLed worker leaves behind: the claim is still
+    ours-looking, but nothing is running, so the UI spins and every new
+    attempt is refused until the stale window expires.
+    """
+    user = _make_user(db, "sub-claim", created_at=_now() - timedelta(days=1))
+    assert sync_store.claim_sync(db, user.id, _now(), stale_after=3600) is True
+    running_row = sync_store.sync_status(db, user.id)
+    assert running_row is not None
+    assert running_row.status == sync_store.SYNC_RUNNING
+    # While the claim is ours, a second attempt is refused (this is what made
+    # the account look stuck to the user).
+    assert sync_store.claim_sync(db, user.id, _now(), stale_after=3600) is False
+    assert sync_store.release_claim(db, user.id, _now()) is True
+    row = sync_store.sync_status(db, user.id)
+    assert row is not None
+    assert row.status == sync_store.SYNC_PENDING
+    # The whole point: the next scan can pick the account up right away.
+    assert sync_store.claim_sync(db, user.id, _now(), stale_after=3600) is True
+
+
+def test_release_claim_leaves_a_reclaimed_row_alone(db: Session):
+    """A shutdown must not cancel a job another process already re-claimed.
+
+    ``release_claim`` only touches a row that is still ``running`` AND was
+    started at or before ``now`` вЂ” a fresh claim started by another worker
+    after this process began stopping is left intact.
+    """
+    user = _make_user(db, "sub-reclaimed", created_at=_now() - timedelta(days=1))
+    stale_time = _now() - timedelta(hours=2)
+    assert sync_store.claim_sync(db, user.id, stale_time, stale_after=1) is True
+    # Another process legitimately took the stale claim over just now.
+    fresh = _now()
+    assert sync_store.claim_sync(db, user.id, fresh, stale_after=1) is True
+    # An older shutdown must not touch it.
+    assert sync_store.release_claim(db, user.id, stale_time) is False
+    reclaimed_row = sync_store.sync_status(db, user.id)
+    assert reclaimed_row is not None
+    assert reclaimed_row.status == sync_store.SYNC_RUNNING
+    # The current owner can still release it.
+    assert sync_store.release_claim(db, user.id, _now() + timedelta(seconds=1)) is True
+
+
+def test_release_in_flight_claims_unblocks_the_queue(db: Session, monkeypatch):
+    """``SyncScheduler`` shutdown frees the claims of jobs still running."""
+    user = _make_user(db, "sub-inflight", created_at=_now() - timedelta(days=1))
+    _add_grant(db, user)
+    release = threading.Event()
+
+    def fake_run(user_id: int) -> dict:
+        # A real job claims first; here the row is claimed by the job's own
+        # code path, and the job is still in flight when shutdown happens.
+        with SessionLocal() as session:
+            sync_store.claim_sync(session, user_id, _now(), stale_after=3600)
+        release.wait(timeout=5)
+        return {"user_id": user_id, "ok": True}
+
+    monkeypatch.setattr(sync_scheduler, "run_user", fake_run)
+    scheduler = sync_scheduler.SyncScheduler(
+        max_concurrent=1, interval_seconds=600, scan_interval_seconds=60
+    )
+    # `in_flight` is populated on submit, while the row is claimed by the job
+    # itself, so wait for the CLAIM to appear rather than for the counter.
+    tick = threading.Event()
+    try:
+        assert scheduler.scan_once(now=_now()) == [user.id]
+        claimed = False
+        for _ in range(100):
+            with SessionLocal() as session:
+                row = sync_store.sync_status(session, user.id)
+                if row is not None and row.status == sync_store.SYNC_RUNNING:
+                    claimed = True
+                    break
+            tick.wait(timeout=0.05)
+        assert claimed, "the job never claimed the account"
+        assert scheduler.in_flight_count == 1
+        assert scheduler.release_in_flight_claims() == 1
+        with SessionLocal() as session:
+            row = sync_store.sync_status(session, user.id)
+            assert row is not None and row.status == sync_store.SYNC_PENDING
+        # Releasing the claim does not cancel the job; it is still running and
+        # will write its own terminal status.
+        assert scheduler.in_flight_count == 1
+    finally:
+        release.set()
         scheduler.stop()
 
 

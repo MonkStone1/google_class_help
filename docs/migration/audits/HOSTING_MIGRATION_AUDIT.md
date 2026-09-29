@@ -67,7 +67,8 @@ plaintext не попал в поставку). Это корректно для
 - Слои sync разделены: `grading.py` (чистая домен-логика) / `sync_store.py`
   (запись кэша) / `sync_service.py` (оркестрация) — при переносе на
   Postgres и user-scoping меняется только store/orchestration.
-- Все scope read-only (ADR-0002); teacher mode — per-course роль (ADR-0017).
+- Все Classroom scope read-only (ADR-0002/0017); OIDC identity scopes нужны
+  только для профиля; teacher mode — per-course роль (ADR-0017).
 - Схема кэша с апсёртами по PK; зеркальная очистка stale-курсов.
 - Тесты (`tests/`) hermetic: отдельный `GC_DASHBOARD_DATA_DIR`, create/drop
   схемы на каждый тест.

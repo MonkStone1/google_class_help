@@ -1,0 +1,43 @@
+# Docker build context exclusions (migration stage 10, §72/§77).
+# Anything secret, local-only, or regenerated inside the image is excluded
+# here so it can never be copied into a layer.
+
+# --- secrets / local development state (never in an image) ---
+.env
+.env.*
+!.env.example
+backend/credentials.json
+backend/embedded_secrets.py
+client_secret*.json
+credentials.json
+data/
+logs/
+*.db
+*.sqlite
+*.sqlite3
+
+# --- virtualenvs, caches, build output ---
+.venv/
+__pycache__/
+*.pyc
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+build/
+release/
+assets/
+frontend/dist/
+frontend/node_modules/
+frontend/.vite/
+node_modules/
+
+# --- repository / editor noise ---
+.git/
+.gitignore
+.github/
+.vscode/
+.idea/
+*.log
+*.rar
+*.zip
+backups/

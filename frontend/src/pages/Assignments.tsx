@@ -1,4 +1,4 @@
-import { ListChecks, SlidersHorizontal } from "lucide-react";
+import { ListChecks, SlidersHorizontal, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
@@ -10,24 +10,44 @@ import { useCourses, useSync } from "../context/DataContext.tsx";
 import { useSettings } from "../context/SettingsContext.tsx";
 import { useI18n } from "../i18n.ts";
 import {
+  DUE_FILTER_KEYS,
   STATUS_FILTER_KEYS,
+  canonicalDue,
   canonicalStatuses,
+  dueCounts,
   filterAssignments,
   formatCourseFilter,
+  formatDueFilter,
   formatStatusFilter,
   parseCourseFilter,
+  parseDueFilter,
   parseStatusFilter,
   pruneCourseSelection,
   sameAssignmentsFilter,
   sortAssignments,
+  statusCounts,
 } from "../lib/assignmentFilters.ts";
 import { cn } from "../lib/cn.ts";
 import type {
   Assignment,
+  AssignmentDueFilter,
   AssignmentFilterStatus,
   AssignmentsFilter,
   SortKey,
 } from "../types.ts";
+import type { I18nKey } from "../i18n.ts";
+
+const STATUS_LABELS: Record<AssignmentFilterStatus, I18nKey> = {
+  todo: "filter.todo",
+  overdue: "filter.overdue",
+  completed: "filter.completed",
+  graded: "filter.graded",
+};
+
+const DUE_LABELS: Record<AssignmentDueFilter, I18nKey> = {
+  has_due: "filter.hasDue",
+  no_due: "filter.noDue",
+};
 
 export function Assignments() {
   const { assignments, courses } = useCourses();
@@ -40,19 +60,30 @@ export function Assignments() {
 
   const sortKey = (searchParams.get("sort") ?? defaultSort) as SortKey;
 
-  const courseIds = useMemo(
-    () => courses.map((course) => course.id),
+  // Courses the user teaches are not part of this page: their assignments
+  // live on the course page, and /api/assignments never returns them. Listing
+  // them here would offer a filter that can only ever produce an empty result.
+  const filterableCourses = useMemo(
+    () => courses.filter((course) => course.role === "STUDENT"),
     [courses],
+  );
+
+  const courseIds = useMemo(
+    () => filterableCourses.map((course) => course.id),
+    [filterableCourses],
   );
 
   // A link may carry a filter (`/assignments?status=overdue` from the sidebar);
   // when it does, it wins. Otherwise the last saved filter is used, so leaving
   // the page and coming back keeps the panel as it was (ADR-0013).
   const urlHasFilter =
-    searchParams.has("status") || searchParams.has("courses");
+    searchParams.has("status") ||
+    searchParams.has("due") ||
+    searchParams.has("courses");
   const urlFilter = useMemo<AssignmentsFilter>(
     () => ({
       statuses: parseStatusFilter(searchParams.get("status")),
+      due: parseDueFilter(searchParams.get("due")),
       courses: parseCourseFilter(searchParams.get("courses"), courseIds),
     }),
     [searchParams, courseIds],
@@ -60,6 +91,7 @@ export function Assignments() {
   const savedFilter = useMemo<AssignmentsFilter>(
     () => ({
       statuses: assignmentsFilter.statuses,
+      due: assignmentsFilter.due,
       courses: pruneCourseSelection(assignmentsFilter.courses, courseIds),
     }),
     [assignmentsFilter, courseIds],
@@ -67,6 +99,7 @@ export function Assignments() {
 
   const activeFilter = urlHasFilter ? urlFilter : savedFilter;
   const statuses = activeFilter.statuses;
+  const due = activeFilter.due;
   const selectedCourses = activeFilter.courses;
 
   // A filter that arrived through a link is remembered as well, so the next
@@ -91,6 +124,12 @@ export function Assignments() {
         } else {
           params.set("status", status);
         }
+        const dueList = formatDueFilter(next.due);
+        if (dueList === null) {
+          params.delete("due");
+        } else {
+          params.set("due", dueList);
+        }
         const courseList = formatCourseFilter(next.courses);
         if (courseList === null) {
           params.delete("courses");
@@ -109,6 +148,14 @@ export function Assignments() {
       ? current.filter((item) => item !== status)
       : [...current, status];
     applyFilter({ ...activeFilter, statuses: canonicalStatuses(next) });
+  };
+
+  const toggleDue = (value: AssignmentDueFilter) => {
+    const current = due ?? DUE_FILTER_KEYS;
+    const next = current.includes(value)
+      ? current.filter((item) => item !== value)
+      : [...current, value];
+    applyFilter({ ...activeFilter, due: canonicalDue(next) });
   };
 
   const toggleCourse = (courseId: string) => {
@@ -137,14 +184,48 @@ export function Assignments() {
     );
   };
 
-  const resetFilters = () => applyFilter({ statuses: null, courses: null });
+  const resetFilters = () =>
+    applyFilter({ statuses: null, due: null, courses: null });
 
-  const filtersActive = statuses !== null || selectedCourses !== null;
+  const filtersActive =
+    statuses !== null || due !== null || selectedCourses !== null;
 
   const visible = useMemo(
     () =>
       sortAssignments(filterAssignments(assignments, activeFilter), sortKey),
     [assignments, activeFilter, sortKey],
+  );
+
+  // Each count answers "how many would I get with this value ticked?", so the
+  // other facets are already applied and only the facet being counted is not.
+  const perStatus = useMemo(
+    () => statusCounts(assignments, activeFilter),
+    [assignments, activeFilter],
+  );
+  const perDue = useMemo(
+    () => dueCounts(assignments, activeFilter),
+    [assignments, activeFilter],
+  );
+
+  // Chips mirror the explicit selections. A facet left at `null` means "all",
+  // so it has nothing to show; an empty array means "nothing matches", which
+  // the panel already states with its 0/N counter.
+  const activeChips = useMemo(
+    () => [
+      ...(statuses ?? []).map((status) => ({
+        key: `status:${status}`,
+        label: t(STATUS_LABELS[status]),
+        onRemove: () => toggleStatus(status),
+      })),
+      ...(due ?? []).map((value) => ({
+        key: `due:${value}`,
+        label: t(DUE_LABELS[value]),
+        onRemove: () => toggleDue(value),
+      })),
+    ],
+    // `t` is stable per language; the values drive the list itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [statuses, due, t],
   );
 
   if (loading) {
@@ -192,8 +273,25 @@ export function Assignments() {
         </div>
       </div>
 
+      {activeChips.length > 0 ? (
+        <div className="filter-chips">
+          {activeChips.map((chip) => (
+            <button
+              key={chip.key}
+              type="button"
+              className="filter-chip"
+              onClick={chip.onRemove}
+              aria-label={t("filter.removeChip", { value: chip.label })}
+            >
+              {chip.label}
+              <X size={12} />
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {filtersActive && assignments.length > 0 ? (
-        <div className="filter-summary">
+        <div className="filter-summary" aria-live="polite">
           {t("filter.showing", {
             shown: visible.length,
             total: assignments.length,
@@ -236,9 +334,12 @@ export function Assignments() {
       <FilterPanel
         open={panelOpen}
         onClose={() => setPanelOpen(false)}
-        courses={courses}
+        courses={filterableCourses}
         statuses={statuses}
+        due={due}
         selectedCourses={selectedCourses}
+        statusCounts={perStatus}
+        dueCounts={perDue}
         onToggleStatus={toggleStatus}
         onSelectAllStatuses={() =>
           applyFilter({ ...activeFilter, statuses: null })
@@ -246,6 +347,9 @@ export function Assignments() {
         onClearAllStatuses={() =>
           applyFilter({ ...activeFilter, statuses: [] })
         }
+        onToggleDue={toggleDue}
+        onSelectAllDue={() => applyFilter({ ...activeFilter, due: null })}
+        onClearAllDue={() => applyFilter({ ...activeFilter, due: [] })}
         onToggleCourse={toggleCourse}
         onSelectAllCourses={() =>
           applyFilter({ ...activeFilter, courses: null })

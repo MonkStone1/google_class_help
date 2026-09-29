@@ -28,7 +28,7 @@
 | §31 | пути hosted-сервиса | `path_config._resolve_data_dir()`: override `GC_DASHBOARD_DATA_DIR` → hosted POSIX `/data` (volume) → `%LOCALAPPDATA%` только для frozen desktop → `<project>/data` в dev; все пути абсолютные, `Path.cwd()` не используется; токены OAuth — в PostgreSQL (`oauth_tokens`), не в файловой системе контейнера |
 | §51 | dev/CI/production разделены, dev OAuth-клиент | таблица слоёв в README («Конфигурация окружений») и в ADR-0025 §8: development — дефолты `config.py` + git-ignored `credentials.json` (desktop) или отдельный dev web-клиент с redirect `http://localhost:5173/api/auth/callback` для hosted-разработки; CI/тесты — герметичный `tests/conftest.py`, фронтенд-тесты секретов не требуют; production — `.env`. Прод-база локальной разработкой не используется |
 | §51 | фронтенд-тесты без прод-секретов | vitest идёт без какого-либо env; backend-тесты создают свой `GC_DASHBOARD_DATA_DIR` и фейковые значения (в т.ч. `COOKIE_*`, `APP_*`) |
-| — (этап 5, §18) | UI `sync_status`: спиннер/ретрай/«войдите снова» | `DataContext.syncing` теперь `локальный sync ИЛИ status.sync_status === "running"` (фоновый воркер); `error` → ретрай-подсказка в TopBar с санитизированным `last_sync_error` в `title`; `needs_reauth` → кнопка «войти снова» (hosted — серверный OAuth-redirect) + подсказка в Settings; новые ключи `topbar.signInAgain`/`topbar.needsReauthHint` (en/ru/uk) |
+| — (этап 5, §18) | UI sync state: спиннер/ретрай/«войдите снова» | `DataContext.syncing` теперь `локальный sync ИЛИ status.syncing` (queued/running), единый watcher обновляет cache после terminal status; `error` → ретрай-подсказка в TopBar с санитизированным `last_sync_error` в `title`; `needs_reauth` → кнопка «войти снова» (hosted — серверный OAuth-redirect) + подсказка в Settings; новые ключи `topbar.signInAgain`/`topbar.needsReauthHint` (en/ru/uk) |
 | — (этап 5, §18) | рендер UTC `last_sync` в локальной зоне | `dates.toLocalDate`: naive-UTC бэкенда читается как UTC (append `Z`), значения со смещением — как есть, мусор → `null`; используется в TopBar `SyncTime` и Settings (раньше `new Date(...)` читал naive-UTC как локальное время) |
 | — (этап 6, §24) | одна форма личности | плоские `user_name`/`user_email` удалены из `schemas.AuthStatus`, `hosted_auth`, `api` и generated `api-schema.d.ts`; UI читает `AuthStatus.user` |
 
@@ -67,7 +67,8 @@
   `credentials: "same-origin"`.
 - `frontend/src/context/DataContext.tsx` — `sessionRequired` (401 →
   login-state, кэш сбрасывается), hosted-навигация на `LOGIN_URL` при 405,
-  `syncing` учитывает `sync_status === "running"`.
+  `syncing` учитывает queued/running через `status.syncing` и автоматически
+  обновляет cache после terminal status.
 - `frontend/src/App.tsx`, `frontend/src/components/SignIn.tsx` — гейт по
   `sessionRequired && !authenticated`.
 - `frontend/src/components/TopBar.tsx`, `frontend/src/pages/Settings.tsx` —
@@ -166,7 +167,7 @@
 <task_progress>
 - [x] Прочитать аудиты и промпт этапа 7
 - [x] Проверить, что уже сделано по §26–§31, §51
-- [x] sync_status UI: спиннер running, needs_reauth, UTC-рендер last_sync (+ тесты)
+- [x] sync UI: спиннер queued/running, needs_reauth, UTC-рендер last_sync (+ тесты)
 - [x] Документация §51 (dev/CI/prod конфигурации) — README
 - [x] Аудит этапа 7 (HOSTING_MIGRATION_STAGE7.md) + §51 в ADR-0025
 - [ ] Прогнать финальные проверки (pytest, ruff, pyright, npm lint, vitest)

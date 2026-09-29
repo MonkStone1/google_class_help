@@ -1,12 +1,15 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Route, Routes, useSearchParams } from "react-router-dom";
 
 import { Sidebar } from "./components/Sidebar.tsx";
 import { TopBar } from "./components/TopBar.tsx";
+import { BootSplash } from "./components/BootSplash.tsx";
+import { Landing } from "./components/Landing.tsx";
 import { SignIn } from "./components/SignIn.tsx";
-import { DataProvider, useAuth } from "./context/DataContext.tsx";
+import { SyncToaster } from "./components/SyncToaster.tsx";
+import { Toaster } from "./components/Toaster.tsx";
+import { DataProvider, useAuth, useSync } from "./context/DataContext.tsx";
 import { SettingsProvider } from "./context/SettingsContext.tsx";
-import { DuplicateTabNotice } from "./components/DuplicateTabNotice.tsx";
 import { DashboardBoundary } from "./components/ErrorBoundary.tsx";
 import { useI18n } from "./i18n.ts";
 import { Assignments } from "./pages/Assignments.tsx";
@@ -24,6 +27,15 @@ export default function App() {
   return (
     <SettingsProvider>
       <DataProvider>
+        {/*
+          The toast host lives here, next to AppShell and not inside it: the
+          shell returns early for the splash, the landing and the sign-in gate,
+          and a sync that finishes in the background must be announced on the
+          surface the user actually came back to. `<Toaster />` needs the
+          settings (theme + language), `<SyncToaster />` the sync state.
+        */}
+        <Toaster />
+        <SyncToaster />
         <AppShell />
       </DataProvider>
     </SettingsProvider>
@@ -33,21 +45,49 @@ export default function App() {
 function AppShell() {
   const { t } = useI18n();
   const { auth, sessionRequired } = useAuth();
+  const { loading } = useSync();
   // Search lives in the URL: a reload keeps the query, the link is shareable
   // and the browser Back button cancels it — same contract as the filters.
   const [searchParams, setSearchParams] = useSearchParams();
   const search = searchParams.get("q") ?? "";
 
+  // A browser that never had a session should meet the public landing page,
+  // not a bare login card; a browser whose session merely EXPIRED already
+  // knows the site and only needs the way back in (ADR-0029). The ref, not
+  // state: the distinction is read during render and must not re-render.
+  const hadSession = useRef(false);
+  if (auth?.authenticated) {
+    hadSession.current = true;
+  }
+  const signedOut = sessionRequired && !auth?.authenticated;
+  const showLanding = signedOut && !hadSession.current;
+
+  // Until the first response arrives we do not know which surface belongs to
+  // this browser, so render nothing that could be wrong: `auth` is null and
+  // the dataset request is still in flight. A 401 sets `auth` to SIGNED_OUT
+  // inside `request()` (api.ts), so the splash is lifted as soon as the gate
+  // is known — it never waits for the other three requests to settle.
+  const bootUnknown = auth === null && loading;
+
   // Hooks must run on every render, so the sign-in gate below returns only
   // after all of them.
   useEffect(() => {
+    // The landing owns the document title while it is on screen.
+    if (showLanding) return;
     document.title = t("app.title");
-  }, [t]);
+  }, [t, showLanding]);
+
+  if (bootUnknown) {
+    return <BootSplash />;
+  }
 
   // §26: a 401 means this browser has no application session — route back to
   // the login state instead of rendering pages that can only 401 again. The
   // desktop build never sets `sessionRequired`, so its workflow is untouched.
-  if (sessionRequired && !auth?.authenticated) {
+  if (showLanding) {
+    return <Landing />;
+  }
+  if (signedOut) {
     return <SignIn />;
   }
 
@@ -70,7 +110,6 @@ function AppShell() {
     <div className="app-layout">
       <Sidebar />
       <div className="app-main">
-        <DuplicateTabNotice />
         <TopBar search={search} onSearch={onSearch} />
         <main className="app-content">
           <DashboardBoundary>

@@ -21,8 +21,10 @@
 
 ### Scope
 
-К двум существующим read-only scope добавляются ещё два read-only
-(промпт-блок «Required scopes»):
+К двум существующим **Classroom** read-only scope добавляются ещё два
+read-only Classroom scope (промпт-блок `Required scopes`); отдельно общий
+OAuth flow также запрашивает OIDC identity scopes `openid`, `profile` и
+`email` для userinfo:
 
 - `classroom.student-submissions.students.readonly` — даёт учителю
   `courseWork.list` (все задания курса) и
@@ -51,8 +53,8 @@
 > Реализация следует **блоку со списком scope** (он и технически необходим) с
 > поправкой на фактическое имя выдаваемого scope (см. выше):
 > `student-submissions.me.readonly` сохраняет студенческий маршрут,
-> `student-submissions.students.readonly` открывает учительский. Все scope
-> read-only.
+> `student-submissions.students.readonly` открывает учительский. Все
+> **Classroom** scopes read-only; OIDC identity scopes нужны только userinfo.
 
 ### Определение роли курса
 

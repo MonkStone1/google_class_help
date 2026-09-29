@@ -2,15 +2,19 @@ import { GraduationCap } from "lucide-react";
 
 import { useAuth } from "../context/DataContext.tsx";
 import { useI18n } from "../i18n.ts";
+import { useSignInChallenge } from "../lib/signInChallenge.ts";
 
 /**
- * The login state of the hosted service (migration stage 7, §26).
+ * The compact login gate of the hosted service (migration stage 7, §26).
  *
- * Rendered instead of the dashboard once a request answered 401: this
- * browser holds no application session, so every cached view is dropped and
- * the only way forward is signing in. Sign-in is a full-page navigation into
- * the server-owned OAuth flow (`DataContext.login` redirects when the server
- * answers 405) — the SPA never touches a Google token.
+ * Shown when a session that DID exist is gone — the signed-in browser hit a
+ * 401 mid-use. A visitor who never had a session gets the public `Landing`
+ * page instead (ADR-0029), which is the better surface for "what is this
+ * site"; here the user only needs the way back in.
+ *
+ * Sign-in is a full-page navigation into the server-owned OAuth flow
+ * (`DataContext.login` redirects when the server answers 405) — the SPA never
+ * touches a Google token.
  *
  * The desktop build never reaches this gate: its `/api/auth/status` always
  * answers 200 and reports `authenticated: false` until the loopback consent
@@ -19,6 +23,8 @@ import { useI18n } from "../i18n.ts";
 export function SignIn() {
   const { login } = useAuth();
   const { t } = useI18n();
+  const { token, required, requested, widgetRef } = useSignInChallenge();
+  const canSubmit = !required || Boolean(token);
 
   return (
     <div className="signin-gate">
@@ -28,10 +34,22 @@ export function SignIn() {
         </div>
         <h1>{t("subjects.notSignedIn")}</h1>
         <p>{t("subjects.notSignedInHint")}</p>
+        {requested && required ? (
+          <p>{t("signin.turnstileRequired")}</p>
+        ) : null}
+        {required ? (
+          <div>
+            <div ref={widgetRef} />
+            {token === null ? (
+              <p>{t("signin.turnstilePending")}</p>
+            ) : null}
+          </div>
+        ) : null}
         <button
           type="button"
           className="button button-primary"
-          onClick={() => void login()}
+          onClick={() => void login(token ?? undefined)}
+          disabled={!canSubmit}
         >
           {t("settings.signIn")}
         </button>
@@ -39,3 +57,4 @@ export function SignIn() {
     </div>
   );
 }
+

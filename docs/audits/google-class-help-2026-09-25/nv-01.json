@@ -1,0 +1,32 @@
+{
+  "blockers": [
+    "The authoritative per-course role assignment lives in the Classroom API response for the caller's own credential; repository tests and fixtures cannot prove that Google returns TEACHER for the wrong caller."
+  ],
+  "validation_plan": {
+    "deployment": "With two real Google accounts that share one Classroom course under different roles, sign in as the lower-privilege account and request the teacher-only routes for that course; confirm 403 and no roster/grades payload.",
+    "local": "Review tests/test_user_isolation.py, tests covering teacher routes, and models for composite user scoping; inspect the role extraction and teacher-gate helpers without live Google credentials."
+  },
+  "trace": [
+    {
+      "kind": "entrypoint",
+      "file": "backend/api.py",
+      "line": 848,
+      "scope": "teacher_gate",
+      "description": "Teacher list/detail routes invoke the teacher role gate with session user id."
+    },
+    {
+      "kind": "propagation",
+      "file": "backend/api.py",
+      "line": 733,
+      "scope": "get_teacher_courses",
+      "description": "The gate queries user course roles directly from the Google Classroom API response."
+    },
+    {
+      "kind": "sink",
+      "file": "backend/api.py",
+      "line": 863,
+      "scope": "teacher_gate",
+      "description": "Teacher authorization decisions depend strictly on Classroom API membership output."
+    }
+  ]
+}

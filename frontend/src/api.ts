@@ -18,6 +18,12 @@ const BASE = "/api";
 /** Server-owned entry point of the hosted sign-in flow (§25/§26). */
 export const LOGIN_URL = `${BASE}/auth/login`;
 
+/** Whether login initiation is guarded by a Cloudflare Turnstile challenge. */
+export type TurnstileConfig = {
+  enabled: boolean;
+  site_key: string | null;
+};
+
 export type ApiError = Error & { status: number };
 
 /**
@@ -80,6 +86,17 @@ export const api = {
   // and the caller redirects to LOGIN_URL (§25/§26).
   login: () => request<AuthStatus>("/auth/login", { method: "POST" }),
   logout: () => request<AuthStatus>("/auth/logout", { method: "POST" }),
+
+  // Turnstile (DDoS plan §17): the config says whether login needs a widget,
+  // and loginStart exchanges a SOLVED widget token for the Google redirect
+  // URL. The secret key never leaves the backend — only the public site key
+  // reaches this file.
+  getTurnstileConfig: () => request<TurnstileConfig>("/auth/turnstile"),
+  loginStart: (token: string) =>
+    request<{ redirect_url: string }>("/auth/login/start", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    }),
 
   getStatus: () => request<AppStatus>("/status"),
   getCourses: () => request<Course[]>("/courses"),

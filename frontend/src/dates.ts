@@ -17,14 +17,31 @@ export function setLocale(locale: string) {
   currentLocale = locale;
 }
 
-/** Best-effort initial language from the browser/system. */
+/**
+ * Best-effort initial language from the browser/system.
+ *
+ * The WHOLE preference list is walked, not just `navigator.language`: a
+ * browser whose UI is, say, German can still list Ukrainian second, and that
+ * is a better guess for our three dictionaries than dropping straight to
+ * English. The first supported tag wins; a list with no supported tag (or a
+ * browser that exposes neither list) is English.
+ */
 export function detectLanguage(): Language {
-  const preferred = navigator.language.toLowerCase();
-  if (preferred.startsWith("uk")) {
-    return "uk";
-  }
-  if (preferred.startsWith("ru")) {
-    return "ru";
+  const preferred =
+    navigator.languages && navigator.languages.length > 0
+      ? navigator.languages
+      : [navigator.language];
+  for (const tag of preferred) {
+    const normalized = tag.toLowerCase();
+    if (normalized.startsWith("uk")) {
+      return "uk";
+    }
+    if (normalized.startsWith("ru")) {
+      return "ru";
+    }
+    if (normalized.startsWith("en")) {
+      return "en";
+    }
   }
   return "en";
 }

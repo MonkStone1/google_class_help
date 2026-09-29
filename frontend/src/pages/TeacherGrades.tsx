@@ -1,4 +1,4 @@
-import { ArrowLeft, GraduationCap, RefreshCw } from "lucide-react";
+import { ArrowLeft, GraduationCap } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api.ts";
@@ -6,7 +6,7 @@ import { SubmissionStatusBadge } from "../components/Badges.tsx";
 import { EmptyState, SectionSkeleton } from "../components/Skeletons.tsx";
 import { formatDateTimeShort, parseDue } from "../dates.ts";
 import { useI18n } from "../i18n.ts";
-import { invalidateResources, useResource } from "../lib/resource.ts";
+import { useResource } from "../lib/resource.ts";
 import type { SubmissionCell } from "../types.ts";
 
 /**
@@ -20,11 +20,6 @@ export function TeacherGrades() {
   const grades = useResource(`course:${courseId}:grades`, (signal) =>
     api.getCourseGrades(courseId, signal),
   );
-
-  const refresh = () => {
-    invalidateResources(`course:${courseId}:`);
-    grades.refresh();
-  };
 
   const data = grades.data;
 
@@ -57,9 +52,6 @@ export function TeacherGrades() {
               })}
             </span>
           ) : null}
-          <button type="button" className="button" onClick={refresh}>
-            <RefreshCw size={15} /> {t("teacher.refresh")}
-          </button>
         </div>
       </div>
 

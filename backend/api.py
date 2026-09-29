@@ -55,7 +55,7 @@ caller's scope (never disclosing whether another user's row exists).
 
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
@@ -105,7 +105,7 @@ router = APIRouter(prefix="/api")
 
 # ------------------------------------------------------- user profile (§17)
 
-# The frontend polls the status endpoints every ~1.5 s while logging in, and
+# The frontend polls the status endpoints every ~1.5 s while logging in or following a queued/running sync, and
 # a network roundtrip to Google inside every poll is unacceptable. The
 # profile changes about once a year, so it is cached for five minutes; the
 # network call itself runs OUTSIDE the lock.
@@ -350,7 +350,35 @@ def _build_assignment_out(
     )
 
 
-def _load_assignments(db: Session, owner_id: int) -> list[AssignmentOut]:
+def _all_courses(db: Session, owner_id: int) -> dict[str, Course]:
+    """Every cached course of the owner, keyed by id, with NO state filter.
+
+    The archived-course rule is deliberately not applied here: the callers need
+    two different ones and they disagree on a NULL ``course_state`` — the
+    coursework listing keeps it, the per-course rollup in ``grades`` has always
+    dropped it. Filtering in SQL here would silently pick a winner and change
+    one of the two responses.
+    """
+    return {c.id: c for c in db.query(Course).filter_by(user_id=owner_id).all()}
+
+
+def _active_courses(db: Session, owner_id: int) -> dict[str, Course]:
+    """Non-archived courses of the owner, filtered Python-side (ADR-0003).
+
+    Python-side, not SQL: ``None != "ARCHIVED"`` is True, so a course whose
+    ``course_state`` is NULL is kept. That is the long-standing behaviour of
+    every endpoint that lists coursework.
+    """
+    return {
+        course_id: course
+        for course_id, course in _all_courses(db, owner_id).items()
+        if course.course_state != "ARCHIVED"
+    }
+
+
+def _load_assignments(
+    db: Session, owner_id: int, courses: dict[str, Course] | None = None
+) -> list[AssignmentOut]:
     """Load the owner's cached assignments merged with role-appropriate details.
 
     Student courses (the existing dashboard) merge their own submission into
@@ -365,11 +393,8 @@ def _load_assignments(db: Session, owner_id: int) -> list[AssignmentOut]:
     _course_stats_sql/_student_totals_sql additionally equate user_id so a
     same-named row of another user can never leak into an aggregate (§67).
     """
-    courses = {
-        c.id: c
-        for c in db.query(Course).filter_by(user_id=owner_id).all()
-        if c.course_state != "ARCHIVED"
-    }
+    if courses is None:
+        courses = _active_courses(db, owner_id)
     roles = _role_map(db, owner_id)
     submissions = {
         (s.course_id, s.coursework_id): s
@@ -732,12 +757,33 @@ def overdue(
 def grades(
     owner_id: int = Depends(current_user_id), db: Session = Depends(get_db)
 ) -> list[CourseGrades]:
-    assignments = _student_only(_load_assignments(db, owner_id))
-    courses = (
-        db.query(Course)
-        .filter(Course.user_id == owner_id, Course.course_state != "ARCHIVED")
-        .order_by(Course.name)
-        .all()
+    # One course query for the whole request instead of two: _load_assignments
+    # re-read the courses table, and this endpoint read it a second time.
+    #
+    # The two readers apply DIFFERENT archived rules and both are kept exactly as
+    # they were: the coursework list keeps a NULL course_state (Python `!=`),
+    # while this rollup has always dropped it (SQL `!=` never matches NULL).
+    # Unifying them would either add a course to /api/grades or remove its
+    # coursework from /api/assignments.
+    cached_courses = _all_courses(db, owner_id)
+    assignments = _student_only(
+        _load_assignments(
+            db,
+            owner_id,
+            {
+                course_id: course
+                for course_id, course in cached_courses.items()
+                if course.course_state != "ARCHIVED"
+            },
+        )
+    )
+    courses = sorted(
+        (
+            course
+            for course in cached_courses.values()
+            if course.course_state not in (None, "ARCHIVED")
+        ),
+        key=lambda course: course.name,
     )
     out: list[CourseGrades] = []
     for course in courses:
@@ -931,7 +977,13 @@ def status(
         authenticated=_is_authenticated(user),
         last_sync=sync_state.last_success_at if sync_state else None,
         last_sync_error=sync_state.last_error if sync_state else None,
-        syncing=bool(sync_state and sync_state.status == sync.SYNC_RUNNING),
+        # A queued job is active from the moment it is requested. The status
+        # row remains ``pending`` until the worker claims it, but the UI must
+        # already show the spinner and follow it through completion.
+        syncing=bool(
+            sync_state
+            and (sync_state.status == sync.SYNC_RUNNING or sync_state.sync_requested)
+        ),
         sync_status=sync_state.status if sync_state else sync.SYNC_PENDING,
         last_sync_started_at=sync_state.last_started_at if sync_state else None,
         last_sync_finished_at=sync_state.last_finished_at if sync_state else None,
@@ -943,53 +995,50 @@ def status(
 
 @router.post("/sync", response_model=SyncResult)
 def run_sync(
-    request: Request, user: User = Depends(ownership.get_current_user)
+    request: Request,
+    user: User = Depends(ownership.get_current_user),
+    db: Session = Depends(get_db),
 ) -> SyncResult:
-    """Synchronize the calling user's cache with THEIR Google credentials.
+    """Queue (hosted) or run (desktop) a sync of the calling user's cache.
 
     §12: /api/sync must never touch another user's data. Desktop: the local
-    owner (token.json). Hosted: the session user's oauth_tokens — sync_now
-    resolves the cache owner and credentials from this user. Since the
-    per-user scheduler (stage 5, §18) a manual sync only conflicts with
-    THIS user's own running sync (background or another manual call); any
-    other user syncs independently.
+    owner (token.json) — sync runs inline as before. Hosted: the session
+    user's oauth_tokens — the request only flags ``sync_requested`` and
+    answers ``{"ok": True, "queued": True, "status": "queued"}`` immediately;
+    the worker container performs the actual Classroom fan-out (DDoS plan
+    §9: never run the full sync inside the HTTP request).
 
-    §65: a manual sync is interactive work and is bounded by the process's
-    global concurrency ceiling (``SYNC_MAX_CONCURRENT_USERS``). When every
-    slot is taken the request is answered with 503 and a Retry-Later-style
-    phrase instead of queueing behind other users' syncs.
-
-    Stage 9 (§39): hosted manual syncs additionally carry a per-user
-    cooldown (``SYNC_MANUAL_COOLDOWN_SECONDS``). Holding the Sync button
-    reuses the in-flight run (409) or gets 429 instead of launching a
-    second full Classroom fan-out; one user cannot eat the whole Google
-    quota this way. The background scheduler bypasses the cooldown.
+    Hosted conflict mapping: a sync already in flight for THIS user → 409;
+    a manual request inside the per-user cooldown → 429 + Retry-After; the
+    background scheduler bypasses the cooldown. Other users sync
+    independently. Rate-limit buckets (§39) stay in middleware.
     """
     if request.app.state.hosted:
         from config import SYNC_MANUAL_COOLDOWN_SECONDS
+        from sync_store import sync_status as _sync_row
 
-        if SYNC_MANUAL_COOLDOWN_SECONDS > 0:
-            from datetime import datetime, timezone
-
-            # A fresh per-request session: the endpoint dependency owns its
-            # own session and must not be reused here (short transactions,
-            # stage 9 §45).
-            from database import SessionLocal as _SessionLocal
-            from sync_store import sync_status as _sync_row
-
-            now = datetime.now(timezone.utc).replace(tzinfo=None)
-            with _SessionLocal() as _db:
-                row = _sync_row(_db, user.id)
-                started = row.last_started_at if row is not None else None
-            if (
-                started is not None
-                and (now - started).total_seconds() < SYNC_MANUAL_COOLDOWN_SECONDS
-            ):
-                raise HTTPException(
-                    status_code=429,
-                    detail="A sync just ran for this account; try again shortly.",
-                    headers={"Retry-After": str(SYNC_MANUAL_COOLDOWN_SECONDS)},
-                )
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        row = _sync_row(db, user.id)
+        if row is not None and row.status == sync.SYNC_RUNNING:
+            # A running sync is not an error: 409 tells the client to keep
+            # showing its spinner instead of surfacing a failure (§3.9).
+            raise HTTPException(
+                status_code=409, detail="A synchronization is already running."
+            )
+        if (
+            SYNC_MANUAL_COOLDOWN_SECONDS > 0
+            and row is not None
+            and row.last_started_at is not None
+            and (now - row.last_started_at).total_seconds()
+            < SYNC_MANUAL_COOLDOWN_SECONDS
+        ):
+            raise HTTPException(
+                status_code=429,
+                detail="A sync just ran for this account; try again shortly.",
+                headers={"Retry-After": str(SYNC_MANUAL_COOLDOWN_SECONDS)},
+            )
+        sync.request_sync(db, user.id)
+        return SyncResult(ok=True, queued=True, status="queued")
     result = sync.sync_now(user=user, interactive=True)
     if not result.get("ok"):
         error = str(result.get("error", ""))

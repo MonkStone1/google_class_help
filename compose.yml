@@ -1,0 +1,169 @@
+# Google Class Help — hosted production stack (migration stage 10, §54–§56;
+# DDoS plan §4). Target: one small VPS (1 vCPU / 1 GB) behind Cloudflare
+# Tunnel. Five services on a private network:
+#
+#   cloudflared → caddy:80 → web:8000
+#   web:8000  → postgres:5432
+#   worker    → postgres:5432
+#
+# Nothing is published on the public host: with Cloudflare Tunnel the origin
+# does not need inbound HTTP/HTTPS at all, and PostgreSQL/uvicorn ports stay
+# on the internal network (DDoS plan §4/§5). The only public exposure is the
+# Cloudflare-published hostname.
+#
+# Resource limits are sized for 1 vCPU / 1 GB. Raise them only after
+# measurement (ADR-0027 §7, migration stage 9 acceptance criteria).
+
+name: google-class-help
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-google_class_help}
+      POSTGRES_USER: ${POSTGRES_USER:-google_class_help}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      # Deterministic collation for indexes built in migrations.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    # Small-VPS tuning: ~1/4 of RAM for shared buffers, tiny work_mem, and a
+    # connection ceiling that matches DB_POOL_SIZE + overflow for web+worker.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - max_connections=30
+      - -c
+      - effective_cache_size=512MB
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-google_class_help} -d ${POSTGRES_DB:-google_class_help}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: "0.30"
+          memory: 288M
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: google-class-help:local
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-google_class_help}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-google_class_help}
+      GC_DASHBOARD_DATA_DIR: /data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - appdata:/data
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - internal
+    deploy:
+      replicas: 1  # Single-replica topology: preserves in-memory token bucket rate limiting without external cache
+      resources:
+        limits:
+          cpus: "0.55"
+          memory: 256M
+
+  worker:
+    image: google-class-help:local
+    restart: unless-stopped
+    command: ["python", "sync_worker.py"]
+    # Same reason as the local stand: Docker's default 10s stop grace expires
+    # long before a Classroom fan-out, so a deploy/restart used to SIGKILL the
+    # worker mid-sync and park the account in ``running`` until the claim's
+    # stale window expired. 300s > SHUTDOWN_GRACE_SECONDS (sync_worker.py), so
+    # the graceful release gets to run.
+    stop_grace_period: 5m
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-google_class_help}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-google_class_help}
+      GC_DASHBOARD_DATA_DIR: /data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      web:
+        condition: service_started
+    volumes:
+      - appdata:/data
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: "0.15"
+          memory: 160M
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_started
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    expose:
+      - "80"
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: "0.1"
+          memory: 48M
+
+  cloudflared:
+    # Outbound-only tunnel: no published ports, no inbound firewall rules
+    # (DDoS plan §3/§5). Pinned concrete tag for reproducible deploys.
+    image: cloudflare/cloudflared:2026.9.3
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run", "--token", "${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}"]
+    depends_on:
+      caddy:
+        condition: service_started
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: "0.1"
+          memory: 32M
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  pgdata:
+  appdata:
+  caddy_data:
+  caddy_config:
