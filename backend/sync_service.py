@@ -51,6 +51,7 @@ from sync_store import (
     mark_sync_pending,
     mark_sync_succeeded,
     request_sync,
+    upsert_submission,
 )
 
 logger = logging.getLogger(__name__)
@@ -545,25 +546,54 @@ def _write_sync_results(
                 return {"ok": False, "error": SUPERSEDED}
             for raw_course, role in courses:
                 course_id = raw_course["id"]
-                course = db.get(Course, (owner_id, course_id))
-                if course is None:
-                    course = Course(user_id=owner_id, id=course_id)
-                    db.add(course)
-                course.name = raw_course.get("name", "Untitled course")
-                course.description = raw_course.get(
-                    "descriptionHeading"
-                ) or raw_course.get("description")
-                course.section = raw_course.get("section")
-                course.room = raw_course.get("room")
-                course.enrollment_state = raw_course.get("enrollmentState")
-                course.course_state = raw_course.get("courseState")
-                course_role = db.get(CourseRole, (owner_id, course_id))
-                if course_role is None:
-                    course_role = CourseRole(user_id=owner_id, course_id=course_id)
-                    db.add(course_role)
-                course_role.role = role
-                course.teacher_names = teacher_names.get(course_id, [])
-                course.synced_at = now
+                # The fence is re-checked per course, not once before the loop.
+                # The write phase commits after every course, so on a teacher
+                # account with hundreds of courses it stays open for minutes —
+                # long enough for a restart (ADR-0032) or a stale-claim takeover
+                # to hand the cache to another run. One check before the loop
+                # left that whole window unfenced, and both runs then wrote the
+                # same course: two INSERTs of one coursework id, and the loser
+                # died on a unique violation the user saw as "Sync failed".
+                # Expire first so the fence reads the row, not the copy the
+                # check before the loop left in the identity map — ``db.get``
+                # would otherwise answer from there, where the claim still looks
+                # ours. Safe because nothing is uncommitted at this point (the
+                # previous iteration ended with db.commit()), and it costs one
+                # round trip per course next to hundreds of Google requests.
+                db.expire_all()
+                if not claim_is_own(db, owner_id, started_at):
+                    counters = stats.snapshot()
+                    logger.info(
+                        "Sync for user=%s lost its claim while writing course %s "
+                        "after %d Google requests; stopping.",
+                        owner_id,
+                        course_id,
+                        counters["requests"],
+                    )
+                    db.rollback()
+                    return {"ok": False, "error": SUPERSEDED}
+                upsert_submission(
+                    db,
+                    Course,
+                    {"user_id": owner_id, "id": course_id},
+                    {
+                        "name": raw_course.get("name", "Untitled course"),
+                        "description": raw_course.get("descriptionHeading")
+                        or raw_course.get("description"),
+                        "section": raw_course.get("section"),
+                        "room": raw_course.get("room"),
+                        "enrollment_state": raw_course.get("enrollmentState"),
+                        "course_state": raw_course.get("courseState"),
+                        "teacher_names": teacher_names.get(course_id, []),
+                        "synced_at": now,
+                    },
+                )
+                upsert_submission(
+                    db,
+                    CourseRole,
+                    {"user_id": owner_id, "course_id": course_id},
+                    {"role": role},
+                )
 
                 payload = payloads[course_id]
                 if role == "TEACHER":

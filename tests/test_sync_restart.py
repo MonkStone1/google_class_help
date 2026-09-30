@@ -24,16 +24,18 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import oauth_transport
 import pytest
 
 import hosted_auth
 import metrics
+import sync_scheduler
 import sync_service
 import sync_store
 from config import SYNC_STUCK_SECONDS
 from database import SessionLocal
 from models import Course, SyncStatus
-from models_auth import User, UserSession
+from models_auth import OAuthToken, User, UserSession
 
 
 def _utc(year: int, month: int, day: int) -> datetime:
@@ -44,13 +46,13 @@ def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _make_user(db, subject: str) -> User:
+def _make_user(db, subject: str, *, created_at: datetime | None = None) -> User:
     user = User(
         provider="google",
         provider_subject=subject,
         email=f"{subject}@example.com",
         display_name=subject,
-        created_at=_utc(2026, 9, 30),
+        created_at=created_at or _utc(2026, 9, 30),
         updated_at=_utc(2026, 9, 30),
         is_active=True,
     )
@@ -90,6 +92,26 @@ def _claim(user_id: int, started_at: datetime) -> None:
             )
         )
         own.commit()
+
+
+def _add_grant(db, user: User) -> None:
+    """A stored Google grant, so ``select_due_users`` considers the account.
+
+    The selection joins ``oauth_tokens``: without a grant the user is never a
+    candidate, and the test below would pass for the wrong reason.
+    """
+    now = _now()
+    db.add(
+        OAuthToken(
+            user_id=user.id,
+            access_token="enc.v1:test",
+            token_uri="https://oauth2.googleapis.com/token",
+            scopes=list(oauth_transport.SCOPES),
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    db.commit()
 
 
 class _FakeStats:
@@ -239,7 +261,181 @@ def test_superseded_run_writes_neither_cache_nor_status(db):
     metrics.reset()
 
 
-def test_owning_run_still_writes(db, monkeypatch):
+# ------------------------------------------- per-course fence (write phase)
+
+
+def test_claim_lost_mid_write_stops_the_loop_instead_of_colliding(db):
+    """The fence must be re-checked INSIDE the per-course write loop.
+
+    The write phase commits after every course, so on a teacher account with
+    hundreds of courses it stays open for minutes. A restart releases the claim
+    in exactly that window, and the replaced run is still holding its own
+    per-course commit loop. With the check only before the loop, both runs wrote
+    the same course: two INSERTs of one coursework id, and the loser died on
+    ``duplicate key value violates unique constraint
+    coursework_submissions_pkey`` — reported to the user as "Sync failed" even
+    though Google had delivered everything.
+    """
+    metrics.reset()
+    user = _make_user(db, "sub-midwrite")
+    claimed_at = _now()
+    _claim(user.id, claimed_at)
+
+    written: list[str] = []
+    monkey_calls = {"n": 0}
+
+    def _fake_write(db_, user_id, course_id, payload):
+        # The replacement run takes the claim while this run is already inside
+        # the loop — the moment the old one-check-per-run fence missed. A restart
+        # releases the claim (abandon_claim) and the worker re-claims it, which
+        # is what a user clicking "restart the stuck sync" produces.
+        #
+        # Taken through the SAME session on purpose. A second session cannot
+        # write here at all: the run holds an open transaction from the course
+        # it just committed, and file-backed SQLite refuses the other writer
+        # ("database is locked") — an artifact of the test backend, not of the
+        # hosted PostgreSQL deployment this fence is about. Same session is
+        # enough to model the takeover: the claim row really does change under
+        # the running loop, which is the state the fence has to notice.
+        written.append(course_id)
+        monkey_calls["n"] += 1
+        if monkey_calls["n"] == 2:
+            assert sync_store.abandon_claim(db_, user_id, _now(), older_than=0)
+            assert sync_store.claim_sync(db_, user_id, _now(), stale_after=3600)
+        return 0
+
+    import sync_service as _svc
+
+    original = _svc._write_teacher_course
+    _svc._write_teacher_course = _fake_write
+    try:
+        result = _svc._write_sync_results(
+            user.id,
+            courses=[
+                ({"id": "c1", "name": "One"}, "TEACHER"),
+                ({"id": "c2", "name": "Two"}, "TEACHER"),
+                ({"id": "c3", "name": "Three"}, "TEACHER"),
+            ],
+            active_ids={"c1", "c2", "c3"},
+            teacher_names={},
+            payloads={
+                cid: {"coursework": [], "submissions": []} for cid in ("c1", "c2", "c3")
+            },
+            work_cache={},
+            stats=_FakeStats(),
+            started_monotonic=0.0,
+            started_at=claimed_at,
+        )
+    finally:
+        _svc._write_teacher_course = original
+
+    assert result == {"ok": False, "error": sync_service.SUPERSEDED}
+    # Stopped at the course where the claim was gone; never reached c3.
+    assert written == ["c1", "c2"]
+    assert db.get(Course, (user.id, "c3")) is None
+    # The run that owns the row now reports the outcome, not the zombie.
+    assert db.get(SyncStatus, user.id).status == sync_store.SYNC_RUNNING
+    assert metrics.snapshot().get(metrics.SYNC_SUCCEEDED) is None
+    metrics.reset()
+
+
+def test_claim_sync_logs_only_a_stale_takeover(db, caplog):
+    """A takeover is the only event that can cause a duplicate key — log it.
+
+    It is also invisible otherwise: the loser of the race is fenced and its
+    writes become harmless, so the next occurrence of the reported symptom has
+    no trace in the log to correlate with. The line must fire for a takeover
+    and NOT for an ordinary claim, or it becomes noise nobody reads.
+    """
+    user = _make_user(db, "sub-takeover-log")
+    now = _now()
+
+    # An ordinary first claim: nothing was running before it.
+    with caplog.at_level("WARNING", logger="sync_store"):
+        assert sync_store.claim_sync(db, user.id, now, stale_after=600) is True
+    assert "stale sync claim" not in caplog.text
+
+    # A second claim inside the window is refused, and must stay quiet too.
+    with caplog.at_level("WARNING", logger="sync_store"):
+        assert (
+            sync_store.claim_sync(db, user.id, now + timedelta(seconds=30), stale_after=600)
+            is False
+        )
+    assert "stale sync claim" not in caplog.text
+
+    # Past the window: the takeover this log line exists for.
+    caplog.clear()
+    with caplog.at_level("WARNING", logger="sync_store"):
+        assert (
+            sync_store.claim_sync(
+                db, user.id, now + timedelta(seconds=601), stale_after=600
+            )
+            is True
+        )
+    assert "stale sync claim" in caplog.text
+    assert f"user={user.id}" in caplog.text
+    # The age is in the line, so the next occurrence is diagnosable from it.
+    assert "601 s ago" in caplog.text
+
+
+def test_a_running_user_is_due_again_once_the_window_passes(db):
+    """The structural half: a ``running`` user is offered to the scheduler.
+
+    ``next_sync_at`` reads ``last_finished_at or last_started_at``, so for a user
+    mid-sync that is the PREVIOUS run's finish — hours old — and the account
+    looks due immediately. ``claim_sync`` is what stops the second run, and only
+    for as long as the claim is younger than ``stale_after``. That is precisely
+    how a legitimately slow teacher sync ends up racing a replacement: the window
+    is 600 s on compose.local.yml, and a write phase over hundreds of courses
+    can outlast it.
+
+    Pinned as documentation of the interaction, not as an endorsement: the
+    fence (ADR-0032) and the conditional write (ADR-0033) are what make the
+    overlap harmless.
+    """
+    user = _make_user(db, "sub-running-due", created_at=_now() - timedelta(days=3))
+    _add_grant(db, user)
+    now = _now()
+    # A PREVIOUS run that finished two days ago: this is what
+    # ``last_finished_at`` still holds while the current run is in flight, and
+    # it is why the account looks due to the very next scan.
+    db.add(
+        SyncStatus(
+            user_id=user.id,
+            status=sync_store.SYNC_PENDING,
+            last_finished_at=now - timedelta(days=2),
+            last_success_at=now - timedelta(days=2),
+            consecutive_failures=0,
+            sync_requested=False,
+        )
+    )
+    db.commit()
+
+    assert sync_store.claim_sync(db, user.id, now, stale_after=600) is True
+
+    # The scheduler's view: the run is in flight, yet the account looks due
+    # because the only finish stamp it can see belongs to the previous run.
+    assert user.id in sync_scheduler.select_due_users(
+        db,
+        now + timedelta(minutes=30),
+        interval_seconds=3600,
+        startup_stagger_seconds=0,
+    )
+    # Inside the window the claim still holds, so a scan is harmless.
+    assert (
+        sync_store.claim_sync(db, user.id, now + timedelta(seconds=30), stale_after=600)
+        is False
+    )
+    # Past the window the same scan would take the claim over.
+    assert (
+        sync_store.claim_sync(
+            db, user.id, now + timedelta(seconds=601), stale_after=600
+        )
+        is True
+    )
+
+
+def test_owning_run_writes_every_course(db, monkeypatch):
     """The fence must not disable the normal path: an owner writes as before."""
     user = _make_user(db, "sub-owner-writes")
     claimed_at = _now()

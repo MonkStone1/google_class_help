@@ -8,10 +8,13 @@ Every function takes the ``user_id`` of the cache owner (migration stage
 every key lookup, delete and mirror-cleanup is scoped to one owner's rows.
 """
 
+import logging
 from datetime import datetime, timedelta
 from typing import cast
 
 from sqlalchemy import CursorResult, delete, or_, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -27,6 +30,8 @@ from models import (
 )
 
 SubmissionRow = CourseWorkSubmission | StudentSubmission
+
+logger = logging.getLogger(__name__)
 
 
 # ------------------------------------------------------------- sync status
@@ -90,9 +95,25 @@ def claim_sync(db: Session, user_id: int, now: datetime, *, stale_after: int) ->
     row whose ``last_started_at`` is older than ``stale_after`` seconds is
     assumed to belong to a crashed worker and may be taken over, so a hard
     kill cannot park a user forever.
+
+    That takeover is the ONE event that can put two processes in the same
+    user's write phase: the older run is still alive but has been going longer
+    than the window (a teacher account whose write phase outlasts
+    ``stale_after``), and the scheduler picks it up again because
+    ``next_sync_at`` reads the PREVIOUS run's ``last_finished_at``. The losing
+    run is stopped by the fence (ADR-0032) and its writes are made harmless by
+    the conditional write (ADR-0033), but the takeover is rare and load-bearing
+    enough to deserve a log line: it is the sole origin of a duplicate-key
+    symptom, and without it the next occurrence is a forensic exercise.
     """
-    _status_row(db, user_id)
+    row = _status_row(db, user_id)
     cutoff = now - timedelta(seconds=stale_after)
+    # Snapshot the previous state as PLAIN values: the UPDATE below
+    # synchronizes the session and rewrites this very object's attributes, so
+    # reading ``row`` afterwards would compare ``now`` against ``now`` and the
+    # takeover would never be recognised.
+    previous_status = row.status
+    previous_started_at = row.last_started_at
     result = cast(
         CursorResult,
         db.execute(
@@ -109,6 +130,20 @@ def claim_sync(db: Session, user_id: int, now: datetime, *, stale_after: int) ->
         ),
     )
     db.commit()
+    if (
+        result.rowcount
+        and previous_status == SYNC_RUNNING
+        and previous_started_at is not None
+        and previous_started_at < cutoff
+    ):
+        logger.warning(
+            "Took over a stale sync claim for user=%s: the previous run started "
+            "%d s ago, past the %d s window. Two write phases of this account "
+            "may now overlap; the older one is fenced and writes nothing.",
+            user_id,
+            int((now - previous_started_at).total_seconds()),
+            stale_after,
+        )
     return bool(result.rowcount)
 
 
@@ -460,26 +495,82 @@ def _materials_to_json(raw_materials: list[dict]) -> list[dict]:
 
 
 def _upsert_work(db: Session, user_id: int, course_id: str, raw_work: dict) -> None:
-    """Insert/update one coursework row from a raw Classroom object."""
+    """Insert/update one coursework row from a raw Classroom object.
+
+    A conditional write for the same reason as :func:`upsert_submission`: two
+    runs of the same user's sync overlap inside the write phase, and plain
+    get-then-add let both of them INSERT the same coursework id.
+    """
     work_id = raw_work.get("id")
     if not work_id:
         return
-    work = db.get(CourseWork, (user_id, work_id))
-    if work is None:
-        work = CourseWork(user_id=user_id, id=work_id, course_id=course_id)
-        db.add(work)
-    work.course_id = course_id
-    work.title = raw_work.get("title", "Untitled assignment")
-    work.description = raw_work.get("description")
-    work.state = raw_work.get("state")
-    work.work_type = raw_work.get("workType")
-    work.due_at = parse_date_time(raw_work.get("dueDate"), raw_work.get("dueTime"))
-    work.max_points = raw_work.get("maxPoints")
-    work.alternate_link = raw_work.get("alternateLink")
-    work.topic_id = raw_work.get("topicId")
-    work.creation_time = parse_rfc3339(raw_work.get("creationTime"))
-    work.updated_time = parse_rfc3339(raw_work.get("updateTime"))
-    work.materials = _materials_to_json(raw_work.get("materials", []))
+    upsert_submission(
+        db,
+        CourseWork,
+        {"user_id": user_id, "id": work_id},
+        {
+            "course_id": course_id,
+            "title": raw_work.get("title", "Untitled assignment"),
+            "description": raw_work.get("description"),
+            "state": raw_work.get("state"),
+            "work_type": raw_work.get("workType"),
+            "due_at": parse_date_time(raw_work.get("dueDate"), raw_work.get("dueTime")),
+            "max_points": raw_work.get("maxPoints"),
+            "alternate_link": raw_work.get("alternateLink"),
+            "topic_id": raw_work.get("topicId"),
+            "creation_time": parse_rfc3339(raw_work.get("creationTime")),
+            "updated_time": parse_rfc3339(raw_work.get("updateTime")),
+            "materials": _materials_to_json(raw_work.get("materials", [])),
+        },
+    )
+
+
+def _upsert_insert(dialect_name: str):
+    """The ``INSERT`` construct for a dialect, with conflict support.
+
+    ``INSERT ... ON CONFLICT DO UPDATE`` is spelled per backend and the app runs
+    on both (SQLite for the desktop cache, PostgreSQL for the hosted service,
+    database.py §69), so the construct is picked from the live connection rather
+    than hardcoded. Both dialects have supported the clause for years
+    (SQLite 3.24, 2018), so no minimum-version gate is needed.
+    """
+    if dialect_name == "postgresql":
+        return pg_insert
+    return sqlite_insert
+
+
+def upsert_submission(db: Session, model, key: dict, values: dict) -> None:
+    """Insert one cache row, or update it when that primary key already exists.
+
+    The idempotent write every sync needs, and the fix for the teacher-sync
+    ``UniqueViolation`` on ``coursework_submissions_pkey``: a submission that is
+    already cached must be UPDATED with its current state, not re-INSERTed.
+
+    Why the old ``db.get(...) is None`` dance was not enough, even though it
+    looks idempotent: it is only idempotent while ONE writer touches the cache.
+    ADR-0032 lets a second run take a stale claim over, and a restart releases
+    the claim while the superseded run is still inside its write phase — that
+    run is fenced once, before a per-course commit loop that can run for
+    minutes on a teacher account. In that window both runs hold the same
+    (user_id, course_id, coursework_id, student_id), both ``get`` calls return
+    None, both INSERT, and the loser aborts the whole transaction with a unique
+    violation the user sees as "Sync failed". The conditional write makes the
+    loser's statement an UPDATE, so the overlap costs nothing and the
+    cache-write stays idempotent no matter how many runs touch it.
+
+    ``model`` is any of the user-scoped cache tables; ``key`` must name the
+    full primary key and ``values`` the columns to write. JSON columns take
+    their values as Python objects — the bind processor serializes them, the
+    same way the ORM path did.
+    """
+    stmt = _upsert_insert(db.get_bind().dialect.name)(model).values(**key, **values)
+    excluded = stmt.excluded
+    db.execute(
+        stmt.on_conflict_do_update(
+            index_elements=list(key),
+            set_={name: getattr(excluded, name) for name in values},
+        )
+    )
 
 
 def _write_student_course(
@@ -507,17 +598,18 @@ def _write_student_course(
         _upsert_work(db, user_id, course_id, raw_work)
         count += 1
 
-        sub = db.get(StudentSubmission, (user_id, course_id, work_id))
-        if sub is None:
-            sub = StudentSubmission(
-                user_id=user_id, course_id=course_id, coursework_id=work_id
-            )
-            db.add(sub)
-        sub.state = raw_sub.get("state")
-        sub.late = bool(raw_sub.get("late"))
-        sub.assigned_points = _parse_points(raw_sub.get("assignedGrade"))
-        sub.draft_points = _parse_points(raw_sub.get("draftGrade"))
-        sub.updated_time = parse_rfc3339(raw_sub.get("updateTime"))
+        upsert_submission(
+            db,
+            StudentSubmission,
+            {"user_id": user_id, "course_id": course_id, "coursework_id": work_id},
+            {
+                "state": raw_sub.get("state"),
+                "late": bool(raw_sub.get("late")),
+                "assigned_points": _parse_points(raw_sub.get("assignedGrade")),
+                "draft_points": _parse_points(raw_sub.get("draftGrade")),
+                "updated_time": parse_rfc3339(raw_sub.get("updateTime")),
+            },
+        )
     return count
 
 
@@ -563,15 +655,20 @@ def _write_teacher_course(
             if not student_id:
                 continue
             student_ids.add(student_id)
-            row = db.get(CourseStudent, (user_id, course_id, student_id))
-            if row is None:
-                row = CourseStudent(
-                    user_id=user_id, course_id=course_id, student_id=student_id
-                )
-                db.add(row)
-            row.full_name = raw_student.get("fullName") or row.full_name or student_id
-            row.email = raw_student.get("emailAddress")
-            row.photo_url = raw_student.get("photoUrl")
+            upsert_submission(
+                db,
+                CourseStudent,
+                {
+                    "user_id": user_id,
+                    "course_id": course_id,
+                    "student_id": student_id,
+                },
+                {
+                    "full_name": raw_student.get("fullName") or student_id,
+                    "email": raw_student.get("emailAddress"),
+                    "photo_url": raw_student.get("photoUrl"),
+                },
+            )
         for stale in (
             db.query(CourseStudent)
             .filter_by(user_id=user_id, course_id=course_id)
@@ -589,24 +686,31 @@ def _write_teacher_course(
             if not work_id or not student_id:
                 continue
             seen.add((work_id, student_id))
-            row = db.get(
-                CourseWorkSubmission, (user_id, course_id, work_id, student_id)
+            # The conditional write is the fix for the teacher-sync
+            # "duplicate key value violates unique constraint
+            # coursework_submissions_pkey" failure: a submission that is already
+            # cached is updated with its current state instead of being inserted
+            # a second time, so a repeated sync of the same course and students
+            # stays conflict-free (see upsert_submission for the race).
+            upsert_submission(
+                db,
+                CourseWorkSubmission,
+                {
+                    "user_id": user_id,
+                    "course_id": course_id,
+                    "coursework_id": work_id,
+                    "student_id": student_id,
+                },
+                {
+                    "state": raw_sub.get("state"),
+                    "late": bool(raw_sub.get("late")),
+                    "assigned_points": _parse_points(raw_sub.get("assignedGrade")),
+                    "draft_points": _parse_points(raw_sub.get("draftGrade")),
+                    "submitted_at": _submitted_at(raw_sub),
+                    "updated_time": parse_rfc3339(raw_sub.get("updateTime")),
+                    "attachments": _submission_attachments(raw_sub),
+                },
             )
-            if row is None:
-                row = CourseWorkSubmission(
-                    user_id=user_id,
-                    course_id=course_id,
-                    coursework_id=work_id,
-                    student_id=student_id,
-                )
-                db.add(row)
-            row.state = raw_sub.get("state")
-            row.late = bool(raw_sub.get("late"))
-            row.assigned_points = _parse_points(raw_sub.get("assignedGrade"))
-            row.draft_points = _parse_points(raw_sub.get("draftGrade"))
-            row.submitted_at = _submitted_at(raw_sub)
-            row.updated_time = parse_rfc3339(raw_sub.get("updateTime"))
-            row.attachments = _submission_attachments(raw_sub)
         for stale in (
             db.query(CourseWorkSubmission)
             .filter_by(user_id=user_id, course_id=course_id)
