@@ -1,0 +1,20 @@
+# EditorConfig: keep every text file UTF-8 + LF so a stray PowerShell
+# UTF-16LE append can never reintroduce NUL bytes into a tracked file.
+# See .gitattributes for the repository-side counterpart.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{py,js,jsx,ts,tsx,cjs,mjs,json,yml,yaml,toml}]
+indent_style = space
+indent_size = 4
+
+[*.{json,yml,yaml,md}]
+indent_size = 2
+
+[*.bat]
+end_of_line = crlf
