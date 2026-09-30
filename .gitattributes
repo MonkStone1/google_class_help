@@ -1,0 +1,34 @@
+# Normalize line endings in the repository and check them out as LF.
+#
+# Without this, a Windows editor (or a PowerShell `>>` / `Add-Content`
+# append, which defaults to UTF-16LE in Windows PowerShell 5.1) can write
+# CRLF or NUL-padded bytes into a text file. Such a file still opens fine in
+# an editor but breaks markdown rendering on GitHub: the file is treated as
+# binary/unrenderable and shown as plain text.
+* text=auto eol=lf
+
+# Windows scripts must keep CRLF even in a Linux checkout.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Real binaries: never touch line endings or diffs.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.exe binary
+*.dll binary
+*.db binary
+*.sqlite binary
+*.sqlite3 binary
+*.lnk binary
