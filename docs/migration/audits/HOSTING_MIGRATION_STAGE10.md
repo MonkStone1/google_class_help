@@ -10,7 +10,7 @@
 `docs/adr/adr-0028-docker-caddy-cloudflare-deployment.md`.
 
 Дата: 2026-09-24. Целевой хост: **1 vCPU / 1 GB**, домен
-`monkstonecor.pp.ua`, Cloudflare Free + Tunnel.
+`classroomhelp.pp.ua`, Cloudflare Free + Tunnel.
 
 ## 1. Что сделано (по пунктам промпта)
 

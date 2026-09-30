@@ -34,6 +34,7 @@ const IDLE: AppStatus = {
   sync_status: "pending",
   last_sync_started_at: null,
   last_sync_finished_at: null,
+  sync_stuck_after_seconds: 300,
   total_assignments: 0,
   completed: 0,
   missing: 0,

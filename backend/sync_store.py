@@ -112,6 +112,62 @@ def claim_sync(db: Session, user_id: int, now: datetime, *, stale_after: int) ->
     return bool(result.rowcount)
 
 
+def claim_is_own(db: Session, user_id: int, started_at: datetime) -> bool:
+    """Whether the run that claimed at ``started_at`` still holds the claim.
+
+    The fence of ADR-0032. ``claim_sync`` deliberately lets a stale ``running``
+    row be taken over, so from that moment TWO processes can believe they own
+    the same user's sync. The older one must notice before it writes anything:
+    the cache purge and the terminal ``sync_status`` transition belong to the
+    run that actually holds the claim now, not to a zombie that woke up late.
+
+    The guard is the claim timestamp itself rather than a separate token
+    column — the same conditional-guard idea as :func:`release_claim`, and it
+    needs no schema change.
+    """
+    row = sync_status(db, user_id)
+    return (
+        row is not None
+        and row.status == SYNC_RUNNING
+        and row.last_started_at == started_at
+    )
+
+
+def abandon_claim(
+    db: Session, user_id: int, now: datetime, *, older_than: int
+) -> bool:
+    """Give up one user's stale claim so a new sync may start (ADR-0032).
+
+    The user's own "the sync is stuck, restart it" action. The conditional
+    guard mirrors :func:`claim_sync` in reverse: only a ``running`` row that
+    started more than ``older_than`` seconds ago is released, so a restart can
+    never interrupt a sync that is still legitimately running — and two
+    concurrent requests cannot release the same claim twice.
+
+    ``last_finished_at`` is deliberately NOT touched. Moving it would look to
+    ``SyncToaster`` like a finished run and, with ``status == "pending"``, be
+    announced as a failed sync — a failure that never happened (ADR-0030).
+    ``last_success_at`` likewise stays: the cache it describes is still on the
+    caller's screen, and its age must remain visible (ADR-0027 §61).
+
+    Returns True when a claim was actually released.
+    """
+    cutoff = now - timedelta(seconds=older_than)
+    result = cast(
+        CursorResult,
+        db.execute(
+            update(SyncStatus)
+            .where(SyncStatus.user_id == user_id)
+            .where(SyncStatus.status == SYNC_RUNNING)
+            .where(SyncStatus.last_started_at.is_not(None))
+            .where(SyncStatus.last_started_at <= cutoff)
+            .values(status=SYNC_PENDING)
+        ),
+    )
+    db.commit()
+    return bool(result.rowcount)
+
+
 def request_sync(db: Session, user_id: int) -> None:
     """Queue an immediate sync for one user, lifting ``needs_reauth`` (§63).
 

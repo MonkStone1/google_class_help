@@ -48,9 +48,9 @@ The hosted app is intended to be a public web service and already has a public d
 Ensure the implementation supports these production OAuth requirements:
 
 ```text
-https://monkstonecor.pp.ua/
-https://monkstonecor.pp.ua/privacy
-https://monkstonecor.pp.ua/terms
+https://classroomhelp.pp.ua/
+https://classroomhelp.pp.ua/privacy
+https://classroomhelp.pp.ua/terms
 ```
 
 The exact page paths may be different, but there must be publicly accessible pages for the information Google requires.
@@ -91,7 +91,7 @@ loopback 127.0.0.1 + random/free local port
 Hosted:
 
 ```text
-https://monkstonecor.pp.ua/api/auth/callback
+https://classroomhelp.pp.ua/api/auth/callback
 ```
 
 Do not dynamically reuse one redirect URI implementation for both modes unless the code clearly handles both paths without weakening security.

@@ -64,9 +64,12 @@ Redis/маршрутизатор-лимитеры не вводились: пр�
   `SYNC_MAX_CONCURRENT_USERS` остаётся **2** → бюджет воркера
   **4 × 2 = 8 потоков** (`capacity.sync_thread_budget`);
 - оценка в коде, а не в прозе (`backend/capacity.py`):
-  `avg ≈ (users × 5 + teachers × 40) / interval` → 1000 юзеров + 25
-  учителей / 10 мин ≈ **600 запросов/мин ≈ 10 QPS** — порядок ниже
-  per-project квоты; per-user пул 4 ≪ per-user квоты;
+  `avg ≈ (users × 5 + teachers × 40) / interval` → **1500 юзеров + 100
+  учителей** / 30 мин (прод-интервал) ≈ **383 запроса/мин ≈ 6.4 QPS** —
+  порядок ниже per-project квоты; per-user пул 4 ≪ per-user квоты.
+  Константы `TARGET_USERS`/`TARGET_TEACHERS` обязаны совпадать с заголовком
+  `compose.yml`, иначе цифры описывают не тот deployment (тест
+  `test_capacity_target_matches_the_compose_header`);
 - наблюдаемость вместо максимизации: `RequestStats` считает
   `requests` / `quota_errors` (429 и quota-403) / `server_errors` (5xx) и
   пишет их в строку синка; рост лимитов — только вместе с этими

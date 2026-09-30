@@ -44,8 +44,8 @@ Because frontend and backend should be served from the same public origin, minim
 Preferred production behavior:
 
 ```text
-Browser → https://monkstonecor.pp.ua
-Browser → https://monkstonecor.pp.ua/api/...
+Browser → https://classroomhelp.pp.ua
+Browser → https://classroomhelp.pp.ua/api/...
 ```
 
 Same-origin requests do not need permissive CORS.
@@ -72,7 +72,7 @@ The current backend explicitly rejects hosts other than `127.0.0.1` and `localho
 The hosted service must instead recognize the production domain, for example:
 
 ```text
-monkstonecor.pp.ua
+classroomhelp.pp.ua
 ```
 
 and localhost only in development.
@@ -86,7 +86,7 @@ development:
     localhost / 127.0.0.1
 
 production:
-    monkstonecor.pp.ua
+    classroomhelp.pp.ua
 ```
 
 Do not hard-code the production hostname in many files.
@@ -123,11 +123,11 @@ Recommended variables include:
 
 ```text
 APP_ENV=production
-APP_BASE_URL=https://monkstonecor.pp.ua
+APP_BASE_URL=https://classroomhelp.pp.ua
 
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
-GOOGLE_REDIRECT_URI=https://monkstonecor.pp.ua/api/auth/callback
+GOOGLE_REDIRECT_URI=https://classroomhelp.pp.ua/api/auth/callback
 
 DATABASE_URL=postgresql+psycopg://...
 

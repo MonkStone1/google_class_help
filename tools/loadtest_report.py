@@ -43,10 +43,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-# Resource ceilings from compose.yml / compose.loadtest.yml (ADR-0028 §2.2).
+# Resource ceilings from compose.yml (ADR-0028 §2.2; 2 vCPU / 2 GB VPS).
 # The load-test override applies exactly these, so a run under it is judged
 # against the production budget rather than the 8-core/32GB developer box.
-DEFAULT_LIMITS_MB = {"web": 256.0, "worker": 160.0, "postgres": 288.0}
+# MUST track compose.yml: after the VPS was resized these still held the 1 GB
+# numbers (web 256 / worker 160 / postgres 288), so a run was judged "above
+# limit" against containers that were actually allowed twice that RAM — a
+# false failure that would hide the real one.
+DEFAULT_LIMITS_MB = {"web": 512.0, "worker": 384.0, "postgres": 512.0}
 # Which compose service each container belongs to, by name fragment. The
 # project name prefix ("google-class-help-local-web-1") and the throwaway
 # container name ("gch-lt-web") both have to resolve.

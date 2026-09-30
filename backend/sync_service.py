@@ -25,6 +25,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 import google_credentials
+from sqlalchemy.orm import Session
 
 import metrics
 import ownership
@@ -33,6 +34,7 @@ from config import (
     SYNC_CLAIM_STALE_SECONDS,
     SYNC_MAX_CONCURRENT_USERS,
     SYNC_MAX_WORKERS,
+    SYNC_STUCK_SECONDS,
 )
 from database import SessionLocal
 from models import Course, CourseRole
@@ -41,11 +43,14 @@ from sync_store import (
     _purge_stale_courses,
     _write_student_course,
     _write_teacher_course,
+    abandon_claim,
+    claim_is_own,
     claim_sync,
     mark_sync_failed,
     mark_sync_needs_reauth,
     mark_sync_pending,
     mark_sync_succeeded,
+    request_sync,
 )
 
 logger = logging.getLogger(__name__)
@@ -58,6 +63,11 @@ NEEDS_REAUTH = "Google authorization expired; please sign in again."
 COURSES_FAILED = "Classroom courses.list failed; cached data kept."
 # Returned when every global sync slot is taken (§65). api.py maps it to 503.
 SERVER_BUSY = "The server is busy synchronizing other accounts; try again shortly."
+# Returned by a run that lost its claim while fetching (ADR-0032): its data was
+# fetched but must NOT be written, because another run now owns the cache. It
+# is not a failure of the account — the run that superseded it reports the
+# outcome — so the message stays neutral and the caller only logs it.
+SUPERSEDED = "Another synchronization replaced this one; its result was discarded."
 
 # Per-user sync mutexes (stage 5, §18). A process-global lock would
 # serialize every user; keying by owner id lets independent accounts sync
@@ -418,6 +428,17 @@ def _do_sync(owner_id: int) -> dict:
         )
         message = _public_error(exc)
         with SessionLocal() as db:
+            # The fence of ADR-0032 comes BEFORE the status write: a run whose
+            # claim was taken over must not stamp its failure on the row now
+            # owned by the newer run — that would show the user an error for a
+            # sync that is still running fine.
+            if not claim_is_own(db, owner_id, started_at):
+                logger.info(
+                    "Sync for user=%s lost its claim while failing; not recording "
+                    "the error.",
+                    owner_id,
+                )
+                return {"ok": False, "error": SUPERSEDED}
             if message == NEEDS_REAUTH:
                 # Stage 9 (§41): a 401 during the sync means this user's
                 # grant died mid-flight (revoked in the Google account).
@@ -442,7 +463,34 @@ def _do_sync(owner_id: int) -> dict:
         work_cache,
         stats,
         started_monotonic,
+        started_at,
     )
+
+
+def restart_stuck_sync(db: Session, owner_id: int) -> bool:
+    """Abandon this user's stuck claim and queue a fresh sync (ADR-0032).
+
+    The hosted counterpart of the ``restart`` flag on ``POST /api/sync``: the web
+    process never runs the Classroom fan-out, so it only releases the stale
+    claim and raises ``sync_requested`` — the worker picks the account up on its
+    next scan. One condition decides the outcome, and it is the same one the
+    dashboard shows the user as "stuck": a claim younger than
+    ``SYNC_STUCK_SECONDS`` is still a legitimate long sync and is never touched.
+
+    Returns True when a stuck claim was released and a new sync was queued.
+    """
+    released = abandon_claim(db, owner_id, _now(), older_than=SYNC_STUCK_SECONDS)
+    if not released:
+        metrics.record(metrics.SYNC_RESTART_REJECTED)
+        return False
+    request_sync(db, owner_id)
+    metrics.record(metrics.SYNC_RESTARTED)
+    logger.info(
+        "Restarted a stuck sync for user=%s (claim older than %d s).",
+        owner_id,
+        SYNC_STUCK_SECONDS,
+    )
+    return True
 
 
 def _write_sync_results(
@@ -454,6 +502,7 @@ def _write_sync_results(
     work_cache: dict,
     stats: RequestStats,
     started_monotonic: float,
+    started_at: datetime,
 ) -> dict:
     """Persist one finished fetch into the owner's cache scope (§45).
 
@@ -461,6 +510,17 @@ def _write_sync_results(
     the write phase commits per course so a 1,000-course teacher cache
     cannot hold one giant transaction, and the Google request counters land
     in the success log line for the capacity review (§60).
+
+    ``started_at`` is the claim timestamp of THIS run, and the first thing the
+    write phase does is verify it still holds that claim (ADR-0032). Fetching
+    takes minutes, and a claim can be taken over in that window either by the
+    scheduled stale-claim re-claim or by the user's own "restart the stuck
+    sync". Without this check the superseded run would keep going: it would
+    write courses the newer run has already replaced and — worse — run
+    ``_purge_stale_courses`` against its own older snapshot, deleting courses
+    that were created while it was fetching, and then stamp "ok" over a run
+    that is still in flight. Losing the race is normal here (a restart is a
+    deliberate second attempt), so it is reported as SUPERSEDED, not as an error.
     """
     from models_auth import User as _User
 
@@ -472,6 +532,17 @@ def _write_sync_results(
             owner = db.get(_User, owner_id)
             if owner is None or not owner.is_active:
                 return {"ok": False, "error": NOT_SIGNED_IN}
+            if not claim_is_own(db, owner_id, started_at):
+                # The run that owns the cache now reports the outcome; this one
+                # fetched data that is already obsolete and must write nothing.
+                counters = stats.snapshot()
+                logger.info(
+                    "Sync for user=%s lost its claim after %d Google requests; "
+                    "discarding the result.",
+                    owner_id,
+                    counters["requests"],
+                )
+                return {"ok": False, "error": SUPERSEDED}
             for raw_course, role in courses:
                 course_id = raw_course["id"]
                 course = db.get(Course, (owner_id, course_id))

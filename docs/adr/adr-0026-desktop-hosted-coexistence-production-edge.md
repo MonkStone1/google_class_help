@@ -74,7 +74,7 @@ Caddy (TLS, HTTP→HTTPS)
 Пример Caddyfile (этап 10 уточнит имена сервисов):
 
 ```caddy
-monkstonecor.pp.ua {
+classroomhelp.pp.ua {
     reverse_proxy 127.0.0.1:8000
 }
 ```
@@ -162,8 +162,8 @@ CSP не тестировалась в браузере (в среде его н
 Публичные страницы (без сессии, вне session-gate — гейт закрывает только
 `/api/*`, см. §11):
 
-- `https://monkstonecor.pp.ua/privacy/` — Privacy Policy,
-- `https://monkstonecor.pp.ua/terms/` — Terms of Service.
+- `https://classroomhelp.pp.ua/privacy/` — Privacy Policy,
+- `https://classroomhelp.pp.ua/terms/` — Terms of Service.
 
 Статический HTML в `frontend/public/{privacy,terms}/index.html` (без
 скриптов — рендерятся под `script-src 'self'`), раздаются Option A.

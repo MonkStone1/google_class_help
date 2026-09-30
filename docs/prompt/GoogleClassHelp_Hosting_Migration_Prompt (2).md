@@ -44,8 +44,8 @@ const BASE = "/api";
 This is desirable and should be preserved. The hosted application should serve the frontend and backend from the same public origin, for example:
 
 ```text
-https://monkstonecor.pp.ua/
-https://monkstonecor.pp.ua/api/...
+https://classroomhelp.pp.ua/
+https://classroomhelp.pp.ua/api/...
 ```
 
 The frontend must never call Google APIs directly.
@@ -159,7 +159,7 @@ Do not mix the redirect URI assumptions between the two clients.
 The hosted application should use a redirect URI such as:
 
 ```text
-https://monkstonecor.pp.ua/api/auth/callback
+https://classroomhelp.pp.ua/api/auth/callback
 ```
 
 The exact path may differ if the implementation has a better route, but it must be HTTPS in production and must exactly match the Google Cloud Console configuration.
@@ -186,7 +186,7 @@ Browser redirects to Google
 Google consent/login
   ↓
 Google redirects to
-https://monkstonecor.pp.ua/api/auth/callback
+https://classroomhelp.pp.ua/api/auth/callback
   ↓
 FastAPI validates OAuth state
   ↓
@@ -1060,8 +1060,8 @@ Because frontend and backend should be served from the same public origin, minim
 Preferred production behavior:
 
 ```text
-Browser → https://monkstonecor.pp.ua
-Browser → https://monkstonecor.pp.ua/api/...
+Browser → https://classroomhelp.pp.ua
+Browser → https://classroomhelp.pp.ua/api/...
 ```
 
 Same-origin requests do not need permissive CORS.
@@ -1088,7 +1088,7 @@ The current backend explicitly rejects hosts other than `127.0.0.1` and `localho
 The hosted service must instead recognize the production domain, for example:
 
 ```text
-monkstonecor.pp.ua
+classroomhelp.pp.ua
 ```
 
 and localhost only in development.
@@ -1102,7 +1102,7 @@ development:
     localhost / 127.0.0.1
 
 production:
-    monkstonecor.pp.ua
+    classroomhelp.pp.ua
 ```
 
 Do not hard-code the production hostname in many files.
@@ -1139,11 +1139,11 @@ Recommended variables include:
 
 ```text
 APP_ENV=production
-APP_BASE_URL=https://monkstonecor.pp.ua
+APP_BASE_URL=https://classroomhelp.pp.ua
 
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
-GOOGLE_REDIRECT_URI=https://monkstonecor.pp.ua/api/auth/callback
+GOOGLE_REDIRECT_URI=https://classroomhelp.pp.ua/api/auth/callback
 
 DATABASE_URL=postgresql+psycopg://...
 
@@ -1636,9 +1636,9 @@ The hosted app is intended to be a public web service and already has a public d
 Ensure the implementation supports these production OAuth requirements:
 
 ```text
-https://monkstonecor.pp.ua/
-https://monkstonecor.pp.ua/privacy
-https://monkstonecor.pp.ua/terms
+https://classroomhelp.pp.ua/
+https://classroomhelp.pp.ua/privacy
+https://classroomhelp.pp.ua/terms
 ```
 
 The exact page paths may be different, but there must be publicly accessible pages for the information Google requires.
@@ -2199,7 +2199,7 @@ loopback 127.0.0.1 + random/free local port
 Hosted:
 
 ```text
-https://monkstonecor.pp.ua/api/auth/callback
+https://classroomhelp.pp.ua/api/auth/callback
 ```
 
 Do not dynamically reuse one redirect URI implementation for both modes unless the code clearly handles both paths without weakening security.

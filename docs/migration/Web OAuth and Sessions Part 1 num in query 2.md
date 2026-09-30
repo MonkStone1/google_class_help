@@ -31,7 +31,7 @@ Do not mix the redirect URI assumptions between the two clients.
 The hosted application should use a redirect URI such as:
 
 ```text
-https://monkstonecor.pp.ua/api/auth/callback
+https://classroomhelp.pp.ua/api/auth/callback
 ```
 
 The exact path may differ if the implementation has a better route, but it must be HTTPS in production and must exactly match the Google Cloud Console configuration.
@@ -58,7 +58,7 @@ Browser redirects to Google
 Google consent/login
   ↓
 Google redirects to
-https://monkstonecor.pp.ua/api/auth/callback
+https://classroomhelp.pp.ua/api/auth/callback
   ↓
 FastAPI validates OAuth state
   ↓

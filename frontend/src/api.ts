@@ -36,7 +36,9 @@ type UnauthorizedHandler = () => void;
 
 let onUnauthorized: UnauthorizedHandler | null = null;
 
-export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
+export function setUnauthorizedHandler(
+  handler: UnauthorizedHandler | null,
+): void {
   onUnauthorized = handler;
 }
 
@@ -112,7 +114,15 @@ export const api = {
     request<{ days: Record<string, Assignment[]> }>(
       `/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
     ),
-  sync: () => request<SyncResult>("/sync", { method: "POST" }),
+  // `restart` (ADR-0032) asks the server to abandon a sync it has itself
+  // declared stuck and start a new one; without it the call keeps its plain
+  // "queue a sync" meaning and answers 409 while a sync is in flight. The flag
+  // is a query parameter, so the restart shares the endpoint's rate-limit
+  // bucket instead of opening a new, separately-guarded surface.
+  sync: (restart = false) =>
+    request<SyncResult>(`/sync${restart ? "?restart=true" : ""}`, {
+      method: "POST",
+    }),
   clearCache: () =>
     request<{ ok: boolean }>("/cache?confirm=true", { method: "DELETE" }),
 

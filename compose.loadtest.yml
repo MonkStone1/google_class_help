@@ -2,8 +2,9 @@
 #
 # Это НЕ ещё один deployment. Это измерение: тот же локальный стенд
 # (compose.local.yml), но с ресурсным профилем и настройками, повторяющими
-# прод-VPS 1 vCPU / 1 GB (ADR-0028 §2.2), плюс генератор нагрузки внутри
-# docker-сети.
+# прод-VPS 2 vCPU / 2 GB (ADR-0028 §2.2), плюс генератор нагрузки внутри
+# docker-сети. Профиль ДОЛЖЕН совпадать с compose.yml: после смены хоста на
+# 2 ГБ стенд остался на 1 ГБ, и прогоны перестали воспроизводить прод.
 #
 #   docker compose --env-file .env.local -f compose.local.yml -f compose.loadtest.yml config --quiet
 #   ... build web
@@ -48,20 +49,20 @@ services:
     command:
       - postgres
       - -c
-      - shared_buffers=128MB
+      - shared_buffers=256MB
       - -c
-      - work_mem=4MB
+      - work_mem=8MB
       - -c
-      - maintenance_work_mem=32MB
+      - maintenance_work_mem=64MB
       - -c
-      - max_connections=30
+      - max_connections=40
       - -c
-      - effective_cache_size=512MB
+      - effective_cache_size=1GB
     deploy:
       resources:
         limits:
-          cpus: "0.30"
-          memory: 288M
+          cpus: "0.50"
+          memory: 512M
 
   web:
     environment:
@@ -80,8 +81,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.55"
-          memory: 256M
+          cpus: "1.00"
+          memory: 512M
 
   worker:
     environment:
@@ -92,8 +93,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.15"
-          memory: 160M
+          cpus: "0.30"
+          memory: 384M
 
   loadgen:
     # Генератор нагрузки как контейнер в той же сети `local` (профиль

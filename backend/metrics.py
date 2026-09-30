@@ -37,6 +37,11 @@ SYNC_SUCCEEDED = "sync_succeeded"
 SYNC_FAILED = "sync_failed"
 SYNC_NEEDS_REAUTH = "sync_needs_reauth"
 SYNC_JOB_CRASHED = "sync_job_crashed"
+# ADR-0032: a stuck sync the user restarted, and a restart refused because the
+# run was not actually stuck. The pair separates "people hit stuck syncs" from
+# "the threshold is wrong" — the two need different fixes.
+SYNC_RESTARTED = "sync_restarted"
+SYNC_RESTART_REJECTED = "sync_restart_rejected"
 SESSION_PURGED = "session_purged"
 LOGIN_STATE_PURGED = "login_state_purged"
 

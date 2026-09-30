@@ -906,6 +906,34 @@ def test_capacity_defaults_stay_conservative():
     assert SYNC_MANUAL_COOLDOWN_SECONDS > 0
 
 
+def test_capacity_target_matches_the_compose_header():
+    """§88: the modelled target is the deployment's advertised capacity.
+
+    ``compose.yml`` states "~1500 users / ~100 teachers" in its header. When the
+    VPS was resized, that header and this module drifted apart, and the drift was
+    invisible precisely because every test passed explicit users/teachers and
+    never read ``TARGET_USERS``. Pinning the constants against the numbers a
+    deploy actually advertises keeps the sync/DB budgets in ``.env.example``
+    justified by real arithmetic instead of by stale prose.
+    """
+    import capacity
+
+    assert capacity.TARGET_USERS == 1500
+    assert capacity.TARGET_TEACHERS == 100
+
+    # The defaults must be the constants, not a second hard-coded pair.
+    report = capacity.capacity_report(interval_minutes=30)
+    assert report["users"] == capacity.TARGET_USERS
+    assert report["teachers"] == capacity.TARGET_TEACHERS
+
+    # 1500 x 5 + 100 x 40 = 11500 requests per interval, over 30 minutes:
+    # ~383/min (~6.4 QPS), i.e. still an order of magnitude below the
+    # per-project Classroom quota (§40) — the reason the conservative
+    # .env.example budgets stay conservative.
+    assert report["avg_requests_per_minute"] == 383.3
+    assert report["avg_requests_per_second"] == 6.39
+
+
 def test_capacity_math_for_a_thousand_users():
     """§88: the estimate is computed, not assumed."""
     import capacity

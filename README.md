@@ -196,10 +196,10 @@ docker compose --env-file .env.local -f compose.local.yml down --volumes
   **плюс cooldown 60 с на пользователя**, очистка кэша 10/мин; превышение
   → 429 + `Retry-After`. IP из `CF-Connecting-IP`/`X-Forwarded-For`
   верится только от доверенного прокси. Desktop не лимитируется.
-  Прод-`.env` для 1 vCPU / 1 GB ставит консервативнее: логин 10/мин, синк
+  Прод-`.env` для 2 vCPU / 2 GB ставит консервативнее: логин 10/мин, синк
   10/мин.
 - **Бюджет синка:** `SYNC_MAX_WORKERS` × `SYNC_MAX_CONCURRENT_USERS`;
-  на целевом VPS 1 vCPU / 1 GB это `2 × 1 = 2` потока, интервал 30 мин,
+  на целевом VPS 2 vCPU / 2 GB это `2 × 1 = 2` потока, интервал 30 мин,
   стартовый stagger 600 с — очередь вместо залпа. Арифметика в
   `backend/capacity.py`; рост лимитов — только вместе со счётчиками
   `quota_errors`/`server_errors` в логе синка.
@@ -218,7 +218,7 @@ docker compose --env-file .env.local -f compose.local.yml down --volumes
   всем кэшем), оба с `confirm=true` и только про вызывающего;
   `DELETE /api/me/cache` — явный алиас очистки кэша.
 - **Транзакции:** синк не держит соединение PostgreSQL через сетевой фетч
-  (короткие транзакции на фазы); пул `3+2` соединений на 1 vCPU / 1 GB.
+  (короткие транзакции на фазы); пул `3+2` соединений на 2 vCPU / 2 GB.
 
 ### Развёртывание на хостинге (миграция этап 10, ADR-0028)
 
@@ -276,11 +276,14 @@ build.bat
 
 Скрипт выполняет:
 
-1. чистит и пересобирает фронтенд: `npm run build` → `frontend/dist`;
-2. встраивает OAuth-клиент: `backend/build_secrets.py` генерирует
+1. генерирует иконку приложения `assets/GoogleClassHelp.ico` и фавики
+   сайта в `frontend/public` (`tools/make_icon.py`) — этот шаг идёт
+   **первым**, потому что Vite копирует `frontend/public` в `frontend/dist`,
+   и иконка должна существовать до `npm run build`;
+2. чистит и пересобирает фронтенд: `npm run build` → `frontend/dist`;
+3. встраивает OAuth-клиент: `backend/build_secrets.py` генерирует
    `backend/embedded_secrets.py` (XOR+base64 со случайным ключом) из
    `backend/credentials.json`;
-3. генерирует иконку `assets/GoogleClassHelp.ico` (tools/make_icon.py);
 4. компилирует `backend/launcher.py` в no-console onefile exe через Nuitka
    (фронтенд включается через `--include-data-dir=frontend/dist=frontend/dist`);
 5. копирует результат в `release\GoogleClassHelp.exe`.
