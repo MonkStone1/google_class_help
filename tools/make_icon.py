@@ -106,8 +106,15 @@ def write_web_icons(icon: Image.Image) -> None:
     icon.save(PUBLIC_DIR / "favicon.ico", sizes=ICO_SIZES)
     # PNG fallback for browsers that ignore the SVG, plus the iOS home-screen
     # icon (180x180 is what iOS expects for apple-touch-icon).
-    icon.resize((32, 32), Image.LANCZOS).save(PUBLIC_DIR / "favicon-32x32.png")
-    icon.resize((180, 180), Image.LANCZOS).save(PUBLIC_DIR / "apple-touch-icon.png")
+    # ``Image.Resampling.LANCZOS`` rather than the old ``Image.LANCZOS`` alias:
+    # Pillow 10+ keeps the flat name only as a deprecated runtime leftover and
+    # no longer declares it in the type stubs, so the checker rejects it.
+    icon.resize((32, 32), Image.Resampling.LANCZOS).save(
+        PUBLIC_DIR / "favicon-32x32.png"
+    )
+    icon.resize((180, 180), Image.Resampling.LANCZOS).save(
+        PUBLIC_DIR / "apple-touch-icon.png"
+    )
 
 
 def main() -> None:

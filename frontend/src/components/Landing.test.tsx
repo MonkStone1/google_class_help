@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Landing } from "./Landing.tsx";
 import { SettingsProvider } from "../context/SettingsContext.tsx";
+import { DEFAULT_SETTINGS } from "../types.ts";
 import type { Language } from "../types.ts";
 
 const login = vi.fn();
@@ -48,10 +49,17 @@ function noChallenge() {
 }
 
 function renderLanding(language: Language) {
-  // The mocked `useSettings` is the single source of `language` here, so the
-  // value has to be set before render — reading the language back out of
-  // localStorage (as the real provider does) would fight the mock.
+  // The mocked `useSettings` is the single source of `language` for the
+  // rendered strings, so the value has to be set before render — reading the
+  // language back out of localStorage (as the real provider does) would fight
+  // the mock. The real provider still wraps the page and still reads storage
+  // for itself, so the two are seeded together: the document language is the
+  // provider's to set now, not the landing's (ADR-0034).
   currentLanguage = language;
+  localStorage.setItem(
+    "gc-settings",
+    JSON.stringify({ ...DEFAULT_SETTINGS, language }),
+  );
   return render(
     <SettingsProvider>
       <Landing />
@@ -200,7 +208,10 @@ describe("Landing", () => {
     await waitFor(() => expect(setLanguage).toHaveBeenCalledWith("ru"));
   });
 
-  it("declares the language on the document element", () => {
+  it("leaves the document language to the settings provider", () => {
+    // The landing used to own `<html lang>` on its own (ADR-0029), which meant
+    // the attribute only ever followed the language on THIS surface. The
+    // provider owns it now, so the landing must not overwrite it (ADR-0034).
     renderLanding("uk");
     expect(document.documentElement.lang).toBe("uk");
   });

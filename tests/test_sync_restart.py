@@ -32,6 +32,7 @@ import metrics
 import sync_scheduler
 import sync_service
 import sync_store
+from classroom_api import RequestStats
 from config import SYNC_STUCK_SECONDS
 from database import SessionLocal
 from models import Course, SyncStatus
@@ -114,11 +115,18 @@ def _add_grant(db, user: User) -> None:
     db.commit()
 
 
-class _FakeStats:
-    """Minimal stand-in for RequestStats — the fence must not need counters."""
+class _FakeStats(RequestStats):
+    """Minimal stand-in for RequestStats — the fence must not need counters.
+
+    Subclasses the real class so it satisfies ``_write_sync_results``'s
+    ``stats: RequestStats`` parameter by inheritance; only ``snapshot()`` is
+    overridden, which is the single method the fence reads.
+    """
 
     def snapshot(self) -> dict[str, int]:
         return {"requests": 3, "quota_errors": 0, "server_errors": 0}
+
+
 # ------------------------------------------------------- abandon_claim guards
 
 

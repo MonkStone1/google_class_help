@@ -77,8 +77,8 @@ logger = logging.getLogger(__name__)
 
 # §48: CSP matched to the ACTUAL React bundle — every origin is same-origin
 # because the frontend only calls the local /api (verified by the §49 secret
-# scan: no secret-shaped URLs in the source tree). The pre-paint theme script of
-# index.html lives in /theme-init.js (no inline script), so script-src needs
+# scan: no secret-shaped URLs in the source tree). The pre-paint script of
+# index.html lives in /prepaint-init.js (no inline script), so script-src needs
 # no hash and no 'unsafe-inline'. style-src keeps 'unsafe-inline' for React
 # inline styles. Top-level navigation to accounts.google.com is not a
 # fetch/frame/form and is not restricted by these directives; the OAuth

@@ -40,3 +40,4 @@
 | [ADR-0031](adr-0031-production-domain-and-generated-favicon.md) | Продуктовый домен `classroomhelp.pp.ua` и генерируемая иконка сайта (фавики в `frontend/public`, шаг иконки в `build.bat` перенесён до фронтенд-сборки) | Accepted |
 | [ADR-0032](adr-0032-stuck-sync-restart.md) | Перезапуск зависшего синка: `?restart=true`, `abandon_claim` и fence-токен «проигравшего» запуска | Accepted |
 | [ADR-0033](adr-0033-idempotent-cache-writes.md) | Идемпотентная запись кеша — `ON CONFLICT DO UPDATE` вместо get-then-add; fence переносится в per-course цикл записи | Accepted |
+| [ADR-0034](adr-0034-document-language-follows-ui.md) | Язык документа следует за языком интерфейса: `<html lang>` устанавливает `SettingsProvider` (pre-paint — `prepaint-init.js`) | Accepted |

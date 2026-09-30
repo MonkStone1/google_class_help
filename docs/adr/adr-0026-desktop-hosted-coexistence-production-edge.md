@@ -131,7 +131,7 @@ Hosted-режим (desktop не трогаем, §74):
 - `Referrer-Policy: strict-origin-when-cross-origin`,
 - `X-Frame-Options: DENY` + `frame-ancestors 'none'`,
 - CSP: всё same-origin (`script-src 'self'` без inline-исключений —
-  pre-paint скрипт темы вынесен в `/theme-init.js`; `style-src` держит
+  pre-paint скрипт темы вынесен в `/prepaint-init.js`; `style-src` держит
   `'unsafe-inline'` для React inline-стилей). Внешних origin'ов бандл не
   требует: в исходниках нет внешних URL (§49), Google OAuth — серверный
   302, а не fetch/frame;

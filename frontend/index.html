@@ -1,4 +1,10 @@
 <!doctype html>
+<!-- `lang` is a static default only: `prepaint-init.js` below replaces it with
+     the stored (or browser-detected) language before the first paint, and
+     SettingsContext keeps it in step afterwards. Without that the document
+     would claim English while the UI is Ukrainian/Russian, and Google
+     Translate would offer to translate a page that is already in the
+     reader's own language (ADR-0034). -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -12,8 +18,9 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <!-- External (not inline) so the hosted CSP can stay script-src 'self'
          without hashes (migration stage 8, §48). Synchronous on purpose:
-         it must run before first paint. -->
-    <script src="/theme-init.js"></script>
+         it must run before first paint. Applies the stored theme AND the
+         stored language to <html> (ADR-0034). -->
+    <script src="/prepaint-init.js"></script>
   </head>
   <body>
     <div id="root"></div>
