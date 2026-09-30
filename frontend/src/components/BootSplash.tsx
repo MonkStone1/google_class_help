@@ -12,7 +12,7 @@ import { GraduationCap } from "lucide-react";
  *
  * The splash promises nothing but "still loading", which is the only thing
  * that is true yet. It uses the same tokens as everything else, so the
- * theme applied by `theme-init.js` before first paint applies here too.
+ * theme applied by `prepaint-init.js` before first paint applies here too.
  */
 export function BootSplash() {
   return (

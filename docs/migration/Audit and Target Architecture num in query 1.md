@@ -41,8 +41,8 @@ const BASE = "/api";
 This is desirable and should be preserved. The hosted application should serve the frontend and backend from the same public origin, for example:
 
 ```text
-https://monkstonecor.pp.ua/
-https://monkstonecor.pp.ua/api/...
+https://classroomhelp.pp.ua/
+https://classroomhelp.pp.ua/api/...
 ```
 
 The frontend must never call Google APIs directly.

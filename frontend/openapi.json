@@ -324,14 +324,36 @@
     "/api/sync": {
       "post": {
         "summary": "Run Sync",
-        "description": "Queue (hosted) or run (desktop) a sync of the calling user's cache.\n\n§12: /api/sync must never touch another user's data. Desktop: the local\nowner (token.json) — sync runs inline as before. Hosted: the session\nuser's oauth_tokens — the request only flags ``sync_requested`` and\nanswers ``{\"ok\": True, \"queued\": True, \"status\": \"queued\"}`` immediately;\nthe worker container performs the actual Classroom fan-out (DDoS plan\n§9: never run the full sync inside the HTTP request).\n\nHosted conflict mapping: a sync already in flight for THIS user → 409;\na manual request inside the per-user cooldown → 429 + Retry-After; the\nbackground scheduler bypasses the cooldown. Other users sync\nindependently. Rate-limit buckets (§39) stay in middleware.",
+        "description": "Queue (hosted) or run (desktop) a sync of the calling user's cache.\n\n§12: /api/sync must never touch another user's data. Desktop: the local\nowner (token.json) — sync runs inline as before. Hosted: the session\nuser's oauth_tokens — the request only flags ``sync_requested`` and\nanswers ``{\"ok\": True, \"queued\": True, \"status\": \"queued\"}`` immediately;\nthe worker container performs the actual Classroom fan-out (DDoS plan\n§9: never run the full sync inside the HTTP request).\n\nHosted conflict mapping: a sync already in flight for THIS user → 409;\na manual request inside the per-user cooldown → 429 + Retry-After; the\nbackground scheduler bypasses the cooldown. Other users sync\nindependently. Rate-limit buckets (§39) stay in middleware.\n\n``restart=true`` (ADR-0032) is the dashboard's answer to \"this sync is\nstuck\". It is the ONE case where an in-flight sync does not answer 409: a\nclaim older than ``SYNC_STUCK_SECONDS`` is released and a new one queued.\nA younger claim still answers 409 — a long but progressing Classroom\nimport must never be interrupted, and the cooldown is skipped only because\nthe abandoned claim is by definition older than it.",
         "operationId": "run_sync_api_sync_post",
+        "parameters": [
+          {
+            "name": "restart",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Abandon a stuck sync and start a new one (ADR-0032).",
+              "default": false,
+              "title": "Restart"
+            },
+            "description": "Abandon a stuck sync and start a new one (ADR-0032)."
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/SyncResult" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
           }
@@ -1457,6 +1479,11 @@
           "status": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Status"
+          },
+          "restarted": {
+            "type": "boolean",
+            "title": "Restarted",
+            "default": false
           }
         },
         "type": "object",
@@ -1500,6 +1527,11 @@
               { "type": "null" }
             ],
             "title": "Last Sync Finished At"
+          },
+          "sync_stuck_after_seconds": {
+            "type": "integer",
+            "title": "Sync Stuck After Seconds",
+            "default": 300
           },
           "total_assignments": {
             "type": "integer",

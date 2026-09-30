@@ -38,7 +38,7 @@ export function TopBar({
   search: string;
   onSearch: (value: string) => void;
 }) {
-  const { status, syncing, syncStuck, syncNow, error } = useSync();
+  const { status, syncing, syncStuck, syncNow, syncRestart, error } = useSync();
   const { login } = useAuth();
   const { assignments, courses } = useCourses();
   const {
@@ -206,20 +206,40 @@ export function TopBar({
           </button>
         ) : null}
         <SyncTime lastSync={status?.last_sync ?? null} />
+        {/* A stuck sync (ADR-0032) used to render a sentence telling the user
+            to sync again "in a few minutes" — advice the UI made impossible,
+            because the Sync button below is disabled exactly while `syncing`
+            is true, and the server answers 409 to a manual request for a user
+            whose claim is in flight. The explanation now comes WITH the action
+            it describes: one button, active, that abandons the stuck claim.
+            The plain Sync button is hidden rather than shown disabled, so the
+            topbar never offers two near-identical controls. */}
         {syncStuck ? (
-          <span className="sync-time" role="status">
-            {t("topbar.syncStuck")}
-          </span>
-        ) : null}
-        <button
-          type="button"
-          className="button button-primary"
-          onClick={() => void syncNow()}
-          disabled={syncing}
-        >
-          <RefreshCw size={15} className={cn(syncing && "spin")} />
-          {syncing ? t("topbar.syncing") : t("topbar.sync")}
-        </button>
+          <>
+            <span className="sync-time" role="status">
+              {t("topbar.syncStuck")}
+            </span>
+            <button
+              type="button"
+              className="button button-primary"
+              title={t("topbar.syncRestartHint")}
+              onClick={() => void syncRestart()}
+            >
+              <RefreshCw size={15} />
+              {t("topbar.syncRestart")}
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="button button-primary"
+            onClick={() => void syncNow()}
+            disabled={syncing}
+          >
+            <RefreshCw size={15} className={cn(syncing && "spin")} />
+            {syncing ? t("topbar.syncing") : t("topbar.sync")}
+          </button>
+        )}
         <button
           type="button"
           className="icon-button"

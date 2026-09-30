@@ -1,4 +1,4 @@
-"""Capacity arithmetic for the ~1,000-user target (migration stage 9, §88).
+"""Capacity arithmetic for the ~1,500-user target (migration stage 9, §88).
 
 The migration prompt asks the engineering process to QUANTIFY the Google
 Classroom load instead of assuming it, and to keep the first production
@@ -29,9 +29,13 @@ from config import (
 REQUESTS_PER_STUDENT_SYNC = 3 + 2  # courses x2 + userinfo + a few point gets
 REQUESTS_PER_TEACHER_SYNC = 40  # courses x2 + coursework + roster + sweep, paged
 
-# Reference deployment of §88: 1 vCPU / 1 GB, ~1,000 registered users.
-TARGET_USERS = 1000
-TARGET_TEACHERS = 25
+# Reference deployment of §88: 2 vCPU / 2 GB VPS, ~1,500 registered users.
+# Matches the header of compose.yml ("Target capacity: ~1500 users / ~100
+# teachers"); the two MUST agree, because this arithmetic is what justifies
+# the sync/DB budgets in .env.example. Kept here, in code with tests, rather
+# than in prose precisely so a hardware change cannot leave the numbers stale.
+TARGET_USERS = 1500
+TARGET_TEACHERS = 100
 
 
 def estimate_requests_per_minute(
@@ -70,8 +74,11 @@ def sync_thread_budget(
 ) -> int:
     """Threads the worker may hold at once: workers × concurrent users (§88).
 
-    This is the number that must stay small on a 1 vCPU box: every thread
-    holds a socket to Google and a slice of memory.
+    This is the number that must stay bounded on the target box: every thread
+    holds a socket to Google and a slice of memory. With more than one worker
+    container the budget is per process, so the installation-wide figure is
+    this value times the worker count (see ``loadtest_report.py
+    --pool-processes``, which prices DB connections the same way).
     """
     return (workers or SYNC_MAX_WORKERS) * (
         concurrent_users or SYNC_MAX_CONCURRENT_USERS

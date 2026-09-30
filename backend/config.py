@@ -183,7 +183,7 @@ def _normalize_origins(values: list[str]) -> tuple[str, ...]:
 
 # Stage-9 hosted Postgres pool (section 45/88): small on purpose. Sync no
 # longer holds a connection across the Google fetch, so a handful covers
-# web requests plus the bounded scheduler on the 1 vCPU / 1 GB target.
+# web requests plus the bounded scheduler on the 2 vCPU / 2 GB target.
 DB_POOL_SIZE = _int_env("GC_DASHBOARD_DB_POOL_SIZE", 5, minimum=1)
 DB_MAX_OVERFLOW = _int_env("GC_DASHBOARD_DB_MAX_OVERFLOW", 5, minimum=0)
 
@@ -245,6 +245,13 @@ SYNC_INTERVAL_MINUTES = _int_env("GC_DASHBOARD_SYNC_INTERVAL_MINUTES", 10)
 #   so it is stable across restarts yet spread across the window.
 # - SYNC_CLAIM_STALE_SECONDS: a sync_status row left in "running" longer
 #   than this is treated as a crashed worker and may be re-claimed (§19).
+# - SYNC_STUCK_SECONDS: how long a running sync may last before the dashboard
+#   calls it stuck AND `POST /api/sync?restart=true` is allowed to abandon it
+#   (ADR-0032). It is the USER-facing threshold, so it must stay above the
+#   worst legitimate Classroom import — a sync that is still making progress is
+#   never interrupted. It is deliberately independent of
+#   SYNC_CLAIM_STALE_SECONDS: that one is the silent backstop for a dead
+#   worker, this one is what the user is offered a restart for.
 SYNC_MAX_CONCURRENT_USERS = _int_env(
     "GC_DASHBOARD_SYNC_MAX_CONCURRENT_USERS", 2, minimum=1
 )
@@ -253,6 +260,7 @@ SYNC_STARTUP_STAGGER_SECONDS = _int_env(
     "GC_DASHBOARD_SYNC_STARTUP_STAGGER_SECONDS", 300
 )
 SYNC_CLAIM_STALE_SECONDS = _int_env("GC_DASHBOARD_SYNC_CLAIM_STALE_SECONDS", 3600)
+SYNC_STUCK_SECONDS = _int_env("GC_DASHBOARD_SYNC_STUCK_SECONDS", 300, minimum=1)
 
 
 # Opt-in only: run the per-user scheduler inside the web process. The

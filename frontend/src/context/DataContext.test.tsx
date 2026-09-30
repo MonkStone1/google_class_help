@@ -13,7 +13,7 @@ import { DataProvider, useAuth, useCourses, useSync } from "./DataContext.tsx";
 
 function Probe() {
   const { auth, sessionRequired } = useAuth();
-  const { status, syncing, syncStuck, syncNow } = useSync();
+  const { status, syncing, syncStuck, syncNow, syncRestart } = useSync();
   const { assignments } = useCourses();
   return (
     <div>
@@ -31,6 +31,9 @@ function Probe() {
       <span data-testid="stuck-state">{syncStuck ? "stuck" : "ok"}</span>
       <button type="button" onClick={() => void syncNow()}>
         Sync
+      </button>
+      <button type="button" onClick={() => void syncRestart()}>
+        Restart
       </button>
     </div>
   );
@@ -61,6 +64,9 @@ const IDLE: AppStatus = {
   sync_status: "pending",
   last_sync_started_at: null,
   last_sync_finished_at: null,
+  // ADR-0032: the server owns the stuck threshold; 300 s matches the default
+  // backend value these fixtures stand in for.
+  sync_stuck_after_seconds: 300,
   total_assignments: 0,
   completed: 0,
   missing: 0,
@@ -182,6 +188,7 @@ describe("DataProvider sync lifecycle", () => {
       error: null,
       queued: true,
       status: "queued",
+      restarted: false,
     });
     const getStatus = vi.spyOn(api, "getStatus");
     let statusCalls = 0;
@@ -284,6 +291,112 @@ describe("DataProvider sync lifecycle", () => {
 
     await advanceTimers(1500);
     expect(screen.getByTestId("stuck-state")).toHaveTextContent("ok");
+  });
+
+  it("asks the server to restart when the user acts on a stuck sync", async () => {
+    // ADR-0032: the verdict and the action are one flow. A click on the
+    // restart must reach the server AS a restart (?restart=true) — a plain
+    // sync request would be answered 409 by the very claim we want replaced.
+    vi.spyOn(api, "getAuthStatus").mockResolvedValue(AUTH);
+    vi.spyOn(api, "getCourses").mockResolvedValue([]);
+    vi.spyOn(api, "getAssignments").mockResolvedValue([]);
+    const staleStart = new Date(Date.now() - 20 * 60 * 1000)
+      .toISOString()
+      .replace("Z", "");
+    vi.spyOn(api, "getStatus").mockResolvedValue({
+      ...RUNNING,
+      last_sync_started_at: staleStart,
+    });
+    const sync = vi.spyOn(api, "sync").mockResolvedValue({
+      ok: true,
+      last_sync: null,
+      courses: 0,
+      assignments: 0,
+      error: null,
+      queued: true,
+      status: "queued",
+      restarted: true,
+    });
+
+    renderProvider();
+    await advanceTimers(0);
+    expect(screen.getByTestId("stuck-state")).toHaveTextContent("stuck");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Restart" }));
+      await Promise.resolve();
+    });
+
+    expect(sync).toHaveBeenCalledWith(true);
+  });
+
+  it("uses the server's stuck threshold instead of a local guess", async () => {
+    // The number the server enforces and the number the dashboard shows must be
+    // the same one: a shorter local threshold would offer a restart that gets
+    // 409, a longer one would hide a restart that would work.
+    vi.spyOn(api, "getAuthStatus").mockResolvedValue(AUTH);
+    vi.spyOn(api, "getCourses").mockResolvedValue([]);
+    vi.spyOn(api, "getAssignments").mockResolvedValue([]);
+    // 4 minutes old with a 60-second server threshold: stuck for the server,
+    // far from stuck for the old 5-minute constant.
+    const fourMinutesAgo = new Date(Date.now() - 4 * 60 * 1000)
+      .toISOString()
+      .replace("Z", "");
+    vi.spyOn(api, "getStatus").mockResolvedValue({
+      ...RUNNING,
+      sync_stuck_after_seconds: 60,
+      last_sync_started_at: fourMinutesAgo,
+    });
+
+    renderProvider();
+    await advanceTimers(0);
+
+    expect(screen.getByTestId("stuck-state")).toHaveTextContent("stuck");
+  });
+
+  it("does not call a freshly queued sync stuck", async () => {
+    // Regression (ADR-0032): a job the worker has not claimed keeps
+    // `last_sync_started_at` of the PREVIOUS run. Aging the new job against
+    // that hours-old stamp raised "stuck" the instant Sync was pressed — the
+    // user was told to restart a sync that had not even started yet.
+    vi.spyOn(api, "getAuthStatus").mockResolvedValue(AUTH);
+    vi.spyOn(api, "getCourses").mockResolvedValue([]);
+    vi.spyOn(api, "getAssignments").mockResolvedValue([]);
+    const hoursOld = new Date(Date.now() - 3 * 60 * 60 * 1000)
+      .toISOString()
+      .replace("Z", "");
+    vi.spyOn(api, "getStatus").mockResolvedValue({
+      ...QUEUED,
+      last_sync_started_at: hoursOld,
+    });
+
+    renderProvider();
+    await advanceTimers(0);
+
+    expect(screen.getByTestId("sync-state")).toHaveTextContent(
+      "syncing:pending",
+    );
+    expect(screen.getByTestId("stuck-state")).toHaveTextContent("ok");
+  });
+
+  it("calls a queued sync stuck only after the threshold has passed", async () => {
+    // The other half of the rule above: a job that never gets claimed (the
+    // worker died before taking it) MUST still become restartable, or the
+    // spinner would be permanent with no action offered.
+    vi.spyOn(api, "getAuthStatus").mockResolvedValue(AUTH);
+    vi.spyOn(api, "getCourses").mockResolvedValue([]);
+    vi.spyOn(api, "getAssignments").mockResolvedValue([]);
+    vi.spyOn(api, "getStatus").mockResolvedValue(QUEUED);
+
+    renderProvider();
+    await advanceTimers(0);
+    expect(screen.getByTestId("stuck-state")).toHaveTextContent("ok");
+
+    await advanceTimers(60_000);
+    expect(screen.getByTestId("stuck-state")).toHaveTextContent("ok");
+    // The server threshold of the fixture is 300 s.
+    await advanceTimers(240_000);
+    expect(screen.getByTestId("stuck-state")).toHaveTextContent("stuck");
   });
 });
 

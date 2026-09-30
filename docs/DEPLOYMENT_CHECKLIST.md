@@ -1,8 +1,8 @@
 # Deployment checklist — hosted Google Class Help
 
 Пошаговый порядок выката на VPS (миграция этап 10, ADR-0028; порядок — по
-§K `GoogleClassHelp_DDoS_Security_Code_Changes.md`). Целевой хост: 1 vCPU /
-1 GB, домен `monkstonecor.pp.ua`, Cloudflare Free + Tunnel.
+§K `GoogleClassHelp_DDoS_Security_Code_Changes.md`). Целевой хост: 2 vCPU /
+2 GB, домен `classroomhelp.pp.ua`, Cloudflare Free + Tunnel.
 
 Обозначения: **[VPS]** — на сервере, **[CF]** — в Cloudflare Dashboard,
 **[PC]** — на локальной машине.
@@ -12,7 +12,7 @@
 - [ ] Репозиторий на ветке с этапами 1–10; `pytest`, `ruff`, `pyright`,
       `npm run lint`, `npx vitest run` зелёные локально.
 - [ ] Создан **отдельный** Google OAuth-клиент типа *Web application* с
-      redirect URI `https://monkstonecor.pp.ua/api/auth/callback`.
+      redirect URI `https://classroomhelp.pp.ua/api/auth/callback`.
 - [ ] Сгенерирован Fernet-ключ: `python tools/generate_hosted_secrets.py`.
 - [ ] Придуман длинный `POSTGRES_PASSWORD`.
 
@@ -22,7 +22,7 @@
       сохранить.
 - [ ] **[CF]** Managed DDoS-правила оставить включёнными.
 - [ ] **[CF]** Networking → Tunnels → Create Tunnel → published application:
-      hostname `monkstonecor.pp.ua` → service `http://caddy:80`; токен
+      hostname `classroomhelp.pp.ua` → service `http://caddy:80`; токен
       скопировать (уйдёт в `.env` как `CLOUDFLARE_TUNNEL_TOKEN`).
 - [ ] **[CF]** Опционально: грубые rate-limit правила на
       `/api/auth/login*` и `/api/sync` (бэкенд остаётся авторитетом).
@@ -69,10 +69,10 @@
 
 ## 5. Проверки после выката
 
-- [ ] **[PC]** `curl -fsS https://monkstonecor.pp.ua/api/health` → `{"ok":true}`
-- [ ] **[PC]** `curl -fsS https://monkstonecor.pp.ua/api/ready` → `db: up`
+- [ ] **[PC]** `curl -fsS https://classroomhelp.pp.ua/api/health` → `{"ok":true}`
+- [ ] **[PC]** `curl -fsS https://classroomhelp.pp.ua/api/ready` → `db: up`
 - [ ] **[PC]** HTTPS-сертификат валиден; HTTP→HTTPS (на стороне CF).
-- [ ] **[PC]** `curl -sI https://monkstonecor.pp.ua/api/health` содержит
+- [ ] **[PC]** `curl -sI https://classroomhelp.pp.ua/api/health` содержит
       `strict-transport-security: max-age=31536000; includeSubDomains` (HSTS).
 - [ ] **[PC, если Turnstile включён]** экран входа показывает виджет,
       `GET /api/auth/login` ведёт на SPA (`/?challenge=required`), а не
@@ -140,14 +140,15 @@ compose, глубина очереди синка не растёт, `quota_erro
       `--expect-status 429`: лимитер обязан сработать, 5xx быть не должно.
 
 - [ ] **[VPS]** Параллельно с нагрузкой: `docker stats --no-stream` —
-      `web` ≤ 256M, `worker` ≤ 160M, `postgres` ≤ 288M, CPU не в 100%.
-      `worker` — самое плотное измерение (83M из 160M), следить за ним
-      первым (ADR‑0028 §2.2.1).
+      `web` ≤ 512M, `worker` ≤ 384M, `postgres` ≤ 512M, CPU не в 100%.
+      Лимиты — из `compose.yml`; `tools/loadtest_report.py` использует те же
+      значения по умолчанию, так что локальный вердикт и прод совпадают.
+      Сумма лимитов 1520M из 2048M — 528M остаётся хосту и Docker.
 - [ ] **[PC]** Без аутентификации (пусть идёт с Cloudflare):
-  `python tools/load_test.py --base-url https://monkstonecor.pp.ua --path /api/health --path /api/ready --requests 1000 --concurrency 30`
+  `python tools/load_test.py --base-url https://classroomhelp.pp.ua --path /api/health --path /api/ready --requests 1000 --concurrency 30`
   → PASS (p95 ≤ 500 ms, 0 5xx).
 - [ ] **[PC]** Аутентифицированная серия (cookie из реального входа):
-  `python tools/load_test.py --base-url https://monkstonecor.pp.ua --path /api/status --path /api/courses --cookie gch_session=<value> --requests 500 --concurrency 20`
+  `python tools/load_test.py --base-url https://classroomhelp.pp.ua --path /api/status --path /api/courses --cookie gch_session=<value> --requests 500 --concurrency 20`
   → PASS.
 - [ ] **[VPS]** После прогона: в логах воркера нет новых `quota_errors`,
       `docker compose logs worker --tail=100` — без крахов, `metrics[…]`

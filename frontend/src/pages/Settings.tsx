@@ -18,7 +18,7 @@ const THEME_OPTIONS: Array<{ mode: ThemeMode; labelKey: I18nKey }> = [
 
 export function Settings() {
   const { auth, login, logout } = useAuth();
-  const { status, syncNow, syncing } = useSync();
+  const { status, syncNow, syncRestart, syncing, syncStuck } = useSync();
   const settings = useSettings();
   const { t } = useI18n();
   const [confirmClear, setConfirmClear] = useState(false);
@@ -61,11 +61,7 @@ export function Settings() {
             ) : null}
             {auth?.login_in_progress && auth.auth_url ? (
               <div className="settings-hint">
-                <a
-                  href={auth.auth_url}
-                  target="_blank"
-                  rel="noreferrer"
-                >
+                <a href={auth.auth_url} target="_blank" rel="noreferrer">
                   {t("settings.openConsent")}
                 </a>
               </div>
@@ -141,15 +137,31 @@ export function Settings() {
               <div className="settings-error">{status.last_sync_error}</div>
             ) : null}
           </div>
-          <button
-            type="button"
-            className="button"
-            onClick={() => void syncNow()}
-            disabled={syncing}
-          >
-            <RefreshCw size={15} className={syncing ? "spin" : ""} />
-            {syncing ? t("topbar.syncing") : t("settings.syncNow")}
-          </button>
+          {/* ADR-0032: the same choice the topbar offers. While the sync is
+              stuck the disabled "Sync now" button was the only control here,
+              which made the settings page a dead end for exactly the case that
+              needs an action. */}
+          {syncStuck ? (
+            <button
+              type="button"
+              className="button"
+              title={t("topbar.syncRestartHint")}
+              onClick={() => void syncRestart()}
+            >
+              <RefreshCw size={15} />
+              {t("topbar.syncRestart")}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="button"
+              onClick={() => void syncNow()}
+              disabled={syncing}
+            >
+              <RefreshCw size={15} className={syncing ? "spin" : ""} />
+              {syncing ? t("topbar.syncing") : t("settings.syncNow")}
+            </button>
+          )}
         </div>
       </section>
 

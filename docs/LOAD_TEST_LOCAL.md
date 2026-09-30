@@ -14,7 +14,7 @@
 | `tools/loadtest_seed.py` | синтетические пользователи, сессии и кэш |
 | `tools/loadtest_watch.py` | CPU/RAM контейнеров + счётчики PostgreSQL в CSV |
 | `tools/loadtest_report.py` | сводный вердикт PASS/FAIL по критериям §88 |
-| `compose.loadtest.yml` | override с прод-профилем ресурсов (1 vCPU / 1 ГБ) |
+| `compose.loadtest.yml` | override с прод-профилем ресурсов (2 vCPU / 2 ГБ) |
 
 Артефакты пишутся в `loadtest/`, который в `.gitignore`: там лежат cookie
 сессий и дампы метрик.
@@ -23,9 +23,11 @@
 
 ## 1. Поднять стенд с прод-профилем
 
-Зачем `compose.loadtest.yml`: локальная машина — 8 CPU / 32 ГБ, а прод — 1
-vCPU / 1 ГБ (ADR-0028 §2.2). Без override контейнеры не ограничены, и
-прогон измеряет девять свободных ядер вместо целевого сервера.
+Зачем `compose.loadtest.yml`: локальная машина — 8 CPU / 32 ГБ, а прод — 2
+vCPU / 2 ГБ (ADR-0028 §2.2). Без override контейнеры не ограничены, и
+прогон измеряет девять свободных ядер вместо целевого сервера. Профиль
+override обязан совпадать с `compose.yml`: после перехода прода на 2 ГБ
+стенд остался на 1 ГБ, и прогоны перестали воспроизводить прод.
 
 ```powershell
 docker compose --env-file .env.local -f compose.local.yml -f compose.loadtest.yml config --quiet
@@ -37,16 +39,16 @@ docker compose --env-file .env.local -f compose.local.yml -f compose.loadtest.ym
 
 Что задаёт override:
 
-- лимиты `web` 0.55 CPU / 256M, `worker` 0.15 / 160M, `postgres` 0.30 / 288M
-  (пересчитаны по замеру, ADR‑0028 §2.2.1);
-- те же флаги PostgreSQL, что в `compose.yml` (`shared_buffers=128MB`,
-  `work_mem=4MB`, `max_connections=30`, `effective_cache_size=512MB`);
+- лимиты `web` 1.00 CPU / 512M, `worker` 0.30 / 384M, `postgres` 0.50 / 512M
+  (профиль 2 ГБ, ADR‑0028 §2.2);
+- те же флаги PostgreSQL, что в `compose.yml` (`shared_buffers=256MB`,
+  `work_mem=8MB`, `max_connections=40`, `effective_cache_size=1GB`);
 - `GC_DASHBOARD_DB_POOL_SIZE=3`, `GC_DASHBOARD_DB_MAX_OVERFLOW=2`,
   `GC_DASHBOARD_SYNC_WORKERS=2`, `GC_DASHBOARD_SYNC_MAX_CONCURRENT_USERS=1`;
 - **лимиты §39 и cooldown выключены** (`RATE_LIMIT_*=600`,
   `SYNC_MANUAL_COOLDOWN_SECONDS=0`): иначе S2–S4 упираются в 429 и
   измеряют лимитер, а не сервис. Проверка самих лимитов — отдельный прогон
-  на **чистом** `compose.local.yml` (сценарий S6 ниже);
+  на **чистом** `compose.local.yml` (сценарий S6 ниже).
 - сервис `loadgen` (профиль `loadtest`) — генератор нагрузки внутри
   docker-сети, ограничен 0.5 CPU, чтобы не отбирать ядра у `web`.
 
@@ -142,7 +144,7 @@ python tools\loadtest_report.py --dir loadtest --load-json loadtest\run.json `
 | --- | --- |
 | p95 ≤ 500 мс | `run.json` (`--max-p95-ms`) |
 | 0 5xx, 0 transport errors | `run.json` |
-| RAM `web` ≤ 256M, `worker` ≤ 160M, `postgres` ≤ 288M | `watch-summary.json` |
+| RAM `web` ≤ 512M, `worker` ≤ 384M, `postgres` ≤ 512M | `watch-summary.json` |
 | CPU не в насыщении | `watch-summary.json` + квота контейнера |
 | соединения БД ≤ пул × число процессов | `db-stats.csv` |
 | очередь синка не растёт | `db-stats.csv` |

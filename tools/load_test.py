@@ -18,7 +18,7 @@ Usage (from the project root):
         --path /api/health --path /api/ready --requests 300 --concurrency 10
 
     # authenticated pass on the VPS (session cookie from a real browser login)
-    python tools/load_test.py --base-url https://monkstonecor.pp.ua \\
+    python tools/load_test.py --base-url https://classroomhelp.pp.ua \\
         --path /api/status --path /api/courses \\
         --cookie gch_session=<value> --requests 500 --concurrency 20
 
@@ -74,6 +74,11 @@ SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
 # without it every POST/DELETE would be a 403 and the run would measure the
 # guard instead of the endpoint.
 DEFAULT_COOKIE_NAME = "gch_session"
+# A transport reason is a free-form exception string (it can embed a whole
+# nested chain), so it is trimmed before it goes into the report. Long enough
+# to keep the useful part — the errno or the TLS verify message — short enough
+# that one failing path cannot bury the rest of the run.
+MAX_ERROR_REASON_CHARS = 120
 
 
 @dataclass
@@ -83,6 +88,9 @@ class PathResult:
     statuses: Counter = field(default_factory=Counter)
     latencies_ms: list[float] = field(default_factory=list)
     errors: int = 0
+    # Why the transport failed, counted by reason: "N transport errors" alone
+    # cannot be acted on (a TLS trust problem and a dead server read the same).
+    error_reasons: Counter = field(default_factory=Counter)
 
 
 @dataclass
@@ -90,6 +98,10 @@ class Result:
     statuses: Counter = field(default_factory=Counter)
     latencies_ms: list[float] = field(default_factory=list)
     errors: int = 0
+    # Transport failure reasons across the whole run; printed so a red run
+    # states its cause (expired certificate, refused connection, DNS) instead
+    # of only counting failures.
+    error_reasons: Counter = field(default_factory=Counter)
     # Retry-After values of throttled responses, in seconds: the limit is only
     # useful if the header is actually present (§39/§59).
     retry_after: list[float] = field(default_factory=list)
@@ -211,8 +223,32 @@ def _retry_after(value: str | None) -> float | None:
         return None
 
 
-def _one_request(spec: RequestSpec) -> tuple[int | None, float, float | None]:
-    """Issue one request; returns (status or None, latency ms, Retry-After)."""
+def _error_reason(exc: BaseException) -> str:
+    """Short, stable label for a transport failure.
+
+    A run that never gets past the TLS handshake and a run against a dead
+    server look identical in the report without this: both are "N transport
+    errors", so the cause (an expired cross-signed root in the operator's
+    trust store, a proxy, a refused connection) was invisible and the run
+    was indistinguishable from a saturated VPS. The reason is unwrapped
+    (``URLError.reason``) so the interesting exception is the one printed,
+    then trimmed so one failure cannot flood the report.
+    """
+    inner = getattr(exc, "reason", exc)
+    text = str(inner).strip() or type(inner).__name__
+    if len(text) > MAX_ERROR_REASON_CHARS:
+        text = text[: MAX_ERROR_REASON_CHARS - 3] + "..."
+    return f"{type(inner).__name__}: {text}"
+
+
+def _one_request(
+    spec: RequestSpec,
+) -> tuple[int | None, float, float | None, str | None]:
+    """Issue one request; returns (status or None, latency ms, Retry-After, reason).
+
+    ``reason`` is set only for transport failures and feeds the error-reason
+    breakdown, so a failed run states what failed instead of only how often.
+    """
     request = urllib.request.Request(spec.url, data=spec.body, method=spec.method)
     request.add_header("User-Agent", "gch-load-test/2")
     if spec.cookie:
@@ -234,6 +270,7 @@ def _one_request(spec: RequestSpec) -> tuple[int | None, float, float | None]:
                 response.status,
                 (time.perf_counter() - started) * 1000,
                 _retry_after(response.headers.get("Retry-After")),
+                None,
             )
     except urllib.error.HTTPError as exc:
         exc.read()
@@ -241,18 +278,29 @@ def _one_request(spec: RequestSpec) -> tuple[int | None, float, float | None]:
             exc.code,
             (time.perf_counter() - started) * 1000,
             _retry_after(exc.headers.get("Retry-After")),
+            None,
         )
-    except Exception:  # noqa: BLE001 — network failures count as errors
-        return None, (time.perf_counter() - started) * 1000, None
+    except Exception as exc:  # noqa: BLE001 — network failures count as errors
+        # Counted AND explained: a bare "N transport errors" cannot be acted
+        # on, and this branch is where an expired certificate, an unreachable
+        # host or a refused connection all land.
+        return (
+            None,
+            (time.perf_counter() - started) * 1000,
+            None,
+            _error_reason(exc),
+        )
 
 
 def _record(result: Result, spec: RequestSpec, outcome: tuple) -> None:
     """Fold one request's outcome into the totals and the per-path bucket."""
-    status, latency, retry_after = outcome
+    status, latency, retry_after, reason = outcome
     bucket = result.per_path.setdefault(spec.path, PathResult())
     if status is None:
         result.errors += 1
         bucket.errors += 1
+        result.error_reasons[reason or "unknown error"] += 1
+        bucket.error_reasons[reason or "unknown error"] += 1
         return
     result.statuses[status] += 1
     result.latencies_ms.append(latency)
@@ -351,6 +399,7 @@ def run(args: argparse.Namespace) -> Result:
     for one in runs:
         merged.statuses.update(one.statuses)
         merged.errors += one.errors
+        merged.error_reasons.update(one.error_reasons)
         merged.retry_after.extend(one.retry_after)
         merged.scheduler_lag += one.scheduler_lag
     # The headline numbers describe the MEDIAN run — a real measurement, not a
@@ -483,6 +532,12 @@ def _print_report(args: argparse.Namespace, result: Result, ok: int) -> None:
     print(f"statuses      : {dict(sorted(result.statuses.items()))}")
     if refused:
         print(f"refused       : {refused} (documented API answers, not errors)")
+    if result.error_reasons:
+        # The whole point: a run of pure transport errors names the cause, so
+        # the reader can tell a local TLS/proxy problem from a dead server
+        # instead of re-running curl to find out which one it was.
+        for reason, count in result.error_reasons.most_common():
+            print(f"error reason  : n={count:<5} {reason}")
     if result.retry_after:
         print(
             f"retry-after   : n={len(result.retry_after)} "
@@ -521,6 +576,12 @@ def _verdict(
         failures.append(f"{five_xx} 5xx > allowed {args.max_5xx}")
     if result.errors:
         failures.append(f"{result.errors} transport errors")
+    if result.errors and result.error_reasons:
+        # Naming the cause in the verdict line too: this is the one line the
+        # operator reads when scrolling CI-style output, and "1000 transport
+        # errors" alone is not an action.
+        top_reason, top_count = result.error_reasons.most_common(1)[0]
+        failures.append(f"top cause: {top_count}x {top_reason}")
     if args.expect_status:
         # Scenario S6: a throttled surface is EXPECTED to answer 429, so the
         # run passes only if the limiter actually fired and nothing 5xx'd.
@@ -556,6 +617,7 @@ def _payload(
         "sessions_used": sessions,
         "ok": ok,
         "errors": result.errors,
+        "error_reasons": dict(result.error_reasons.most_common()),
         "five_xx": five_xx,
         "rps": result.rps,
         "scheduler_lag": result.scheduler_lag,
@@ -578,6 +640,7 @@ def _payload(
             path: {
                 "requests": sum(bucket.statuses.values()) + bucket.errors,
                 "errors": bucket.errors,
+                "error_reasons": dict(bucket.error_reasons.most_common()),
                 "latency_ms": _summarize(bucket.latencies_ms),
                 "statuses": {
                     str(status): count

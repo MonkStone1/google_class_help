@@ -780,7 +780,7 @@
  * A full page, not the dashboard frame: it scrolls with the document, so it
  * opts out of the app shell's `height: 100vh` overflow model entirely.
  * Everything is built from the base tokens, which means the dark theme
- * applied by theme-init.js before first paint works with no extra rules.
+ * applied by prepaint-init.js before first paint works with no extra rules.
  */
 .landing {
   min-height: 100vh;

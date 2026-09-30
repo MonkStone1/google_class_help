@@ -81,7 +81,7 @@ plaintext не попал в поставку). Это корректно для
 Internet
    ↓
 Caddy (HTTPS, автоматический TLS) — единственная точка входа
-   ↓  same public origin (например https://monkstonecor.pp.ua/)
+   ↓  same public origin (например https://classroomhelp.pp.ua/)
    ├── статика React (frontend/dist) — раздаёт Caddy
    └── /api/* → FastAPI (Uvicorn)
                  ├── users / sessions / oauth_tokens (PostgreSQL)

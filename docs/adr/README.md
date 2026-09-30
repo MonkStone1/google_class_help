@@ -37,3 +37,7 @@
 | [ADR-0028](adr-0028-docker-caddy-cloudflare-deployment.md) | Docker/Compose/Caddy + Cloudflare Tunnel деплой — 1 vCPU/1 GB, queued manual sync, `/api/ready`, бэкапы | Accepted |
 | [ADR-0029](adr-0029-public-landing-page.md) | Публичная посадочная страница вместо карточки входа, язык по браузеру | Accepted |
 | [ADR-0030](adr-0030-sync-completion-toast.md) | Тосты о завершении синхронизации на sonner; триггер — серверная отметка `last_sync_finished_at` | Accepted |
+| [ADR-0031](adr-0031-production-domain-and-generated-favicon.md) | Продуктовый домен `classroomhelp.pp.ua` и генерируемая иконка сайта (фавики в `frontend/public`, шаг иконки в `build.bat` перенесён до фронтенд-сборки) | Accepted |
+| [ADR-0032](adr-0032-stuck-sync-restart.md) | Перезапуск зависшего синка: `?restart=true`, `abandon_claim` и fence-токен «проигравшего» запуска | Accepted |
+| [ADR-0033](adr-0033-idempotent-cache-writes.md) | Идемпотентная запись кеша — `ON CONFLICT DO UPDATE` вместо get-then-add; fence переносится в per-course цикл записи | Accepted |
+| [ADR-0034](adr-0034-document-language-follows-ui.md) | Язык документа следует за языком интерфейса: `<html lang>` устанавливает `SettingsProvider` (pre-paint — `prepaint-init.js`) | Accepted |

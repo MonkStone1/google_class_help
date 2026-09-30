@@ -28,6 +28,8 @@ const STORAGE_KEY = "gc-settings";
 
 const CALENDAR_VIEWS: readonly CalendarViewMode[] = ["month", "week", "day"];
 
+const LANGUAGES: readonly Language[] = ["en", "uk", "ru"];
+
 /**
  * The theme actually painted on `<html>`, as opposed to the `system` /
  * `light` / `dark` mode the user picked. Components that must hand a literal
@@ -66,6 +68,18 @@ function normalizeSubjectTab(
     : DEFAULT_SETTINGS.subjectTab;
 }
 
+/**
+ * A language that is not (or no longer) one of the three dictionaries falls
+ * back to the browser preference instead of being trusted: it feeds the
+ * dictionary lookup, the date locale AND `<html lang>`, so a stale value in
+ * localStorage would otherwise leak a `lang="de"` into the document.
+ */
+function normalizeLanguage(value: unknown): Language {
+  return LANGUAGES.includes(value as Language)
+    ? (value as Language)
+    : detectLanguage();
+}
+
 type SettingsState = AppSettings & {
   /** The theme currently painted on `<html>` (see {@link ResolvedTheme}). */
   resolvedTheme: ResolvedTheme;
@@ -95,7 +109,7 @@ function loadSettings(): AppSettings {
       ...DEFAULT_SETTINGS,
       ...parsed,
       // First run (or settings saved before languages existed): follow the OS.
-      language: parsed.language ?? detectLanguage(),
+      language: normalizeLanguage(parsed.language),
       sections: { ...DEFAULT_SETTINGS.sections, ...parsed.sections },
       notifications: {
         ...DEFAULT_SETTINGS.notifications,
@@ -130,11 +144,27 @@ function applyTheme(mode: ThemeMode): ResolvedTheme {
   return resolved;
 }
 
+/**
+ * Declare the interface language on `<html>` — the same value the dictionary
+ * and the date locale come from.
+ *
+ * This is the whole point of the helper: a page whose text is Ukrainian while
+ * the document still says `lang="en"` is a page browsers (and Google
+ * Translate) believe is untranslated, so the translator offers to "translate"
+ * a page that is already in the reader's language. `index.html` ships
+ * `lang="en"` as a static default and `public/prepaint-init.js` corrects it
+ * before the first paint; this keeps it truthful for the rest of the session,
+ * including a language switch made on any surface (ADR-0034).
+ */
+function applyDocumentLanguage(language: Language): void {
+  document.documentElement.lang = language;
+}
+
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(loadSettings);
-  // The inline script in index.html has already painted the correct theme
-  // before the first React render, so the attribute is a truthful seed here
-  // and the first paint of a toast never flickers to the wrong side.
+  // The pre-paint script has already applied the correct theme before the
+  // first React render, so the attribute is a truthful seed here and the first
+  // paint of a toast never flickers to the wrong side.
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(
     () => (document.documentElement.dataset.theme === "dark" ? "dark" : "light"),
   );
@@ -143,6 +173,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     setResolvedTheme(applyTheme(settings.theme));
     setLocale(LOCALE[settings.language]);
+    // The document language follows the setting on EVERY surface, not just
+    // the landing: this effect is the single owner, so a switch made in
+    // Settings (or anywhere else) cannot leave `<html lang>` behind
+    // (ADR-0034).
+    applyDocumentLanguage(settings.language);
   }, [settings]);
 
   // Follow OS preference changes while in "system" mode.

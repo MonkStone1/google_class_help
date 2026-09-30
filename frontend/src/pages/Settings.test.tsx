@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "../api.ts";
 import { SettingsProvider } from "../context/SettingsContext.tsx";
-import { DEFAULT_SETTINGS, type AuthStatus } from "../types.ts";
+import { DEFAULT_SETTINGS, type AuthStatus, type Language } from "../types.ts";
 import { Settings } from "./Settings.tsx";
 
 const toastMock = vi.hoisted(() => ({
@@ -44,6 +44,80 @@ function renderSettings() {
     </SettingsProvider>,
   );
 }
+
+/** Same page, but starting from an explicit stored language. */
+function renderSettingsIn(language: Language) {
+  localStorage.setItem(
+    "gc-settings",
+    JSON.stringify({ ...DEFAULT_SETTINGS, language }),
+  );
+  return render(
+    <SettingsProvider>
+      <Settings />
+    </SettingsProvider>,
+  );
+}
+
+describe("document language", () => {
+  beforeEach(() => {
+    toastMock.success.mockReset();
+    toastMock.error.mockReset();
+    useAuth.mockReset();
+    useSync.mockReset();
+    useAuth.mockReturnValue({
+      auth: null,
+      sessionRequired: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+    });
+    useSync.mockReturnValue({
+      status: null,
+      loading: false,
+      syncing: false,
+      error: null,
+      syncNow: vi.fn().mockResolvedValue(null),
+      refresh: vi.fn(),
+    });
+  });
+
+  it("declares the stored language on the document element", () => {
+    renderSettingsIn("uk");
+    expect(document.documentElement.lang).toBe("uk");
+  });
+
+  it("updates the document element when the language is switched here", () => {
+    // The regression this pins: the interface switched to Ukrainian while
+    // `<html lang>` stayed "en", so Google Translate offered to translate a
+    // page that was already in the reader's own language (ADR-0034).
+    renderSettings();
+
+    fireEvent.click(screen.getByRole("button", { name: "Українська" }));
+
+    // Both halves must move together: the visible language AND the document.
+    expect(
+      screen.getByRole("heading", { name: "Налаштування" }),
+    ).toBeInTheDocument();
+    expect(document.documentElement.lang).toBe("uk");
+  });
+
+  it("ignores a saved language the app has no dictionary for", () => {
+    // Corrupted or hand-edited localStorage: the dictionary lookup already
+    // falls back to English, so the document must not claim `lang="de"` while
+    // the page renders English.
+    localStorage.setItem(
+      "gc-settings",
+      JSON.stringify({ ...DEFAULT_SETTINGS, language: "de" }),
+    );
+
+    render(
+      <SettingsProvider>
+        <Settings />
+      </SettingsProvider>,
+    );
+
+    expect(document.documentElement.lang).toBe("en");
+  });
+});
 
 describe("Settings cache clearing", () => {
   beforeEach(() => {

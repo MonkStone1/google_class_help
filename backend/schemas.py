@@ -239,6 +239,11 @@ class SyncStatus(BaseModel):
     sync_status: str = "pending"
     last_sync_started_at: datetime | None = None
     last_sync_finished_at: datetime | None = None
+    # ADR-0032: after how many seconds a running sync may count as stuck. The
+    # server owns this number so the "unusually long, try restarting" verdict
+    # and the `POST /api/sync?restart=true` guard can never disagree — the UI
+    # must not offer a restart the server would refuse, or hide one it allows.
+    sync_stuck_after_seconds: int = 300
     total_assignments: int = 0
     completed: int = 0
     missing: int = 0
@@ -261,3 +266,8 @@ class SyncResult(BaseModel):
     # inline contract (queued=False).
     queued: bool = False
     status: str | None = None
+    # ADR-0032: True when this call abandoned a stuck claim instead of running
+    # (hosted) or starting (desktop) a sync outright. The dashboard uses it to
+    # keep the spinner and follow the replacement run rather than treating the
+    # answer as a finished sync.
+    restarted: bool = False

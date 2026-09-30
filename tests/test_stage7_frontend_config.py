@@ -64,8 +64,8 @@ def _new_client(host: str = "api.example") -> TestClient:
 class TestEnvironmentLayer:
     def test_production_defaults_to_the_public_host_only(self, monkeypatch):
         monkeypatch.setattr(config, "IS_PRODUCTION", True)
-        monkeypatch.setattr(config, "APP_ORIGIN", "https://monkstonecor.pp.ua")
-        assert config._default_allowed_hosts() == ["monkstonecor.pp.ua"]
+        monkeypatch.setattr(config, "APP_ORIGIN", "https://classroomhelp.pp.ua")
+        assert config._default_allowed_hosts() == ["classroomhelp.pp.ua"]
 
     def test_development_defaults_keep_loopback(self, monkeypatch):
         monkeypatch.setattr(config, "IS_PRODUCTION", False)

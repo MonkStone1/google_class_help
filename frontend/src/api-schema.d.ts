@@ -237,6 +237,13 @@ export interface paths {
          *     a manual request inside the per-user cooldown → 429 + Retry-After; the
          *     background scheduler bypasses the cooldown. Other users sync
          *     independently. Rate-limit buckets (§39) stay in middleware.
+         *
+         *     ``restart=true`` (ADR-0032) is the dashboard's answer to "this sync is
+         *     stuck". It is the ONE case where an in-flight sync does not answer 409: a
+         *     claim older than ``SYNC_STUCK_SECONDS`` is released and a new one queued.
+         *     A younger claim still answers 409 — a long but progressing Classroom
+         *     import must never be interrupted, and the cooldown is skipped only because
+         *     the abandoned claim is by definition older than it.
          */
         post: operations["run_sync_api_sync_post"];
         delete?: never;
@@ -1003,6 +1010,11 @@ export interface components {
             queued: boolean;
             /** Status */
             status?: string | null;
+            /**
+             * Restarted
+             * @default false
+             */
+            restarted: boolean;
         };
         /** SyncStatus */
         SyncStatus: {
@@ -1026,6 +1038,11 @@ export interface components {
             last_sync_started_at?: string | null;
             /** Last Sync Finished At */
             last_sync_finished_at?: string | null;
+            /**
+             * Sync Stuck After Seconds
+             * @default 300
+             */
+            sync_stuck_after_seconds: number;
             /**
              * Total Assignments
              * @default 0
@@ -1403,7 +1420,10 @@ export interface operations {
     };
     run_sync_api_sync_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Abandon a stuck sync and start a new one (ADR-0032). */
+                restart?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1417,6 +1437,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SyncResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

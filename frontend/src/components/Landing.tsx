@@ -42,20 +42,20 @@ import { useSignInChallenge } from "../lib/signInChallenge.ts";
 export function Landing() {
   const { login } = useAuth();
   const { setLanguage, setTheme } = useSettings();
-  const { t, language, locale } = useI18n();
+  const { t, language } = useI18n();
   const { token, required, requested, pending, widgetRef } =
     useSignInChallenge();
   const challengeRef = useRef<HTMLDivElement | null>(null);
   const isDark = document.documentElement.dataset.theme === "dark";
 
-  // The page is public and self-describing: give it its own document title
-  // and declare the language for assistive technology. AppShell's own title
-  // effect is skipped while the landing is on screen, so nothing overwrites
-  // this (see App.tsx).
+  // The page is public and self-describing: give it its own document title.
+  // AppShell's own title effect is skipped while the landing is on screen, so
+  // nothing overwrites this (see App.tsx). `<html lang>` is NOT set here: the
+  // settings provider declares it for every surface, so a language switch on
+  // the dashboard updates the document too (ADR-0034).
   useEffect(() => {
     document.title = t("landing.documentTitle");
-    document.documentElement.lang = locale.split("-")[0];
-  }, [t, locale]);
+  }, [t]);
 
   const startSignIn = () => {
     if (pending) {

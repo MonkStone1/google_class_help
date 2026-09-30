@@ -73,7 +73,7 @@ Do not add a second VPS until monitoring shows a real need.
 Add:
 
 ```text
-monkstonecor.pp.ua
+classroomhelp.pp.ua
 ```
 
 to Cloudflare and change the domain's authoritative nameservers at the registrar to the Cloudflare nameservers provided by Cloudflare.
@@ -117,7 +117,7 @@ Create a published application route:
 
 ```text
 Hostname:
-monkstonecor.pp.ua
+classroomhelp.pp.ua
 ```
 
 Map it to:
@@ -695,7 +695,7 @@ Do not depend on the Free Cloudflare rule alone to implement authenticated-user 
 With Tunnel:
 
 ```text
-monkstonecor.pp.ua
+classroomhelp.pp.ua
     ↓
 Cloudflare
     ↓
@@ -711,7 +711,7 @@ VPS_IP
 such as:
 
 ```text
-server.monkstonecor.pp.ua
+server.classroomhelp.pp.ua
 ```
 
 unless there is a specific reason.
