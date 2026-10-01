@@ -16,6 +16,8 @@ export const ru = {
   "nav.grades": "Оценки",
   "nav.calendar": "Календарь",
   "nav.settings": "Настройки",
+  "nav.feedback": "Обратная связь",
+  "nav.admin": "Администрирование",
   "nav.overdue.one": "1 просроченное задание",
   "nav.overdue.many": "{count} просроченных заданий",
 
@@ -360,4 +362,99 @@ export const ru = {
   "workState.published": "Опубликовано",
   "workState.draft": "Черновик",
   "workState.unknown": "Неизвестный статус",
+
+  // -------------------------------------------------------------- фидбек
+  // ADR-0035. На точке входа два разных действия: «сообщить о проблеме» и
+  // «прочитать свои обращения» — это разные намерения, и текст должен делать
+  // это очевидным на каждом языке.
+
+  "feedback.title": "Обратная связь",
+  "feedback.subtitle":
+    "Сообщите о проблеме или следите за тем, что уже сообщили.",
+  "feedback.createTitle": "Создать обращение",
+  "feedback.createText":
+    "Опишите проблему или предложите улучшение. Ответ появится здесь.",
+  "feedback.mineTitle": "Мои обращения",
+  "feedback.mineText":
+    "Следите за разговорами, которые вы начали, со всеми ответами в одном месте.",
+  "feedback.newTitle": "Новое обращение",
+  "feedback.newLead":
+    "Ваш аккаунт Google уже известен, поэтому полей для имени и почты здесь нет.",
+  "feedback.category": "Категория",
+  "feedback.category.suggestion": "Предложение",
+  "feedback.category.bug": "Ошибка",
+  "feedback.category.problem": "Проблема",
+  "feedback.category.other": "Другое",
+  "feedback.subject": "Тема",
+  "feedback.subjectPlaceholder": "Коротко, например «Оценки не обновляются»",
+  "feedback.message": "Сообщение",
+  "feedback.messagePlaceholder":
+    "Опишите, что произошло. Поддерживается Markdown — **жирный**, `код`, списки.",
+  "feedback.attachments": "Вложения",
+  "feedback.attachmentsHint":
+    "Необязательно. До 3 файлов по 5 МБ (jpg, png, gif, pdf, txt).",
+  "feedback.addFile": "Добавить файл",
+  "feedback.removeFile": "Убрать {name}",
+  "feedback.submit": "Отправить обращение",
+  "feedback.submitting": "Отправляем…",
+  "feedback.created": "Обращение отправлено.",
+  "feedback.reply": "Ответить",
+  "feedback.replyPlaceholder": "Напишите ответ…",
+  "feedback.sendReply": "Отправить ответ",
+  "feedback.sending": "Отправляем…",
+  "feedback.replied": "Ответ отправлен.",
+  "feedback.reopenedNotice":
+    "Обращение было закрыто; ваш ответ открыл его снова.",
+  "feedback.listTitle": "Мои обращения",
+  "feedback.empty": "Обращений пока нет.",
+  "feedback.emptyHint": "Сообщите о проблеме — ответ появится здесь.",
+  "feedback.loading": "Загрузка обращений…",
+  "feedback.ticketNumber": "Обращение #{id}",
+  "feedback.status.new": "Новое",
+  "feedback.status.in_progress": "В работе",
+  "feedback.status.resolved": "Решено",
+  "feedback.messagesCount": "сообщений: {count}",
+  "feedback.subjectRequired": "Введите тему.",
+  "feedback.messageRequired": "Опишите проблему.",
+  "feedback.loadFailed": "Не удалось загрузить обращения.",
+  "feedback.notFound": "Такого обращения не существует или оно не ваше.",
+  "feedback.downloadFile": "Скачать {name}",
+  "feedback.you": "Вы",
+  "feedback.supportBadge": "Поддержка",
+
+  // ----------------------------------------------------------------- админ
+  // Показывается только когда бэкенд сообщил is_admin=true (ADR-0035).
+
+  "admin.title": "Администрирование",
+  "admin.dashboardTitle": "Панель обращений",
+  "admin.total": "Всего",
+  "admin.backToAdmin": "К администрированию",
+  "admin.ticketListTitle": "Все обращения",
+  "admin.filterStatus": "Статус",
+  "admin.filterCategory": "Категория",
+  "admin.filterAny": "Любой",
+  "admin.searchPlaceholder": "Поиск по теме или сообщению…",
+  "admin.search": "Найти",
+  "admin.clearFilters": "Сбросить фильтры",
+  "admin.empty": "По этим фильтрам обращений нет.",
+  "admin.reporter": "Автор",
+  "admin.loadFailed": "Не удалось загрузить обращения.",
+  "admin.replyTitle": "Ответ",
+  "admin.displayName": "Имя, которое видит пользователь",
+  "admin.displayNameHint":
+    "Пользователь видит это имя, но автором остаётся ваш аккаунт.",
+  "admin.sendAnswer": "Отправить ответ",
+  "admin.statusChanged": "Статус обновлён.",
+  "admin.deleteTitle": "Удалить обращение навсегда?",
+  "admin.deleteBody":
+    "Это действие нельзя отменить. Переписка и её вложения будут удалены безвозвратно.",
+  "admin.deleteConfirm": "Удалить навсегда",
+  "admin.deleteCancel": "Отмена",
+  "admin.deleteButton": "Удалить обращение",
+  "admin.deleted": "Обращение удалено.",
+  "admin.deleteFailed": "Не удалось удалить обращение.",
+  "admin.notAvailable": "Этот раздел доступен только администраторам.",
+  "admin.notAvailableHint":
+    "У вашего аккаунта нет прав администратора. Если это неожиданно — напишите в поддержку.",
+  "admin.by": "от {name}",
 } satisfies Record<I18nKey, string>;

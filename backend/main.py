@@ -57,6 +57,7 @@ from config import (
     HSTS_MAX_AGE,
     IS_PRODUCTION,
     RATE_LIMIT_CACHE_CLEAR_PER_MINUTE,
+    RATE_LIMIT_FEEDBACK_PER_MINUTE,
     RATE_LIMIT_LOGIN_PER_MINUTE,
     RATE_LIMIT_SYNC_PER_MINUTE,
     TURNSTILE_SITE_KEY,
@@ -273,11 +274,27 @@ def create_app(hosted: bool = False) -> FastAPI:
                 surface = "sync"
             elif method == "DELETE" and path in {"/api/cache", "/api/me/cache"}:
                 surface = "cache"
+            elif method == "POST" and (
+                path == "/api/feedback/tickets"
+                or path.startswith("/api/feedback/tickets/")
+                and path.endswith("/messages")
+                or path.startswith("/api/admin/feedback/tickets/")
+                and path.endswith("/messages")
+            ):
+                # ADR-0035: a COARSE per-IP cap in front of the upload-heavy
+                # endpoints, so one address cannot stream a body's worth of
+                # multipart parts into the single web replica. The real
+                # control is the per-USER bucket inside the endpoints
+                # (feedback_service) — a school NAT shares an address between
+                # many legitimate users, so an IP-only limit would punish the
+                # wrong people.
+                surface = "feedback"
             if surface is not None:
                 capacity = {
                     "login": RATE_LIMIT_LOGIN_PER_MINUTE,
                     "sync": RATE_LIMIT_SYNC_PER_MINUTE,
                     "cache": RATE_LIMIT_CACHE_CLEAR_PER_MINUTE,
+                    "feedback": RATE_LIMIT_FEEDBACK_PER_MINUTE,
                 }[surface]
                 if not _throttled(request, f"{surface}:{client_ip(request)}", capacity):
                     return _retry_later(
@@ -391,6 +408,16 @@ def create_app(hosted: bool = False) -> FastAPI:
         return await call_next(request)
 
     app.include_router(router)
+
+    # Ticket feature (ADR-0035). Included from here, inside the hosted
+    # middleware stack, so the session gate, the Host/Origin guard, the CSRF
+    # check and Cache-Control: no-store already apply to every feedback
+    # endpoint — no state-changing endpoint gets a weaker protection of its own.
+    from feedback_admin_api import router as feedback_admin_router
+    from feedback_api import router as feedback_router
+
+    app.include_router(feedback_router)
+    app.include_router(feedback_admin_router)
 
     @app.get("/api/health")
     def health() -> dict:

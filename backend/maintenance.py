@@ -15,11 +15,12 @@ Two layers live here:
 2. **Deletion** (:func:`delete_user_data`, :func:`disconnect_google`) —
    the explicit "delete my account" / "disconnect Google" paths. Both take
    the caller's own user id from the session (api.py) and delete only that
-   user's rows: sessions, ``oauth_tokens``, ``sync_status`` and the whole
+   user's rows: sessions, ``oauth_tokens``, ``sync_status``, the whole
    Classroom cache through the ``courses`` cascade (coursework, rosters,
-   roles, submissions). There is deliberately no global "clear everything"
-   helper: §44 forbids destroying other users' data as a side effect of one
-   user's request.
+   roles, submissions) and, since ADR-0035, their support tickets with their
+   messages, attachment rows and files. There is deliberately no global "clear
+   everything" helper: §44 forbids destroying other users' data as a side
+   effect of one user's request.
 
 Retention policy (documented in ADR-0027):
 
@@ -36,6 +37,10 @@ Retention policy (documented in ADR-0027):
                        exposed so stale data is never presented as current
                        (§61)
     sync_status        lives with the user (FK CASCADE), same as the cache
+    feedback tickets   until the account is deleted (ADR-0035). Resolved
+                       tickets are NOT swept: the default is to keep them, so a
+                       user keeps the history of what was reported; only the
+                       account deletion removes them.
 """
 
 import logging
@@ -46,6 +51,7 @@ from sqlalchemy.orm import Session
 import metrics
 from models import Course, SyncStatus
 from models_auth import OAuthLoginState, OAuthToken, User, UserSession
+from models_feedback import FeedbackTicket, TicketAttachment
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +133,15 @@ def delete_user_data(db: Session, user: User) -> dict[str, int]:
     (desktop) and PostgreSQL identical and lets the caller report what was
     removed. No other user's row is ever touched: every statement carries
     this user's id.
+
+    The feedback domain (ADR-0035) joins that list. Its FILES are the reason
+    the rows are read first: a ticket's attachment files live on the appdata
+    volume and no database cascade can unlink them, so the file paths are
+    collected and removed while the rows are still known. A file that is
+    already gone is not an error — the deletion must not fail over cleanup.
     """
+    import feedback_attachments as attachments
+
     user_id = user.id
     sessions = (
         db.query(UserSession)
@@ -152,19 +166,45 @@ def delete_user_data(db: Session, user: User) -> dict[str, int]:
         .filter(Course.user_id == user_id)
         .delete(synchronize_session=False)
     )
+    # Feedback (ADR-0035): the rows cascade from ``users`` through
+    # feedback_tickets, but the FILES cannot — they are read first so their
+    # paths can be unlinked after the commit.
+    ticket_ids = [
+        int(row[0])
+        for row in db.query(FeedbackTicket.id)
+        .filter(FeedbackTicket.user_id == user_id)
+        .all()
+    ]
+    files = []
+    for ticket_id in ticket_ids:
+        files.extend(
+            db.query(TicketAttachment).filter(
+                TicketAttachment.ticket_id == ticket_id
+            )
+        )
+    tickets = (
+        db.query(FeedbackTicket)
+        .filter(FeedbackTicket.user_id == user_id)
+        .delete(synchronize_session=False)
+    )
     db.delete(user)
     db.commit()
+    for ticket_id in ticket_ids:
+        attachments.unlink_ticket_files(ticket_id, files)
     logger.info(
-        "User id=%s deleted: sessions=%s tokens=%s courses=%s sync_rows=%s.",
+        "User id=%s deleted: sessions=%s tokens=%s courses=%s sync_rows=%s "
+        "feedback_tickets=%s.",
         user_id,
         sessions,
         tokens,
         courses,
         status,
+        tickets,
     )
     return {
         "sessions": int(sessions),
         "tokens": int(tokens),
         "courses": int(courses),
         "sync_status": int(status),
+        "feedback_tickets": int(tickets),
     }

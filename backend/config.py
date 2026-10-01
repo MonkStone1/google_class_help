@@ -66,6 +66,31 @@ def _csv_env(name: str) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
+# ------------------------------------------------- administrators (ADR-0035)
+# Comma-separated allow-list of administrator accounts (lower-cased e-mails).
+# Empty or missing means NOBODY is an administrator — fail closed, never open.
+# Unprefixed on purpose (like COOKIE_SECURE / APP_BASE_URL /
+# TURNSTILE_SITE_KEY): this is an authorization value, not a tuning knob, and
+# it must never be reachable from the frontend (no VITE_ variable, no /api/config
+# field). Entries without "@" are dropped so a typo cannot accidentally match
+# a real address.
+ADMIN_EMAILS: frozenset[str] = frozenset(
+    email.strip().lower() for email in _csv_env("ADMIN_EMAILS") if "@" in email
+)
+
+
+def is_admin_email(email: str | None) -> bool:
+    """Whether an e-mail is in the configured administrator allow-list.
+
+    The single membership test of the whole feature: ``admin_auth.require_admin``
+    enforces it on the API side and ``UserOut.is_admin`` reports the SAME verdict
+    to the UI (a boolean, never the list). An empty address — the desktop local
+    owner has ``email is None`` — is never an administrator.
+    """
+    normalized = (email or "").strip().lower()
+    return bool(normalized) and normalized in ADMIN_EMAILS
+
+
 def canonical_origin(scheme: str, hostname: str, port: int | None) -> str | None:
     """Return a normalized ``scheme://host[:port]`` origin.
 
@@ -205,6 +230,14 @@ RATE_LIMIT_SYNC_PER_MINUTE = _int_env(
 RATE_LIMIT_CACHE_CLEAR_PER_MINUTE = _int_env(
     "GC_DASHBOARD_RATE_LIMIT_CACHE_CLEAR_PER_MINUTE", 10, minimum=1
 )
+# Coarse per-IP cap in front of the feedback POSTs (ADR-0035). Generous on
+# purpose: it exists to stop one address from streaming multipart bodies into
+# the single web replica, while the actual per-user budget lives in the
+# endpoints (FEEDBACK_TICKETS_PER_HOUR / FEEDBACK_REPLIES_PER_HOUR) — a school
+# NAT shares an address between many legitimate users.
+RATE_LIMIT_FEEDBACK_PER_MINUTE = _int_env(
+    "GC_DASHBOARD_RATE_LIMIT_FEEDBACK_PER_MINUTE", 30, minimum=1
+)
 # Per-user manual-sync cooldown, seconds (section 39): pressing Sync twice
 # reuses the in-flight run (409) or gets 429 instead of a second fan-out.
 # The scheduler is NOT throttled by this - planned syncs bypass it.
@@ -221,6 +254,50 @@ RETENTION_SWEEP_SECONDS = _int_env(
 
 
 SYNC_MAX_WORKERS = _int_env("GC_DASHBOARD_SYNC_WORKERS", 4, minimum=1)
+
+
+# ----------------------------------------------- feedback tickets (ADR-0035)
+# Limits of the ticket feature. They are TUNING knobs, so they take the
+# GC_DASHBOARD_ prefix (unlike ADMIN_EMAILS above, which is an authorization
+# value). Defaults are the conservative first-production numbers from the
+# feature plan: the hosted service is a 1-2 vCPU VPS with a single web replica,
+# multipart bodies are parsed in-process, and one message may carry up to 3
+# files / 10 MB in total.
+#
+# The per-user buckets are token buckets with an hourly window, so a user who
+# exhausted the allowance recovers gradually instead of waiting for a fixed
+# wall-clock hour (rate_limit.RateLimiter).
+FEEDBACK_TICKETS_PER_HOUR = _int_env(
+    "GC_DASHBOARD_FEEDBACK_TICKETS_PER_HOUR", 5, minimum=1
+)
+FEEDBACK_REPLIES_PER_HOUR = _int_env(
+    "GC_DASHBOARD_FEEDBACK_REPLIES_PER_HOUR", 30, minimum=1
+)
+# Content limits (characters). A subject is a title, not a document; a message
+# is a support reply, not a paste of a log file.
+FEEDBACK_MAX_SUBJECT_CHARS = _int_env(
+    "GC_DASHBOARD_FEEDBACK_MAX_SUBJECT_CHARS", 200, minimum=1
+)
+FEEDBACK_MAX_MESSAGE_CHARS = _int_env(
+    "GC_DASHBOARD_FEEDBACK_MAX_MESSAGE_CHARS", 20000, minimum=1
+)
+# Attachments per message (bytes). The 64 MB figure of the reference product is
+# deliberately NOT adopted: the edge and the web process both hold the body.
+FEEDBACK_MAX_ATTACHMENTS = _int_env(
+    "GC_DASHBOARD_FEEDBACK_MAX_ATTACHMENTS", 3, minimum=1
+)
+FEEDBACK_MAX_ATTACHMENT_BYTES = _int_env(
+    "GC_DASHBOARD_FEEDBACK_MAX_ATTACHMENT_BYTES", 5 * 1024 * 1024, minimum=1
+)
+FEEDBACK_MAX_TOTAL_BYTES = _int_env(
+    "GC_DASHBOARD_FEEDBACK_MAX_TOTAL_BYTES", 10 * 1024 * 1024, minimum=1
+)
+# The public label an administrator replies under when they do not choose one.
+FEEDBACK_DEFAULT_ADMIN_NAME = "GoogleClassHelp Support"
+# Hard cap on the administrator's chosen public display name (characters).
+FEEDBACK_MAX_DISPLAY_NAME_CHARS = _int_env(
+    "GC_DASHBOARD_FEEDBACK_MAX_DISPLAY_NAME_CHARS", 100, minimum=1
+)
 
 # Background sync: runs once at startup, then every SYNC_INTERVAL_MINUTES.
 # 0 disables the schedule entirely (no startup sync, no repeats).

@@ -41,3 +41,4 @@
 | [ADR-0032](adr-0032-stuck-sync-restart.md) | Перезапуск зависшего синка: `?restart=true`, `abandon_claim` и fence-токен «проигравшего» запуска | Accepted |
 | [ADR-0033](adr-0033-idempotent-cache-writes.md) | Идемпотентная запись кеша — `ON CONFLICT DO UPDATE` вместо get-then-add; fence переносится в per-course цикл записи | Accepted |
 | [ADR-0034](adr-0034-document-language-follows-ui.md) | Язык документа следует за языком интерфейса: `<html lang>` устанавливает `SettingsProvider` (pre-paint — `prepaint-init.js`) | Accepted |
+| [ADR-0035](adr-0035-feedback-tickets-and-administrators.md) | Тикеты обратной связи: домен с каскадом от `users.id`, allow-list администраторов из `ADMIN_EMAILS` (fail closed), ответ открывает решённый тикет, окончательное удаление, лимиты вложений 3×5 МБ / 10 МБ и подъём `Caddyfile` до 16 MB | Accepted |

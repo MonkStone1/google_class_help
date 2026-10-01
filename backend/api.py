@@ -158,13 +158,22 @@ def _reset_profile_cache(user_id: int | None = None) -> None:
 
 
 def _user_out(user: User) -> UserOut:
-    """The three identity fields of the caller (§24).
+    """The identity fields of the caller (§24) plus the admin flag (ADR-0035).
 
     Built from the local ``users`` row only — never from a Google
     credential, token or OAuth object, none of which may appear in any
-    response.
+    response. ``is_admin`` is a BOOLEAN derived by the backend from
+    ``config.is_admin_email``; the administrator address list itself never
+    appears in a response.
     """
-    return UserOut(id=user.id, name=user.display_name, email=user.email)
+    from config import is_admin_email
+
+    return UserOut(
+        id=user.id,
+        name=user.display_name,
+        email=user.email,
+        is_admin=is_admin_email(user.email),
+    )
 
 
 def _build_auth_status(user: User) -> AuthStatus:
@@ -197,7 +206,16 @@ def _build_auth_status(user: User) -> AuthStatus:
         creds = auth.get_valid_credentials()
         if creds is not None:
             user_name, user_email = _cached_profile(user, creds)
-            identity = UserOut(id=user.id, name=user_name, email=user_email)
+            from config import is_admin_email
+
+            # The desktop local owner has no address, so this is always False
+            # there — the flag is computed by the same test as the API gate.
+            identity = UserOut(
+                id=user.id,
+                name=user_name,
+                email=user_email,
+                is_admin=is_admin_email(user.email or user_email),
+            )
     return AuthStatus(**status, user=identity)
 
 

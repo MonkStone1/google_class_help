@@ -14,6 +14,8 @@ export const en = {
   "nav.grades": "Grades",
   "nav.calendar": "Calendar",
   "nav.settings": "Settings",
+  "nav.feedback": "Feedback",
+  "nav.admin": "Administration",
   "nav.overdue.one": "1 overdue assignment",
   "nav.overdue.many": "{count} overdue assignments",
 
@@ -358,6 +360,101 @@ export const en = {
   "workState.published": "Published",
   "workState.draft": "Draft",
   "workState.unknown": "Unknown status",
+
+  // ------------------------------------------------------------- feedback
+  // ADR-0035. The entry page deliberately offers TWO choices instead of opening
+  // the form: "report something" and "read my reports" are different intents,
+  // and the copy has to make that obvious in every language.
+
+  "feedback.title": "Feedback",
+  "feedback.subtitle":
+    "Tell us what is wrong, or follow what you have already reported.",
+  "feedback.createTitle": "Create a ticket",
+  "feedback.createText":
+    "Describe the problem or your suggestion. You will be able to read the answer here.",
+  "feedback.mineTitle": "My tickets",
+  "feedback.mineText":
+    "Follow the conversations you started, with every reply in one place.",
+  "feedback.newTitle": "New ticket",
+  "feedback.newLead":
+    "Your Google account is already known, so there are no name or e-mail fields here.",
+  "feedback.category": "Category",
+  "feedback.category.suggestion": "Suggestion",
+  "feedback.category.bug": "Bug",
+  "feedback.category.problem": "Problem",
+  "feedback.category.other": "Other",
+  "feedback.subject": "Subject",
+  "feedback.subjectPlaceholder": "Short summary, e.g. “Grades are not updating”",
+  "feedback.message": "Message",
+  "feedback.messagePlaceholder":
+    "Describe what happened. Markdown is supported — **bold**, `code`, lists.",
+  "feedback.attachments": "Attachments",
+  "feedback.attachmentsHint":
+    "Optional. Up to 3 files, 5 MB each (jpg, png, gif, pdf, txt).",
+  "feedback.addFile": "Add file",
+  "feedback.removeFile": "Remove {name}",
+  "feedback.submit": "Send ticket",
+  "feedback.submitting": "Sending…",
+  "feedback.created": "Your ticket has been sent.",
+  "feedback.reply": "Reply",
+  "feedback.replyPlaceholder": "Write your reply…",
+  "feedback.sendReply": "Send reply",
+  "feedback.sending": "Sending…",
+  "feedback.replied": "Your reply has been sent.",
+  "feedback.reopenedNotice":
+    "This ticket was resolved; your reply has reopened it.",
+  "feedback.listTitle": "My tickets",
+  "feedback.empty": "You have no tickets yet.",
+  "feedback.emptyHint": "Report a problem and the answer will appear here.",
+  "feedback.loading": "Loading tickets…",
+  "feedback.ticketNumber": "Ticket #{id}",
+  "feedback.status.new": "New",
+  "feedback.status.in_progress": "In progress",
+  "feedback.status.resolved": "Resolved",
+  "feedback.messagesCount": "{count} messages",
+  "feedback.subjectRequired": "Please enter a subject.",
+  "feedback.messageRequired": "Please describe the problem.",
+  "feedback.loadFailed": "Could not load the tickets.",
+  "feedback.notFound": "This ticket does not exist or is not yours.",
+  "feedback.downloadFile": "Download {name}",
+  "feedback.you": "You",
+  "feedback.supportBadge": "Support",
+
+  // --------------------------------------------------------------- admin
+  // Only ever rendered when the backend reports is_admin=true (ADR-0035).
+
+  "admin.title": "Administration",
+  "admin.dashboardTitle": "Feedback dashboard",
+  "admin.total": "Total",
+  "admin.backToAdmin": "Back to administration",
+  "admin.ticketListTitle": "All tickets",
+  "admin.filterStatus": "Status",
+  "admin.filterCategory": "Category",
+  "admin.filterAny": "Any",
+  "admin.searchPlaceholder": "Search subject or message…",
+  "admin.search": "Search",
+  "admin.clearFilters": "Clear filters",
+  "admin.empty": "No tickets match these filters.",
+  "admin.reporter": "Reporter",
+  "admin.loadFailed": "Could not load the tickets.",
+  "admin.replyTitle": "Answer",
+  "admin.displayName": "Name shown to the user",
+  "admin.displayNameHint":
+    "The user sees this name; your account stays recorded as the author.",
+  "admin.sendAnswer": "Send answer",
+  "admin.statusChanged": "Status updated.",
+  "admin.deleteTitle": "Delete this ticket permanently?",
+  "admin.deleteBody":
+    "This action cannot be undone. The ticket conversation and its attachments will be permanently deleted.",
+  "admin.deleteConfirm": "Delete permanently",
+  "admin.deleteCancel": "Cancel",
+  "admin.deleteButton": "Delete ticket",
+  "admin.deleted": "The ticket has been deleted.",
+  "admin.deleteFailed": "Could not delete the ticket.",
+  "admin.notAvailable": "This section is only available to administrators.",
+  "admin.notAvailableHint":
+    "Your account does not have administrator access. If that is unexpected, contact support.",
+  "admin.by": "by {name}",
 } as const;
 
 /** Every valid translation key, derived from the English dictionary. */

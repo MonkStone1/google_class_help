@@ -456,7 +456,17 @@ def test_every_cache_table_has_an_ownership_path():
     from database import Base
 
     auth_tables = {"users", "sessions", "oauth_tokens", "oauth_login_states"}
-    cache_tables = [t for t in Base.metadata.sorted_tables if t.name not in auth_tables]
+    # The feedback domain (ADR-0035) is user-scoped but is NOT part of the
+    # Classroom cache, and its ownership column is not always called user_id:
+    # a message is owned through its ticket (and names its real author in
+    # author_user_id), an attachment through its message. It is asserted by
+    # test_feedback_ownership_path below, with the same invariant.
+    feedback_tables = {"feedback_tickets", "ticket_messages", "ticket_attachments"}
+    cache_tables = [
+        t
+        for t in Base.metadata.sorted_tables
+        if t.name not in auth_tables and t.name not in feedback_tables
+    ]
     assert {table.name for table in cache_tables} == {
         "courses",
         "coursework",
@@ -483,6 +493,40 @@ def test_every_cache_table_has_an_ownership_path():
             )
             assert target_table in cache_names
             assert Base.metadata.tables[target_table].columns["user_id"].primary_key
+
+
+def test_feedback_ownership_path():
+    """The same invariant for the ticket domain (ADR-0035).
+
+    Every feedback table reaches ``users.id`` through an ownership FK with
+    ON DELETE CASCADE: a ticket directly (``user_id``), a message through both
+    its ticket and its real author (``author_user_id``), an attachment through
+    its message and ticket. Deleting an account therefore removes exactly its
+    own rows and nothing else.
+    """
+    import models as _models  # noqa: F401 - populate Base.metadata
+    from database import Base
+
+    cascades = {
+        "feedback_tickets": ("user_id",),
+        "ticket_messages": ("ticket_id", "author_user_id"),
+        "ticket_attachments": ("message_id", "ticket_id"),
+    }
+    for table_name, columns in cascades.items():
+        table = Base.metadata.tables[table_name]
+        for column_name in columns:
+            foreign_keys = list(table.columns[column_name].foreign_keys)
+            assert foreign_keys, f"{table_name}.{column_name} has no ownership FK"
+            for fk in foreign_keys:
+                assert fk.column.table.name in {"users", "feedback_tickets",
+                                               "ticket_messages"}
+                assert fk.ondelete == "CASCADE", (
+                    f"{table_name}.{column_name} must cascade on delete"
+                )
+    # The root of the chain is the users table itself.
+    assert Base.metadata.tables["feedback_tickets"].columns[
+        "user_id"
+    ].foreign_keys.pop().column.table.name == "users"
 
 
 def test_student_aggregates_do_not_join_across_users(hosted_client, db):

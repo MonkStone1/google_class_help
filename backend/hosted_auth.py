@@ -616,17 +616,22 @@ def hosted_status(user: User = Depends(get_current_user)) -> dict:
     Never any token material: only the local user id and the profile the
     UI renders, in the canonical ``user`` shape (§24). The flat
     ``user_name``/``user_email`` mirrors were removed in stage 7 (§26).
+
+    The ``user`` object is built by ``api._user_out`` — the SAME helper the
+    desktop status and ``/api/me`` use — so the admin flag (ADR-0035) is
+    computed by one function and cannot drift between the two surfaces.
     """
+    # Imported here, not at module level: api.py imports ownership, which is
+    # the module hosted_auth itself builds on (§32 desktop/hosted separation is
+    # about the desktop modules; the shared projection is the point here).
+    from api import _user_out
+
     return {
         "authenticated": True,
         "login_in_progress": False,
         "error": None,
         "auth_url": None,
-        "user": {
-            "id": user.id,
-            "name": user.display_name,
-            "email": user.email,
-        },
+        "user": _user_out(user).model_dump(),
     }
 
 

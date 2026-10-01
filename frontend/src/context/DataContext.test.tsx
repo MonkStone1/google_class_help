@@ -53,7 +53,7 @@ const AUTH: AuthStatus = {
   login_in_progress: false,
   error: null,
   auth_url: null,
-  user: { id: 1, name: "Test User", email: "test@example.com" },
+  user: { id: 1, name: "Test User", email: "test@example.com", is_admin: false },
 };
 
 const IDLE: AppStatus = {

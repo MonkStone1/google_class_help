@@ -10,5 +10,9 @@ cryptography>=42
 # schema migrations (database.py, alembic). Not imported by the desktop build.
 psycopg[binary]>=3.2
 alembic>=1.14
+# Ticket attachments (ADR-0035): FastAPI needs it to parse multipart/form-data,
+# which the feedback upload endpoints use. Desktop builds install it too — the
+# endpoints exist in both deployment modes (get_current_user abstracts over them).
+python-multipart>=0.0.18
 pystray>=0.19
 Pillow>=10.0

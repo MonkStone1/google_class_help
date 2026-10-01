@@ -8,14 +8,18 @@ from pydantic import BaseModel, Field
 class UserOut(BaseModel):
     """Identity of the authenticated user (migration stage 6, §24).
 
-    Exactly the three fields the frontend needs to render "signed in as".
-    No Google credential material, no tokens, no OAuth state: the local
-    ``users.id`` is the only identifier and it is the caller's own.
+    Exactly the fields the frontend needs to render "signed in as", plus the
+    single ``is_admin`` boolean of ADR-0035. That flag is computed by the
+    backend from the same membership test ``admin_auth.require_admin`` enforces,
+    so the UI can hide the admin surface — while the API answers 403 regardless
+    of what the UI decided. The administrator ADDRESSES are never part of this
+    model, so they cannot reach the browser bundle.
     """
 
     id: int
     name: str | None = None
     email: str | None = None
+    is_admin: bool = False
 
 
 class AuthStatus(BaseModel):

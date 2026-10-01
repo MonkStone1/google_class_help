@@ -5,6 +5,7 @@ import { Sidebar } from "./components/Sidebar.tsx";
 import { TopBar } from "./components/TopBar.tsx";
 import { BootSplash } from "./components/BootSplash.tsx";
 import { Landing } from "./components/Landing.tsx";
+import { RequireAdmin } from "./components/RequireAdmin.tsx";
 import { SignIn } from "./components/SignIn.tsx";
 import { SyncToaster } from "./components/SyncToaster.tsx";
 import { Toaster } from "./components/Toaster.tsx";
@@ -12,10 +13,17 @@ import { DataProvider, useAuth, useSync } from "./context/DataContext.tsx";
 import { SettingsProvider } from "./context/SettingsContext.tsx";
 import { DashboardBoundary } from "./components/ErrorBoundary.tsx";
 import { useI18n } from "./i18n.ts";
+import { AdminDashboard } from "./pages/AdminDashboard.tsx";
+import { AdminFeedback } from "./pages/AdminFeedback.tsx";
+import { AdminFeedbackTicket } from "./pages/AdminFeedbackTicket.tsx";
 import { Assignments } from "./pages/Assignments.tsx";
 import { AssignmentDetail } from "./pages/AssignmentDetail.tsx";
 import { CalendarPage } from "./pages/CalendarPage.tsx";
 import { Dashboard } from "./pages/Dashboard.tsx";
+import { FeedbackHome } from "./pages/FeedbackHome.tsx";
+import { FeedbackNew } from "./pages/FeedbackNew.tsx";
+import { FeedbackTicket } from "./pages/FeedbackTicket.tsx";
+import { FeedbackTickets } from "./pages/FeedbackTickets.tsx";
 import { Grades } from "./pages/Grades.tsx";
 import { Settings } from "./pages/Settings.tsx";
 import { StudentGrades } from "./pages/StudentGrades.tsx";
@@ -132,6 +140,41 @@ function AppShell() {
               <Route path="/assignments" element={<Assignments />} />
               <Route path="/grades" element={<Grades />} />
               <Route path="/calendar" element={<CalendarPage />} />
+              {/* Feedback (ADR-0035): the user surface is open to any signed-in
+                  account; identity comes from the session, never the form. */}
+              <Route path="/feedback" element={<FeedbackHome />} />
+              <Route path="/feedback/new" element={<FeedbackNew />} />
+              <Route path="/feedback/tickets" element={<FeedbackTickets />} />
+              <Route
+                path="/feedback/tickets/:id"
+                element={<FeedbackTicket />}
+              />
+              {/* The admin routes are wrapped in RequireAdmin. That guard is UX
+                  only — the backend's require_admin answers 403 regardless. */}
+              <Route
+                path="/admin"
+                element={
+                  <RequireAdmin>
+                    <AdminDashboard />
+                  </RequireAdmin>
+                }
+              />
+              <Route
+                path="/admin/feedback"
+                element={
+                  <RequireAdmin>
+                    <AdminFeedback />
+                  </RequireAdmin>
+                }
+              />
+              <Route
+                path="/admin/feedback/:id"
+                element={
+                  <RequireAdmin>
+                    <AdminFeedbackTicket />
+                  </RequireAdmin>
+                }
+              />
               <Route path="/settings" element={<Settings />} />
             </Routes>
           </DashboardBoundary>

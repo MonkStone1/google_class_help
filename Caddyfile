@@ -15,10 +15,13 @@
 }
 
 :80 {
-	# DDoS plan §13: the application has no upload feature; cap request bodies
-	# at 2 MB so a huge POST cannot occupy the single vCPU.
+	# DDoS plan §13 + ADR-0035: the only upload surface of the application is a
+	# ticket attachment. The worst legitimate body is 10 MB of files plus the
+	# form fields (GC_DASHBOARD_FEEDBACK_MAX_TOTAL_BYTES), so the cap is 16 MB —
+	# comfortably above it, and still far below "a huge POST occupies the single
+	# vCPU for the length of a transfer".
 	request_body {
-		max_size 2MB
+		max_size 16MB
 	}
 
 	# The app itself is the only backend: FastAPI serves /api and the built

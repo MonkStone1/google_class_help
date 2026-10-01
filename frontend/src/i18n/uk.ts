@@ -16,6 +16,8 @@ export const uk = {
   "nav.grades": "Оцінки",
   "nav.calendar": "Календар",
   "nav.settings": "Налаштування",
+  "nav.feedback": "Зворотний зв'язок",
+  "nav.admin": "Адміністрування",
   "nav.overdue.one": "1 прострочене завдання",
   "nav.overdue.many": "{count} прострочених завдань",
 
@@ -359,4 +361,99 @@ export const uk = {
   "workState.published": "Опубліковано",
   "workState.draft": "Чернетка",
   "workState.unknown": "Невідомий статус",
+
+  // -------------------------------------------------------------- фідбек
+  // ADR-0035. На точці входу дві окремі дії: «повідомити про проблему» і
+  // «прочитати свої звернення» — це різні наміри, і текст має робити це
+  // очевидним у кожній мові.
+
+  "feedback.title": "Зворотний зв'язок",
+  "feedback.subtitle":
+    "Повідомте про проблему або стежте за тим, що вже повідомили.",
+  "feedback.createTitle": "Створити звернення",
+  "feedback.createText":
+    "Опишіть проблему або запропонуйте покращення. Відповідь з'явиться тут.",
+  "feedback.mineTitle": "Мої звернення",
+  "feedback.mineText":
+    "Стежте за розмовами, які ви почали, з усіма відповідями в одному місці.",
+  "feedback.newTitle": "Нове звернення",
+  "feedback.newLead":
+    "Ваш обліковий запис Google уже відомий, тому полів для імені та пошти тут немає.",
+  "feedback.category": "Категорія",
+  "feedback.category.suggestion": "Пропозиція",
+  "feedback.category.bug": "Помилка",
+  "feedback.category.problem": "Проблема",
+  "feedback.category.other": "Інше",
+  "feedback.subject": "Тема",
+  "feedback.subjectPlaceholder": "Коротко, наприклад «Оцінки не оновлюються»",
+  "feedback.message": "Повідомлення",
+  "feedback.messagePlaceholder":
+    "Опишіть, що сталося. Підтримується Markdown — **жирний**, `код`, списки.",
+  "feedback.attachments": "Вкладення",
+  "feedback.attachmentsHint":
+    "Необов'язково. До 3 файлів по 5 МБ (jpg, png, gif, pdf, txt).",
+  "feedback.addFile": "Додати файл",
+  "feedback.removeFile": "Прибрати {name}",
+  "feedback.submit": "Надіслати звернення",
+  "feedback.submitting": "Надсилаємо…",
+  "feedback.created": "Звернення надіслано.",
+  "feedback.reply": "Відповісти",
+  "feedback.replyPlaceholder": "Напишіть відповідь…",
+  "feedback.sendReply": "Надіслати відповідь",
+  "feedback.sending": "Надсилаємо…",
+  "feedback.replied": "Відповідь надіслано.",
+  "feedback.reopenedNotice":
+    "Звернення було закрите; ваша відповідь відкрила його знову.",
+  "feedback.listTitle": "Мої звернення",
+  "feedback.empty": "Звернень ще немає.",
+  "feedback.emptyHint": "Повідомте про проблему — відповідь з'явиться тут.",
+  "feedback.loading": "Завантаження звернень…",
+  "feedback.ticketNumber": "Звернення #{id}",
+  "feedback.status.new": "Нове",
+  "feedback.status.in_progress": "У роботі",
+  "feedback.status.resolved": "Вирішено",
+  "feedback.messagesCount": "повідомлень: {count}",
+  "feedback.subjectRequired": "Введіть тему.",
+  "feedback.messageRequired": "Опишіть проблему.",
+  "feedback.loadFailed": "Не вдалося завантажити звернення.",
+  "feedback.notFound": "Такого звернення не існує або воно не ваше.",
+  "feedback.downloadFile": "Завантажити {name}",
+  "feedback.you": "Ви",
+  "feedback.supportBadge": "Підтримка",
+
+  // ----------------------------------------------------------------- адмін
+  // Показується лише тоді, коли бекенд повідомив is_admin=true (ADR-0035).
+
+  "admin.title": "Адміністрування",
+  "admin.dashboardTitle": "Панель звернень",
+  "admin.total": "Усього",
+  "admin.backToAdmin": "До адміністрування",
+  "admin.ticketListTitle": "Усі звернення",
+  "admin.filterStatus": "Статус",
+  "admin.filterCategory": "Категорія",
+  "admin.filterAny": "Будь-який",
+  "admin.searchPlaceholder": "Пошук за темою або повідомленням…",
+  "admin.search": "Знайти",
+  "admin.clearFilters": "Очистити фільтри",
+  "admin.empty": "За цими фільтрами звернень немає.",
+  "admin.reporter": "Автор",
+  "admin.loadFailed": "Не вдалося завантажити звернення.",
+  "admin.replyTitle": "Відповідь",
+  "admin.displayName": "Ім'я, яке бачить користувач",
+  "admin.displayNameHint":
+    "Користувач бачить це ім'я, але автором лишається ваш обліковий запис.",
+  "admin.sendAnswer": "Надіслати відповідь",
+  "admin.statusChanged": "Статус оновлено.",
+  "admin.deleteTitle": "Видалити звернення назавжди?",
+  "admin.deleteBody":
+    "Цю дію не можна скасувати. Розмова та її вкладення буде видалено остаточно.",
+  "admin.deleteConfirm": "Видалити назавжди",
+  "admin.deleteCancel": "Скасувати",
+  "admin.deleteButton": "Видалити звернення",
+  "admin.deleted": "Звернення видалено.",
+  "admin.deleteFailed": "Не вдалося видалити звернення.",
+  "admin.notAvailable": "Цей розділ доступний лише адміністраторам.",
+  "admin.notAvailableHint":
+    "У вашого облікового запису немає прав адміністратора. Якщо це неочікувано — напишіть у підтримку.",
+  "admin.by": "від {name}",
 } satisfies Record<I18nKey, string>;

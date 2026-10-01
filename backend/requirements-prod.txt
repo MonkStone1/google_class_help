@@ -14,3 +14,6 @@ google-auth-oauthlib==1.4.1
 cryptography==50.0.1
 psycopg[binary]==3.3.6
 alembic==1.20.0
+# Ticket attachments (ADR-0035): multipart/form-data parsing. Pinned like every
+# other runtime dependency of the image.
+python-multipart==0.0.32

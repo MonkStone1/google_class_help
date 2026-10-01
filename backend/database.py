@@ -123,6 +123,11 @@ def _import_models() -> None:
         User,
         UserSession,
     )
+    from models_feedback import (  # noqa: F401
+        FeedbackTicket,
+        TicketAttachment,
+        TicketMessage,
+    )
 
 
 def _upgrade_via_alembic() -> None:

@@ -8,6 +8,7 @@ extend-select = ["F811"]
 
 [lint.isort]
 known-first-party = [
+    "admin_auth",
     "api",
     "auth",
     "background_sync",
@@ -15,6 +16,10 @@ known-first-party = [
     "classroom_api",
     "config",
     "database",
+    "feedback_admin_api",
+    "feedback_api",
+    "feedback_attachments",
+    "feedback_service",
     "grading",
     "hosted_auth",
     "loadtest_report",
@@ -25,11 +30,13 @@ known-first-party = [
     "metrics",
     "models",
     "models_auth",
+    "models_feedback",
     "ownership",
     "path_config",
     "proxy",
     "rate_limit",
     "schemas",
+    "schemas_feedback",
     "sync",
     "sync_scheduler",
     "sync_service",
