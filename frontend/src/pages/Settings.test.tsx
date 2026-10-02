@@ -173,13 +173,61 @@ describe("Settings cache clearing", () => {
   });
 });
 
+describe("Settings donations", () => {
+  beforeEach(() => {
+    toastMock.success.mockReset();
+    toastMock.error.mockReset();
+    useAuth.mockReset();
+    useSync.mockReset();
+    useAuth.mockReturnValue({
+      auth: null,
+      sessionRequired: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+    });
+    useSync.mockReturnValue({
+      status: null,
+      loading: false,
+      syncing: false,
+      error: null,
+      syncNow: vi.fn().mockResolvedValue(null),
+      refresh: vi.fn(),
+    });
+  });
+
+  it("keeps the support block collapsed until it is opened", () => {
+    // ADR-0037: the block sits between Appearance and Local data, so leaving
+    // it expanded would push the local-data controls — the reason people open
+    // Settings — off the screen.
+    renderSettings();
+
+    const toggle = screen.getByRole("button", { name: "Support the project" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByText(
+        "This money goes to keeping the project running and developing it.",
+      ),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    expect(
+      screen.getByText(
+        "This money goes to keeping the project running and developing it.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Enlarge the PrivatBank QR code" }),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("Settings sign-out", () => {
   const SIGNED_IN: AuthStatus = {
     authenticated: true,
     login_in_progress: false,
     error: null,
     auth_url: null,
-    user: { id: 1, name: "Test User", email: "test@example.com" },
+    user: { id: 1, name: "Test User", email: "test@example.com", is_admin: false, is_super_admin: false },
   };
 
   /** The trigger and the confirmation share one label, so pick the last. */

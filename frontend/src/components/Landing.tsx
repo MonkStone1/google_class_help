@@ -203,6 +203,26 @@ export function Landing() {
           </a>
         </section>
 
+        {/*
+          NO donation section here (п.9).
+
+          ADR-0037 chose TWO entry points for `DonateCards` — this public
+          section and the collapsible card in Settings — and the test in
+          `Landing.test.tsx` pinned the anonymous visitor as its audience. That is
+          deliberately reversed: an unsent-in visitor arrives with no account, has
+          never seen the product work, and meets a page whose whole job is to
+          explain what the site is and get them through Google sign-in. A
+          payment QR pair in the middle of that flow interrupts the one action the
+          page exists to offer, and it asks for money from someone who cannot yet
+          judge whether the thing is worth supporting.
+
+          Support is therefore asked of people who already use the product, in
+          `/settings`, where it is COLLAPSED by default and nobody's sign-in
+          flow is interrupted (`Settings.tsx`). The component, the `donate.*`
+          dictionary keys, the CSS and the artwork are all unchanged — this is
+          the removal of one entry point, not of the feature. See ADR-0038.
+        */}
+
         <section className="landing-cta">
           <h2>{t("landing.ctaTitle")}</h2>
           <p className="landing-body">{t("landing.ctaText")}</p>

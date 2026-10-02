@@ -24,7 +24,9 @@ BACKEND_DIR = Path(__file__).resolve().parents[1] / "backend"
 sys.path.insert(0, str(BACKEND_DIR))
 
 import models  # noqa: F401  (register cache tables on Base.metadata)
+import models_admin  # noqa: F401  (register the admins table on Base.metadata)
 import models_auth  # noqa: F401  (register auth tables on Base.metadata)
+import models_feedback  # noqa: F401  (register ticket tables on Base.metadata)
 from database import Base
 
 config = context.config

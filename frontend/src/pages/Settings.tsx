@@ -9,6 +9,8 @@ import { toLocalDate } from "../dates.ts";
 import { useI18n, LANGUAGE_OPTIONS } from "../i18n.ts";
 import type { I18nKey } from "../i18n.ts";
 import type { AppSettings, ThemeMode } from "../types.ts";
+import { CollapsibleCard } from "../components/CollapsibleCard.tsx";
+import { DonateCards } from "../components/DonateCards.tsx";
 
 const THEME_OPTIONS: Array<{ mode: ThemeMode; labelKey: I18nKey }> = [
   { mode: "light", labelKey: "settings.light" },
@@ -308,6 +310,15 @@ export function Settings() {
           ))}
         </div>
       </section>
+
+      {/* Donations (ADR-0037). COLLAPSED by default: a support block is not a
+          setting, and leaving it open would push the local-data controls — the
+          reason most people open this page — below the fold. The same
+          `DonateCards` block the public landing renders, so the wording and the
+          banks cannot differ between the two surfaces. */}
+      <CollapsibleCard title={t("donate.title")}>
+        <DonateCards />
+      </CollapsibleCard>
 
       <section className="card settings-card">
         <h2>{t("settings.localData")}</h2>

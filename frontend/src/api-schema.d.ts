@@ -452,6 +452,341 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/feedback/tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List My Tickets
+         * @description The caller's OWN tickets, newest activity first.
+         *
+         *     Sorted by ``updated_at`` (bumped by every message), not by creation date: a
+         *     ticket somebody just answered is the one being looked for.
+         */
+        get: operations["list_my_tickets_api_feedback_tickets_get"];
+        put?: never;
+        /**
+         * Create Ticket
+         * @description Open a ticket: category, subject, the first Markdown message, files.
+         *
+         *     201 with the created ticket and its conversation, so the UI can navigate
+         *     straight to the thread. The rate limit is checked BEFORE the body is read,
+         *     so a spam loop never uploads a megabyte.
+         */
+        post: operations["create_ticket_api_feedback_tickets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/feedback/tickets/{ticket_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get My Ticket
+         * @description One own ticket with its whole conversation, or 404.
+         */
+        get: operations["get_my_ticket_api_feedback_tickets__ticket_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/feedback/tickets/{ticket_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reply To Ticket
+         * @description Reply to an own ticket.
+         *
+         *     The body carries ``body_markdown`` only. ``author_type``,
+         *     ``author_user_id``, ``author_email`` and ``display_name`` are not part of the
+         *     model, so sending them changes nothing — a user cannot post under somebody
+         *     else's name (ADR-0035).
+         *
+         *     Replying to a ``resolved`` ticket reopens it (``in_progress``), which the
+         *     UI shows immediately.
+         */
+        post: operations["reply_to_ticket_api_feedback_tickets__ticket_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/feedback/attachments/{attachment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Attachment
+         * @description Download an attachment of a ticket the caller OWNS (or any, as an admin).
+         *
+         *     The ownership check is a single joined statement: the attachment's ticket
+         *     must belong to the caller. Somebody else's file is 404 — indistinguishable
+         *     from a missing one. Administrators may read any attachment, because support
+         *     has to see what was sent; the fallback path is still 404 for a missing row.
+         */
+        get: operations["download_attachment_api_feedback_attachments__attachment_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/feedback/tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tickets
+         * @description Every ticket, filtered by status/category/search, paginated.
+         *
+         *     ``q`` matches a subject or a message body as a substring (case-insensitive
+         *     through ``ILIKE``; SQLite's ``like`` is case-insensitive for ASCII, which is
+         *     what the tests assert). The filters are ANDed and the ordering is the same
+         *     "newest activity first" as everywhere else, so the list stays stable while
+         *     somebody works on it.
+         */
+        get: operations["list_tickets_api_admin_feedback_tickets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/feedback/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Feedback Stats
+         * @description Dashboard counters: total and the per-status breakdown.
+         *
+         *     One grouped query (feedback_service.counts_by_status) rather than four
+         *     counts, and no ordering — the dashboard wants numbers, not rows.
+         */
+        get: operations["feedback_stats_api_admin_feedback_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/feedback/tickets/{ticket_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Ticket
+         * @description Any ticket with its full conversation and the real author identities.
+         *
+         *     Not filtered by the caller — an administrator is supposed to see every
+         *     ticket. The dependency above already answered 401/403.
+         */
+        get: operations["read_ticket_api_admin_feedback_tickets__ticket_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Ticket
+         * @description Delete a ticket permanently, with its conversation and its files.
+         *
+         *     Real deletion, no ``deleted_at`` and no restore (ADR-0035): the row goes,
+         *     ``ON DELETE CASCADE`` takes the messages and attachment rows with it, and the
+         *     files are unlinked from the volume. 204 on success, 404 for a ticket that
+         *     does not exist — afterwards the id answers 404 for the owner as well, and
+         *     the ticket is gone from a fresh list.
+         *
+         *     A file that cannot be unlinked does NOT fail the request: the row deletion
+         *     is the contract, and the filesystem cleanup is best effort.
+         */
+        delete: operations["delete_ticket_api_admin_feedback_tickets__ticket_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Set Status
+         * @description Change the ticket status — and ONLY the status.
+         *
+         *     The body is ``{"status": "resolved"}``; anything else is ignored by the
+         *     model, so this endpoint cannot become a way to rewrite a message, an author
+         *     or an owner. An unknown status is 422 (the closed set).
+         */
+        patch: operations["set_status_api_admin_feedback_tickets__ticket_id__patch"];
+        trace?: never;
+    };
+    "/api/admin/feedback/tickets/{ticket_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reply To Ticket
+         * @description Answer a ticket under a chosen public display name.
+         *
+         *     The stored identity is split in two, and this is the whole point of the
+         *     feature:
+         *
+         *     - ``author_user_id`` / ``author_email`` = the AUTHENTICATED administrator,
+         *       taken from the session — never from the request, so the audit trail stays
+         *       correct;
+         *     - ``display_name`` = the public label the ticket owner sees (default
+         *       ``GoogleClassHelp Support``, capped at 100 characters). Two administrators
+         *       may therefore answer under different names while both are recorded
+         *       correctly internally.
+         */
+        post: operations["reply_to_ticket_api_admin_feedback_tickets__ticket_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/admins/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Admins
+         * @description Every normal administrator, newest first.
+         *
+         *     The Super Admin is absent by construction (their identity lives only in
+         *     ``SUPER_ADMIN_EMAIL``), so the list can never contain the one account that
+         *     manages it. ``admin`` is the guard's return value, not an input.
+         *
+         *     Registered under BOTH ``""`` and ``"/"`` on purpose: with only ``"/"`` the
+         *     un-slashed ``/api/admin/admins`` matches no route, misses the 403 below and
+         *     falls through to the SPA fallback — which answers an unauthorized probe with
+         *     200 and an HTML shell instead of the contract's 403.
+         */
+        get: operations["list_admins_api_admin_admins__get"];
+        put?: never;
+        /**
+         * Create Admin
+         * @description Add one administrator by e-mail; 409 on a duplicate or on the Super Admin.
+         *
+         *     ``payload.email`` is already normalized by the model's validator, so the
+         *     duplicate comparison and the stored value are the same spelling.
+         *
+         *     The duplicate is checked twice on purpose: the SELECT answers the normal
+         *     case with a clean 409, and the unique index answers the race (two requests
+         *     passing the SELECT at the same moment) that a SELECT alone cannot. Failures
+         *     never widen access — both paths refuse.
+         */
+        post: operations["create_admin_api_admin_admins__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/admins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Admins
+         * @description Every normal administrator, newest first.
+         *
+         *     The Super Admin is absent by construction (their identity lives only in
+         *     ``SUPER_ADMIN_EMAIL``), so the list can never contain the one account that
+         *     manages it. ``admin`` is the guard's return value, not an input.
+         *
+         *     Registered under BOTH ``""`` and ``"/"`` on purpose: with only ``"/"`` the
+         *     un-slashed ``/api/admin/admins`` matches no route, misses the 403 below and
+         *     falls through to the SPA fallback — which answers an unauthorized probe with
+         *     200 and an HTML shell instead of the contract's 403.
+         */
+        get: operations["list_admins_api_admin_admins_get"];
+        put?: never;
+        /**
+         * Create Admin
+         * @description Add one administrator by e-mail; 409 on a duplicate or on the Super Admin.
+         *
+         *     ``payload.email`` is already normalized by the model's validator, so the
+         *     duplicate comparison and the stored value are the same spelling.
+         *
+         *     The duplicate is checked twice on purpose: the SELECT answers the normal
+         *     case with a clean 409, and the unique index answers the race (two requests
+         *     passing the SELECT at the same moment) that a SELECT alone cannot. Failures
+         *     never widen access — both paths refuse.
+         */
+        post: operations["create_admin_api_admin_admins_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/admins/{admin_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Admin
+         * @description Remove one administrator; 404 when the row is gone, 409 for the Super Admin.
+         *
+         *     The 409 branch is reachable only if ``SUPER_ADMIN_EMAIL`` was changed AFTER
+         *     the row was inserted — the POST endpoint refuses to create such a row in the
+         *     first place. It is kept because deleting the one account that manages the
+         *     registry would be unrecoverable through the UI.
+         */
+        delete: operations["delete_admin_api_admin_admins__admin_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -497,6 +832,146 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AdminCreateIn
+         * @description The add-administrator form: an e-mail and nothing else.
+         *
+         *     Identity is not a request field — this model creates a ROW, it does not
+         *     authenticate anybody. Pydantic's default ``extra="ignore"`` stays, so a
+         *     forged ``name`` / ``id`` / ``is_super_admin`` field is silently dropped
+         *     rather than honoured.
+         */
+        AdminCreateIn: {
+            /** Email */
+            email: string;
+        };
+        /**
+         * AdminMessageOut
+         * @description A message with the internal identity an administrator may read.
+         */
+        AdminMessageOut: {
+            /** Id */
+            id: number;
+            /** Author Type */
+            author_type: string;
+            /** Display Name */
+            display_name: string;
+            /** Body Markdown */
+            body_markdown: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Attachments */
+            attachments?: components["schemas"]["AttachmentOut"][];
+            /** Author User Id */
+            author_user_id: number;
+            /** Author Email */
+            author_email?: string | null;
+        };
+        /**
+         * AdminOut
+         * @description One row of the administrator registry, as the Super Admin sees it.
+         *
+         *     ``name`` is DERIVED from ``email`` by the backend
+         *     (``admin_auth.display_name_from_email``): the database stores the address
+         *     only, so the label can never drift from the identity it describes.
+         */
+        AdminOut: {
+            /** Id */
+            id: number;
+            /** Email */
+            email: string;
+            /** Name */
+            name: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * AdminTicketDetailOut
+         * @description Any ticket with the full conversation and the real author identities.
+         */
+        AdminTicketDetailOut: {
+            /** Id */
+            id: number;
+            /** Category */
+            category: string;
+            /** Subject */
+            subject: string;
+            /** Status */
+            status: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** User Id */
+            user_id: number;
+            /** User Name */
+            user_name?: string | null;
+            /** User Email */
+            user_email?: string | null;
+            /** Messages */
+            messages?: components["schemas"]["AdminMessageOut"][];
+        };
+        /**
+         * AdminTicketListOut
+         * @description A page of the admin list plus the total for the pagination control.
+         */
+        AdminTicketListOut: {
+            /** Items */
+            items?: components["schemas"]["AdminTicketOut"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /**
+         * AdminTicketOut
+         * @description A ticket row for the admin list, with its owner.
+         */
+        AdminTicketOut: {
+            /** Id */
+            id: number;
+            /** Category */
+            category: string;
+            /** Subject */
+            subject: string;
+            /** Status */
+            status: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Message Count
+             * @default 0
+             */
+            message_count: number;
+            /** User Id */
+            user_id: number;
+            /** User Name */
+            user_name?: string | null;
+            /** User Email */
+            user_email?: string | null;
+        };
         /** AssignmentDetailOut */
         AssignmentDetailOut: {
             /** Id */
@@ -664,6 +1139,25 @@ export interface components {
             average_percent?: number | null;
         };
         /**
+         * AttachmentOut
+         * @description Metadata of one uploaded file; the bytes come from the download endpoint.
+         */
+        AttachmentOut: {
+            /** Id */
+            id: number;
+            /** Original Name */
+            original_name: string;
+            /** Content Type */
+            content_type: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
          * AuthStatus
          * @description Auth state of THIS browser's application session (§24).
          *
@@ -759,6 +1253,20 @@ export interface components {
             /** Average Grade */
             average_grade?: number | null;
         };
+        /**
+         * FeedbackStatsOut
+         * @description Dashboard counters: the totals per status plus the closed/open split.
+         */
+        FeedbackStatsOut: {
+            /** Total */
+            total: number;
+            /** New */
+            new: number;
+            /** In Progress */
+            in_progress: number;
+            /** Resolved */
+            resolved: number;
+        };
         /** GradeColumn */
         GradeColumn: {
             /** Assignment Id */
@@ -800,6 +1308,30 @@ export interface components {
             title?: string | null;
             /** Url */
             url?: string | null;
+        };
+        /**
+         * MessageOut
+         * @description One conversation message as a regular user may see it.
+         *
+         *     No ``author_user_id`` and no ``author_email``: a regular user sees the
+         *     PUBLIC byline of the conversation and nothing else.
+         */
+        MessageOut: {
+            /** Id */
+            id: number;
+            /** Author Type */
+            author_type: string;
+            /** Display Name */
+            display_name: string;
+            /** Body Markdown */
+            body_markdown: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Attachments */
+            attachments?: components["schemas"]["AttachmentOut"][];
         };
         /** StudentGradeItem */
         StudentGradeItem: {
@@ -1092,12 +1624,73 @@ export interface components {
             last_sync?: string | null;
         };
         /**
+         * TicketDetailOut
+         * @description One ticket with its whole conversation, as its OWNER sees it.
+         */
+        TicketDetailOut: {
+            /** Id */
+            id: number;
+            /** Category */
+            category: string;
+            /** Subject */
+            subject: string;
+            /** Status */
+            status: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Messages */
+            messages?: components["schemas"]["MessageOut"][];
+        };
+        /**
+         * TicketOut
+         * @description One ticket in a list (no conversation).
+         */
+        TicketOut: {
+            /** Id */
+            id: number;
+            /** Category */
+            category: string;
+            /** Subject */
+            subject: string;
+            /** Status */
+            status: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Message Count
+             * @default 0
+             */
+            message_count: number;
+        };
+        /**
          * UserOut
          * @description Identity of the authenticated user (migration stage 6, §24).
          *
-         *     Exactly the three fields the frontend needs to render "signed in as".
-         *     No Google credential material, no tokens, no OAuth state: the local
-         *     ``users.id`` is the only identifier and it is the caller's own.
+         *     Exactly the fields the frontend needs to render "signed in as", plus the two
+         *     role BOOLEANS of ADR-0035/ADR-0036. Those flags are computed by the backend
+         *     from the same ``admin_auth.resolve_role`` call ``require_admin`` and
+         *     ``require_super_admin`` enforce, so the UI can hide the admin surfaces —
+         *     while the API answers 403/409 regardless of what the UI decided.
+         *
+         *     Neither the Super Admin ADDRESS nor the administrator list is part of this
+         *     model: the frontend learns two booleans and nothing else, so the
+         *     configuration cannot reach the browser bundle.
          */
         UserOut: {
             /** Id */
@@ -1106,6 +1699,16 @@ export interface components {
             name?: string | null;
             /** Email */
             email?: string | null;
+            /**
+             * Is Admin
+             * @default false
+             */
+            is_admin: boolean;
+            /**
+             * Is Super Admin
+             * @default false
+             */
+            is_super_admin: boolean;
         };
         /** ValidationError */
         ValidationError: {
@@ -1757,6 +2360,451 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["StudentGradesOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_my_tickets_api_feedback_tickets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketOut"][];
+                };
+            };
+        };
+    };
+    create_ticket_api_feedback_tickets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketDetailOut"];
+                };
+            };
+        };
+    };
+    get_my_ticket_api_feedback_tickets__ticket_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reply_to_ticket_api_feedback_tickets__ticket_id__messages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_attachment_api_feedback_attachments__attachment_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attachment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tickets_api_admin_feedback_tickets_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                category?: string | null;
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminTicketListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    feedback_stats_api_admin_feedback_stats_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackStatsOut"];
+                };
+            };
+        };
+    };
+    read_ticket_api_admin_feedback_tickets__ticket_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminTicketDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_ticket_api_admin_feedback_tickets__ticket_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_status_api_admin_feedback_tickets__ticket_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminTicketDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reply_to_ticket_api_admin_feedback_tickets__ticket_id__messages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminTicketDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_admins_api_admin_admins__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOut"][];
+                };
+            };
+        };
+    };
+    create_admin_api_admin_admins__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_admins_api_admin_admins_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOut"][];
+                };
+            };
+        };
+    };
+    create_admin_api_admin_admins_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_admin_api_admin_admins__admin_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                admin_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

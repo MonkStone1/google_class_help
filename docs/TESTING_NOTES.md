@@ -5,6 +5,118 @@
 
 Дата первого выпуска: 2026-09-21 (этап 6 миграции).
 
+**Последний полностью зелёный прогон: 2026-10-01** — `python -m pytest`
+**Last fully green run: 2026-10-02** (ADR-0036) - `python -m pytest` (476 passed), `cd frontend && npm run lint`, `npx vitest run` (177 passed, 28 files), `npm run build`, `ruff check` and `pyright` - 0 errors.
+тестов), `npm run build`. `ruff check` и `pyright` — 0 ошибок.
+
+---
+
+## 8. Тикеты обратной связи (ADR-0035): новые файлы тестов
+
+| Файл | Что проверяет |
+| --- | --- |
+| `tests/feedback_helpers.py` | общие хелперы (не тест): пользователи, сессии, `as_admin`, `SAFE_HEADERS` |
+| `tests/test_feedback_tickets.py` | пользовательская поверхность: 401 анонимно, изоляция 404, неподделка личности, «ответ открывает решённый тикет», валидация, 429 |
+| `tests/test_feedback_admin_auth.py` | админ-поверхность и разбор `ADMIN_EMAILS`: 403 всем, фильтры/поиск, два админа под разными именами, смена статуса, удаление |
+| `tests/test_feedback_attachments.py` | вложения: снайфинг типа, active content, 413/422, обход каталога, авторизованная раздача, снятие файлов |
+| `tests/test_admin_roles.py` | roles and configuration (ADR-0036): the three roles, case and whitespace, fail-closed `SUPER_ADMIN_EMAIL`, the desktop local owner is never an admin, `ADMIN_EMAILS` grants nothing any more, the derived name, one Session per request, the Super Admin address never reaches a response, the registry never answers with the SPA shell |
+| `tests/test_admins_management_api.py` | `GET/POST/DELETE /api/admin/admins`: 401 anonymous, 403 for a user and for a plain administrator, 409 duplicate/Super Admin, 422 malformed address, 404 missing row, access revoked immediately, no escalation from a request field |
+
+### Грабли, на которые уже наступали
+
+- **A role is granted by a ROW or by a patched config value, never by an env re-read.** Ordinary administrators are `admins` rows: use `feedback_helpers.grant_admin(db, ...)`, which NORMALIZES the address and **COMMITS**. The commit is not optional - the API under test opens its own SQLite connection, and an uncommitted row leaves it blocked or failing with `database is locked` (the same lesson as the `owner_id` fixture). The Super Admin is `config.SUPER_ADMIN_EMAIL`, parsed once at import time, so a test patches that already-parsed value with `as_super_admin(monkeypatch, email)` and never `importlib.reload`s `config` - reloading leaves the module mutated for every later test unless you also `monkeypatch.undo()` and reload again.
+- **`admin_auth` must read `config.SUPER_ADMIN_EMAIL` through the MODULE** (`config.SUPER_ADMIN_EMAIL`), never via `from config import ...`. A `from` binding is captured at import time, so `monkeypatch.setattr(config, ...)` in a test would silently not affect the guard - and the Super Admin would stop being one for the whole request.
+- **An `/api/...` path with no trailing slash that matches no route falls through to the SPA static mount** and answers 200 with `index.html`, skipping every guard. Both `/api/admin/admins` and `/api/admin/admins/` are registered for that reason; the regression test asserts the refusal is a 403 and not a page.
+
+- **`request.form()` отдаёт `starlette.datastructures.UploadFile`, а не
+  `fastapi.UploadFile`** (последний — подкласс). Проверка `isinstance` против
+  fastapi-имени не сойдётся **никогда**, и загрузка молча пропадёт. Импортируйте
+  `UploadFile` из `starlette.datastructures` в коде, работающем с формой.
+- **`list[UploadFile]` инвариантен по элементу.** Если функция объявлена с
+  `list[fastapi.UploadFile]`, а вызов передаёт `list[starlette.UploadFile]` —
+  pyright ругается, и это не педантизм. Используйте `Sequence[UploadFile]`.
+- **`pydantic.ValidationError` ловится отдельно от `ValueError`.** Enum-валидация
+  (`FeedbackStatus("closed")`) бросает `ValueError`, а модель — `ValidationError`;
+  `except Exception` здесь маскировал бы настоящие ошибки.
+- **Модели в этом проекте без `relationship`.** `ticket.messages[0]` не
+  существует — пишите `db.query(TicketMessage).filter_by(ticket_id=...)`.
+- **Тест про 413 сравнивает содержимое каталога «до/после», а не «пусто».**
+  `DATA_DIR` общий на всю сессию pytest, и каталог тикета `1` может содержать
+  файлы, оставшиеся от другого теста.
+- **Лимиты monkeypatch-ятся на модуле-потребителе**, а не на `config`:
+  `feedback_service.FEEDBACK_TICKETS_PER_HOUR`, `feedback_attachments.
+  FEEDBACK_MAX_ATTACHMENT_BYTES` — то, что endpoint реально читает.
+  `ByteBudget` читает лимит в конструкторе специально ради этого.
+
+### Форматирование
+
+`ruff format` и `prettier --check` **не входят** в проверку §16, и репозиторий
+до фидбека им не соответствовал (`backend/sync_store.py`,
+`tests/test_sync_restart.py` и др. не отформатированы). Форматируйте только
+**свои** новые файлы — иначе diff распухнет чужими правками.
+
+---
+
+## 9. Pylance в VS Code против `npx pyright` (не одно и то же)
+
+`python -m pytest` и `npx pyright` могут быть зелёными, пока редактор
+подсвечивает ошибки. Причины расхождения — не в коде:
+
+| причина | где настраивается |
+| --- | --- |
+| **Интерпретатор.** Pylance берёт путь из строки состояния, а `venv`/`venvPath` из `pyrightconfig.json` — из CLI. Системный Python 3.13 на этой машине содержит `fastapi`, но **не** `sqlalchemy`/`alembic`: при его выборе «Import «sqlalchemy» could not be resolved» загораживается сразу в 32 файлах | `python.defaultInterpreterPath` в `.vscode/settings.json` |
+| **Пути импорта.** Плоские импорты `from config import ...` (это же описано в `pytest.ini` → `pythonpath = backend` и в `ruff.toml` → `known-first-party`). Pylance читает **своё** `python.analysis.extraPaths`, а не поле `extraPaths` из pyright-конфига | `python.analysis.extraPaths` |
+| **Набор файлов.** Pylance **игнорирует** `include` и анализирует всю рабочую область; CLI — только перечисленное. Поэтому `migrations` был добавлен в `include` | `include` в `pyrightconfig.json` |
+| **Режим проверки.** Pylance не берёт режим из pyright-конфига. В `strict` дополнительно срабатывают `reportMissingParameterType` на `cls` в валидаторах Pydantic и `reportAny` на `**fields: Any` | `python.analysis.typeCheckingMode` |
+
+Оба файла содержат комментарии и поясняют связь настроек; **менять их надо
+вместе**. `npx pyright` — это проверка из консоли, а не из редактора:
+он покажет 0 ошибок и не увидит проблемы Pylance, пока те не синхронизированы.
+
+Что **не** является причиной: `reportMissingTypeStubs` (у fastapi, pydantic,
+sqlalchemy, starlette и alembic есть `py.typed`), неиспользуемые импорты
+(`ruff --select F401,F841` чисто) и `reportPrivateUsage` (мои файлы не
+обращаются к `_приватным` именам чужих модулей).
+
+### 9.1. «Ошибка на строке, которой нет» = устаревший буфер
+
+Самый дорогой на диагностику случай. Pylance сообщил:
+
+```
+Line 123: Expected indented block
+Line 175: "user" is not defined
+Line 220: Type "TicketDetailOut" is not assignable to return type "list[UploadFile]"
+Line 228: "(" was not closed
+```
+
+и отдельно по `schemas_feedback.py` — про строки **262** и **264**, тогда как
+в файле **199 строк**.
+
+Проверка за одну команду — ошибка в строке за пределами файла невозможна для
+правильного содержимого:
+
+```powershell
+python -c "import ast,pathlib; ast.parse(pathlib.Path('backend/schemas_feedback.py').read_text(encoding='utf-8')); print('OK')"
+(Get-Content backend\schemas_feedback.py | Measure-Object -Line).Lines
+```
+
+Если `ast.parse` проходит, а номер строки больше длины файла — Pylance
+анализирует **не тот текст, что лежит на диске**. Причина: буфер во вкладке
+открыт и не сохранён с момента, когда файлы правились снаружи (git, другой
+инструмент, другой экземпляр редактора). Python и pytest читают диск и проходят,
+Pylance — память редактора. Дальше ошибки идут каскадом: первая потеря
+отступов («Expected indented block») ломает разбор, и последующие сообщения
+про несуществующие переменные и типы бессмысленны — чинить их не нужно.
+
+Лечение: `File: Revert File` (восстановит буфер из свежего диска), затем
+`Python: Restart Language Server`, затем `Developer: Reload Window`. Правку
+`.vscode/settings.json` Pylance подхватывает сам, перезагрузка нужна для
+сброса состояния языкового сервера.
+
+**Правило на будущее:** сначала сверяй номер строки с длиной файла и
+`ast.parse`. Прежде чем «чинить» код по диагностике редактора, докажи, что
+диагностика относится к текущему содержимому.
+
 ---
 
 ## 0. Нагрузочный прогон на локальном Docker-стенде

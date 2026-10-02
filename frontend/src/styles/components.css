@@ -561,6 +561,162 @@
   font-size: 13px;
   margin-bottom: 10px;
 }
+/* Collapsible card ------------------------------------------------------- */
+
+.collapsible-card {
+  margin-bottom: 14px;
+}
+/*
+ * The whole heading is the toggle, so it has to look like one: no border, no
+ * background of its own, and the chevron pushed to the far end. The rotation
+ * hangs off `aria-expanded` rather than an extra class, so the open state has
+ * exactly one source of truth in the DOM.
+ */
+.collapsible-card-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+}
+.collapsible-card-header:hover .collapsible-card-title {
+  color: var(--accent);
+}
+.collapsible-card-header:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: var(--radius-sm);
+}
+.collapsible-card-chevron {
+  flex: none;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+.collapsible-card-header[aria-expanded="true"] .collapsible-card-chevron {
+  transform: rotate(180deg);
+}
+.collapsible-card-body {
+  margin-top: 14px;
+}
+/* Donations -------------------------------------------------------------- */
+
+/*
+ * Shared by the public landing section and the Settings card (ADR-0037), so
+ * the wording and the order of the banks cannot drift between the two.
+ *
+ * The note is centred ABOVE the codes and the codes sit at the two edges: the
+ * artwork already names its own bank, so a label under each card would only
+ * repeat what the picture says, and the sentence is the thing that needs to be
+ * read first.
+ */
+.donate-note {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  max-width: 60ch;
+  /* Auto margins centre the paragraph without a wrapper element. */
+  margin: 0 auto 18px;
+  text-align: center;
+}
+.donate-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+  /* Caps the spread: on a very wide screen the two cards must not drift to the
+     far corners of the viewport and lose each other. */
+  max-width: 720px;
+  margin: 0 auto;
+}
+.donate-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+/*
+ * The button is what makes the enlarged view reachable by keyboard and
+ * announced by a screen reader — the image alone would be inert. It is styled
+ * as a plain frame: no background, no border of its own, so the only chrome
+ * around the code is the card the app already themes.
+ */
+.donate-open {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  cursor: zoom-in;
+  border-radius: var(--radius-sm);
+  line-height: 0;
+}
+.donate-open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+/*
+ * The real artwork is 1051×1280 and 1056×1280 — portrait, not square, and not
+ * identical between the two banks. Only the width is constrained and the
+ * height is left to the aspect ratio, so the QR is never stretched; the
+ * `width`/`height` attributes on the element reserve the right box up front.
+ */
+.donate-qr {
+  display: block;
+  width: 260px;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+}
+/* Enlarged view (ADR-0037) ---------------------------------------------------- */
+
+.donate-preview-backdrop {
+  /* Above the page, and scrollable when the viewport is shorter than the
+     artwork so a phone user can always reach the close button. */
+  align-items: flex-start;
+  overflow-y: auto;
+  z-index: 70;
+}
+.donate-preview {
+  background: var(--bg-elevated);
+  border-radius: var(--radius);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  padding: 14px 16px 16px;
+  width: 100%;
+  max-width: 420px;
+}
+.donate-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.donate-preview-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.donate-preview-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+}
 /* Modal ------------------------------------------------------------------------ */
 
 .modal-backdrop {

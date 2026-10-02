@@ -14,6 +14,12 @@ export const en = {
   "nav.grades": "Grades",
   "nav.calendar": "Calendar",
   "nav.settings": "Settings",
+  "nav.feedback": "Feedback",
+  "nav.admin": "Administration",
+  // The /admin console is reached only by its URL (ADR-0036); these two entries
+  // exist in the console's own sidebar, never in the public navigation.
+  "nav.adminTickets": "Tickets",
+  "nav.admins": "Administrators",
   "nav.overdue.one": "1 overdue assignment",
   "nav.overdue.many": "{count} overdue assignments",
 
@@ -114,6 +120,17 @@ export const en = {
     "Google Classroom is a trademark of Google LLC. This service is not affiliated with Google LLC.",
   "landing.footer.contact": "Questions and data deletion requests:",
   "landing.footer.repository": "github.com/MonkStone1/google_class_help",
+
+  // Donations (ADR-0037). One wording, two surfaces: the public landing
+  // section and the Settings card render the same block, so the promise made
+  // to an anonymous visitor is the promise a signed-in user reads.
+  "donate.title": "Support the project",
+  "donate.note":
+    "This money goes to keeping the project running and developing it.",
+  "donate.qrAlt": "Donation QR code for {bank}",
+  "donate.preview": "Enlarge the {bank} QR code",
+  "donate.bank.monobank": "Monobank",
+  "donate.bank.privatbank": "PrivatBank",
 
   "search.label": "Search results",
   "search.noResults": "No matches for “{query}”",
@@ -358,6 +375,129 @@ export const en = {
   "workState.published": "Published",
   "workState.draft": "Draft",
   "workState.unknown": "Unknown status",
+
+  // ------------------------------------------------------------- feedback
+  // ADR-0035. The entry page deliberately offers TWO choices instead of opening
+  // the form: "report something" and "read my reports" are different intents,
+  // and the copy has to make that obvious in every language.
+
+  "feedback.title": "Feedback",
+  "feedback.subtitle":
+    "Tell us what is wrong, or follow what you have already reported.",
+  "feedback.createTitle": "Create a ticket",
+  "feedback.createText":
+    "Describe the problem or your suggestion. You will be able to read the answer here.",
+  "feedback.mineTitle": "My tickets",
+  "feedback.mineText":
+    "Follow the conversations you started, with every reply in one place.",
+  "feedback.newTitle": "New ticket",
+  "feedback.newLead":
+    "Your Google account is already known, so there are no name or e-mail fields here.",
+  "feedback.category": "Category",
+  "feedback.category.suggestion": "Suggestion",
+  "feedback.category.bug": "Bug",
+  "feedback.category.problem": "Problem",
+  "feedback.category.other": "Other",
+  "feedback.subject": "Subject",
+  "feedback.subjectPlaceholder": "Short summary, e.g. “Grades are not updating”",
+  "feedback.message": "Message",
+  "feedback.messagePlaceholder":
+    "Describe what happened. Markdown is supported — **bold**, `code`, lists.",
+  "feedback.attachments": "Attachments",
+  "feedback.attachmentsHint":
+    "Optional. Up to 3 files, 5 MB each (jpg, png, gif, pdf, txt).",
+  "feedback.addFile": "Add file",
+  "feedback.removeFile": "Remove {name}",
+  "feedback.submit": "Send ticket",
+  "feedback.submitting": "Sending…",
+  "feedback.created": "Your ticket has been sent.",
+  "feedback.reply": "Reply",
+  "feedback.replyPlaceholder": "Write your reply…",
+  "feedback.sendReply": "Send reply",
+  "feedback.sending": "Sending…",
+  "feedback.replied": "Your reply has been sent.",
+  "feedback.reopenedNotice":
+    "This ticket was resolved; your reply has reopened it.",
+  "feedback.listTitle": "My tickets",
+  "feedback.empty": "You have no tickets yet.",
+  "feedback.emptyHint": "Report a problem and the answer will appear here.",
+  "feedback.loading": "Loading tickets…",
+  "feedback.ticketNumber": "Ticket #{id}",
+  "feedback.status.new": "New",
+  "feedback.status.in_progress": "In progress",
+  "feedback.status.resolved": "Resolved",
+  "feedback.messagesCount": "{count} messages",
+  "feedback.subjectRequired": "Please enter a subject.",
+  "feedback.messageRequired": "Please describe the problem.",
+  "feedback.loadFailed": "Could not load the tickets.",
+  "feedback.notFound": "This ticket does not exist or is not yours.",
+  "feedback.downloadFile": "Download {name}",
+  "feedback.you": "You",
+  "feedback.supportBadge": "Support",
+
+  // --------------------------------------------------------------- admin
+  // Only ever rendered when the backend reports is_admin=true (ADR-0035).
+
+  "admin.title": "Administration",
+  "admin.dashboardTitle": "Feedback dashboard",
+  "admin.total": "Total",
+  "admin.backToAdmin": "Back to administration",
+  "admin.ticketListTitle": "All tickets",
+  "admin.filterStatus": "Status",
+  "admin.filterCategory": "Category",
+  "admin.filterAny": "Any",
+  "admin.searchPlaceholder": "Search subject or message…",
+  "admin.search": "Search",
+  "admin.clearFilters": "Clear filters",
+  "admin.empty": "No tickets match these filters.",
+  "admin.reporter": "Reporter",
+  "admin.loadFailed": "Could not load the tickets.",
+  "admin.replyTitle": "Answer",
+  "admin.displayName": "Name shown to the user",
+  "admin.displayNameHint":
+    "The user sees this name; your account stays recorded as the author.",
+  "admin.sendAnswer": "Send answer",
+  "admin.statusChanged": "Status updated.",
+  "admin.deleteTitle": "Delete this ticket permanently?",
+  "admin.deleteBody":
+    "This action cannot be undone. The ticket conversation and its attachments will be permanently deleted.",
+  "admin.deleteConfirm": "Delete permanently",
+  "admin.deleteCancel": "Cancel",
+  "admin.deleteButton": "Delete ticket",
+  "admin.deleted": "The ticket has been deleted.",
+  "admin.deleteFailed": "Could not delete the ticket.",
+  "admin.notAvailable": "This section is only available to administrators.",
+  "admin.notAvailableHint":
+    "Your account does not have administrator access. If that is unexpected, contact support.",
+  "admin.by": "by {name}",
+
+  // ------------------------------------------------ administrators (ADR-0036)
+  // The /admin console, reachable only by its URL. Administrators are managed
+  // here by the Super Admin alone; the display name is generated by the server
+  // from the e-mail, which is why the form has no name field.
+
+  "admin.adminsTitle": "Administrators",
+  "admin.adminsAdd": "Add administrator",
+  "admin.adminsEmail": "Email",
+  "admin.adminsEmailHint":
+    "The name shown in the list is generated from this address. They keep this access until you remove it.",
+  "admin.adminsName": "Name",
+  "admin.adminsAddedAt": "Date added",
+  "admin.adminsActions": "Actions",
+  "admin.adminsDelete": "Delete",
+  "admin.adminsEmpty": "There are no administrators yet.",
+  "admin.adminsEmptyHint":
+    "Add one by e-mail. They will be able to answer and delete tickets, but not to manage other administrators.",
+  "admin.adminsLoadFailed": "Could not load the administrators.",
+  "admin.adminsAdded": "The administrator has been added.",
+  "admin.adminsAddFailed": "Could not add the administrator.",
+  "admin.adminsRemoved": "The administrator has been removed.",
+  "admin.adminsDeleteFailed": "Could not remove the administrator.",
+  "admin.adminsDeleteTitle": "Remove administrator?",
+  "admin.adminsDeleteBody":
+    "{email} will lose administrator access to GoogleClassHelp. This cannot be undone.",
+  "admin.adminsDeleteConfirm": "Remove administrator",
+  "admin.adminsDeleteCancel": "Cancel",
 } as const;
 
 /** Every valid translation key, derived from the English dictionary. */

@@ -8,14 +8,25 @@ from pydantic import BaseModel, Field
 class UserOut(BaseModel):
     """Identity of the authenticated user (migration stage 6, §24).
 
-    Exactly the three fields the frontend needs to render "signed in as".
-    No Google credential material, no tokens, no OAuth state: the local
-    ``users.id`` is the only identifier and it is the caller's own.
+    Exactly the fields the frontend needs to render "signed in as", plus the two
+    role BOOLEANS of ADR-0035/ADR-0036. Those flags are computed by the backend
+    from the same ``admin_auth.resolve_role`` call ``require_admin`` and
+    ``require_super_admin`` enforce, so the UI can hide the admin surfaces —
+    while the API answers 403/409 regardless of what the UI decided.
+
+    Neither the Super Admin ADDRESS nor the administrator list is part of this
+    model: the frontend learns two booleans and nothing else, so the
+    configuration cannot reach the browser bundle.
     """
 
     id: int
     name: str | None = None
     email: str | None = None
+    is_admin: bool = False
+    # True ONLY for the account in ``SUPER_ADMIN_EMAIL``. Both flags are true for
+    # that account (``is_admin`` is "any administrator"), which is what lets the
+    # console show the Admins entry to the Super Admin alone.
+    is_super_admin: bool = False
 
 
 class AuthStatus(BaseModel):

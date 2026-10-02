@@ -1,10 +1,19 @@
 import { useEffect, useRef } from "react";
-import { Route, Routes, useSearchParams } from "react-router-dom";
+import {
+    Navigate,
+    Route,
+    Routes,
+    useLocation,
+    useSearchParams,
+} from "react-router-dom";
 
+import { AdminSidebar } from "./components/AdminSidebar.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { TopBar } from "./components/TopBar.tsx";
 import { BootSplash } from "./components/BootSplash.tsx";
 import { Landing } from "./components/Landing.tsx";
+import { RequireAdmin } from "./components/RequireAdmin.tsx";
+import { RequireSuperAdmin } from "./components/RequireSuperAdmin.tsx";
 import { SignIn } from "./components/SignIn.tsx";
 import { SyncToaster } from "./components/SyncToaster.tsx";
 import { Toaster } from "./components/Toaster.tsx";
@@ -12,10 +21,18 @@ import { DataProvider, useAuth, useSync } from "./context/DataContext.tsx";
 import { SettingsProvider } from "./context/SettingsContext.tsx";
 import { DashboardBoundary } from "./components/ErrorBoundary.tsx";
 import { useI18n } from "./i18n.ts";
+import { AdminAdmins } from "./pages/AdminAdmins.tsx";
+import { AdminDashboard } from "./pages/AdminDashboard.tsx";
+import { AdminFeedback } from "./pages/AdminFeedback.tsx";
+import { AdminFeedbackTicket } from "./pages/AdminFeedbackTicket.tsx";
 import { Assignments } from "./pages/Assignments.tsx";
 import { AssignmentDetail } from "./pages/AssignmentDetail.tsx";
 import { CalendarPage } from "./pages/CalendarPage.tsx";
 import { Dashboard } from "./pages/Dashboard.tsx";
+import { FeedbackHome } from "./pages/FeedbackHome.tsx";
+import { FeedbackNew } from "./pages/FeedbackNew.tsx";
+import { FeedbackTicket } from "./pages/FeedbackTicket.tsx";
+import { FeedbackTickets } from "./pages/FeedbackTickets.tsx";
 import { Grades } from "./pages/Grades.tsx";
 import { Settings } from "./pages/Settings.tsx";
 import { StudentGrades } from "./pages/StudentGrades.tsx";
@@ -46,6 +63,7 @@ function AppShell() {
   const { t } = useI18n();
   const { auth, sessionRequired } = useAuth();
   const { loading } = useSync();
+  const { pathname } = useLocation();
   // Search lives in the URL: a reload keeps the query, the link is shareable
   // and the browser Back button cancels it — same contract as the filters.
   const [searchParams, setSearchParams] = useSearchParams();
@@ -91,6 +109,14 @@ function AppShell() {
     return <SignIn />;
   }
 
+  // The console is a separate shell (D1): a path under /admin renders
+  // `AdminShell`, everything else the public shell below. Branching on the
+  // location — rather than mounting both and hiding one — is what keeps the
+  // public navigation free of admin entries by construction.
+  if (isAdminPath(pathname)) {
+    return <AdminShell />;
+  }
+
   const onSearch = (value: string) => {
     setSearchParams(
       (prev) => {
@@ -132,7 +158,123 @@ function AppShell() {
               <Route path="/assignments" element={<Assignments />} />
               <Route path="/grades" element={<Grades />} />
               <Route path="/calendar" element={<CalendarPage />} />
+              {/* Feedback (ADR-0035): the user surface is open to any signed-in
+                  account; identity comes from the session, never the form. */}
+              <Route path="/feedback" element={<FeedbackHome />} />
+              <Route path="/feedback/new" element={<FeedbackNew />} />
+              <Route path="/feedback/tickets" element={<FeedbackTickets />} />
+              <Route
+                path="/feedback/tickets/:id"
+                element={<FeedbackTicket />}
+              />
               <Route path="/settings" element={<Settings />} />
+              {/* Every /admin path belongs to the console shell (D1). A user who
+                  lands here is redirected to `/` by RequireAdmin rather than
+                  shown an admin frame. */}
+              <Route path="/admin/*" element={<Navigate to="/admin" replace />} />
+            </Routes>
+          </DashboardBoundary>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Whether a path belongs to the admin console.
+ *
+ * A prefix match on the SEGMENT, not a string prefix: `/administrator` is a
+ * different place and must render the public shell. `/admin` itself and
+ * everything below it are the console.
+ */
+function isAdminPath(pathname: string): boolean {
+  return pathname === "/admin" || pathname.startsWith("/admin/");
+}
+
+/**
+ * The `/admin` console shell (D1/D2, ADR-0036).
+ *
+ * The SAME layout markup as the user shell — `div.app-layout`, the sidebar,
+ * `div.app-main` with `main.app-content` — with `AdminSidebar` instead of
+ * `Sidebar`. Mirroring the structure is the point: the console must look like
+ * the rest of the product, and only the navigation differs.
+ *
+ * **There is no `<TopBar>` here** (п.8). The console is a back office for
+ * tickets, and every control the topbar carried was either meaningless or
+ * actively misleading on it:
+ *
+ * - the global search looks through the *assignments and courses* cache, which
+ *   an administrator has no use for while working a ticket queue;
+ * - the sync button and its timestamp belong to a user's own Google grant —
+ *   the console has no dataset of its own to sync;
+ * - the notification bell is built from the same assignments (ADR-0004);
+ * - the theme toggle is the only genuinely useful one, and it is reachable from
+ *   `/settings` for the same person.
+ *
+ * Removing it also drops the `?q=` plumbing this shell carried for the search
+ * box — there is nothing left to feed it.
+ *
+ * The guards are per route, not one wrapper around the shell: `RequireAdmin`
+ * sends a non-administrator to `/`, while `RequireSuperAdmin` additionally keeps
+ * a plain administrator out of `/admin/admins` (D11/D3 — UX only; the API
+ * refuses both cases regardless).
+ */
+function AdminShell() {
+  const { auth } = useAuth();
+
+  // The console is an authenticated surface: until the session answer arrives
+  // there is nothing honest to render, and the guards below would redirect a
+  // flash of it to `/`. Render nothing until `auth` is decided.
+  if (!auth) return null;
+
+  return (
+    <div className="app-layout">
+      <AdminSidebar />
+      <div className="app-main">
+        <main className="app-content">
+          <DashboardBoundary>
+            <Routes>
+              <Route
+                path="/admin"
+                element={
+                  <RequireAdmin>
+                    <AdminDashboard />
+                  </RequireAdmin>
+                }
+              />
+              <Route
+                path="/admin/feedback"
+                element={
+                  <RequireAdmin>
+                    <AdminFeedback />
+                  </RequireAdmin>
+                }
+              />
+              <Route
+                path="/admin/feedback/:id"
+                element={
+                  <RequireAdmin>
+                    <AdminFeedbackTicket />
+                  </RequireAdmin>
+                }
+              />
+              <Route
+                path="/admin/admins"
+                element={
+                  <RequireAdmin>
+                    <RequireSuperAdmin>
+                      <AdminAdmins />
+                    </RequireSuperAdmin>
+                  </RequireAdmin>
+                }
+              />
+              {/* An unknown console path goes to the console root, never to the
+                  public dashboard: leaving the console for a typo would be
+                  confusing, and the guards above own the redirect to `/`. */}
+              <Route
+                path="/admin/*"
+                element={<Navigate to="/admin" replace />}
+              />
             </Routes>
           </DashboardBoundary>
         </main>

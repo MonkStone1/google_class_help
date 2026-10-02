@@ -47,7 +47,7 @@ const SIGNED_IN: AuthStatus = {
   login_in_progress: false,
   error: null,
   auth_url: null,
-  user: { id: 1, name: "Test", email: "test@example.com" },
+  user: { id: 1, name: "Test", email: "test@example.com", is_admin: false, is_super_admin: false },
 };
 
 function renderApp() {

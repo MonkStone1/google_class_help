@@ -2,6 +2,20 @@
   "venvPath": ".",
   "venv": ".venv",
   "extraPaths": ["backend"],
-  "include": ["backend", "tests", "tools"],
-  "exclude": ["**/__pycache__", "build", "release", "frontend"]
+  // `migrations` was missing here, so the CLI skipped migrations/env.py and
+  // migrations/versions/*.py while Pylance — which ignores `include` and
+  // analyses the whole workspace — checked them. A revision could therefore be
+  // broken in the editor and green in CI. Listing it keeps the two in
+  // agreement; the chain 0001→0002→0003→0004 is verified by
+  // tests/test_migrations_logging.py and by `alembic upgrade head` on
+  // PostgreSQL (§16).
+  "include": ["backend", "tests", "tools", "migrations"],
+  "exclude": ["**/__pycache__", "build", "release", "frontend"],
+  // The analysis mode lives HERE and only here. Pylance warns that
+  // "python.analysis.typeCheckingMode cannot be set when a pyrightconfig.json
+  // ... is being used", i.e. it does read the mode from this file — so do not
+  // duplicate it in .vscode/settings.json. "standard" is also what `npx pyright`
+  // uses on the CLI; "strict" would additionally flag `cls` in the Pydantic
+  // validators and `**fields: Any`.
+  "typeCheckingMode": "standard"
 }

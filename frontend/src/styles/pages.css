@@ -142,6 +142,38 @@
   padding: 6px 10px;
   font-size: 13px;
 }
+/*
+ * A BARE `<select>` — one that is not wrapped in `.sort-select`.
+ *
+ * `.sort-select select` is a descendant rule, so it only styles a `<select>`
+ * INSIDE the wrapper (that is how `Settings.tsx` uses it, and it is the good
+ * example). The admin filters and the ticket-category picker put the class on
+ * the control ITSELF, which the descendant selector cannot match — those three
+ * controls therefore rendered as unstyled native dropdowns. This class is the
+ * same skin, reachable from either side.
+ *
+ * Deliberately NOT `width: 100%` and NOT `flex`: the wrapper in `.sort-select`
+ * is an inline flex row, and a full-width control inside a filter row would
+ * stretch away from its label.
+ */
+.select-input {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.select-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.select-input:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
 @media (prefers-reduced-motion: reduce) {
   .filter-drawer {
     animation: none;
@@ -1062,4 +1094,463 @@
 }
 .assignment-detail-card .modal-details {
   margin: 0;
+}
+
+/* ------------------------------------------------------ feedback (ADR-0035)
+ *
+ * The ticket surface in the app's own tokens. Two rules matter beyond looks:
+ * the ADMIN message must be recognisable at a glance in BOTH themes, and the
+ * editor's default white/black must be repainted — a dark page with a white
+ * editor would be the most visible sign that a component came from elsewhere.
+ */
+
+.feedback-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.feedback-choice {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  color: inherit;
+}
+.feedback-choice:hover {
+  text-decoration: none;
+  border-color: var(--accent);
+}
+.feedback-choice-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.feedback-choice-body h2 {
+  margin: 0 0 4px;
+}
+.feedback-choice-body p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.feedback-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px;
+}
+.feedback-form .settings-label {
+  margin-top: 6px;
+}
+.feedback-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font: inherit;
+}
+.feedback-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.feedback-form-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+/* The collapsible reply form (п.5) — same interaction the settings page already
+   ships in `CollapsibleCard`, restated here for the ticket surface: a full-width
+   button header with a chevron that rotates through `[aria-expanded]`, and the
+   panel below it. The state lives only in `aria-expanded`, so nothing about the
+   open/closed phase is duplicated in the markup. */
+.feedback-reply {
+  padding: 0;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.feedback-reply-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius);
+  font: inherit;
+  cursor: pointer;
+}
+.feedback-reply-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--accent);
+}
+.feedback-reply-toggle:hover {
+  background: var(--bg-muted);
+}
+.feedback-reply-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.feedback-reply-chevron {
+  flex: none;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+.feedback-reply-toggle[aria-expanded="true"] .feedback-reply-chevron {
+  transform: rotate(180deg);
+}
+.feedback-reply-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 16px 16px;
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+}
+.feedback-attachments-hint {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.feedback-selected-files {
+  list-style: none;
+  margin: 6px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.feedback-selected-files li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.feedback-selected-files li .icon-button {
+  width: 24px;
+  height: 24px;
+}
+.feedback-file-picker {
+  align-self: flex-start;
+  cursor: pointer;
+}
+
+/* The editor is repainted in the app's tokens; without this it stays white in
+   the dark theme (the library ships its own light stylesheet). */
+.markdown-field .w-md-editor {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-color: var(--border);
+}
+.markdown-field[data-disabled] {
+  opacity: 0.65;
+}
+
+/* --- Markdown editor: bigger toolbar controls (п.3) ----------------------
+   The library ships 12×12 icons in 20px-tall buttons, which is too small to
+   aim at comfortably. Sized here rather than by rebuilding the commands, so
+   the toolbar stays the library's own (ADR-0035: one editor, no hand-rolled
+   buttons). */
+.markdown-field .w-md-editor-toolbar li > button {
+  height: 28px;
+  padding: 5px 6px;
+}
+.markdown-field .w-md-editor-toolbar li > button > svg {
+  width: 16px;
+  height: 16px;
+}
+.markdown-field .w-md-editor-toolbar-divider {
+  height: 20px;
+}
+
+/*
+ * The RENDERED markdown, in both surfaces.
+ *
+ * `Markdown.tsx` renders `MDEditor.Markdown`, whose root element carries the
+ * library's `wmde-markdown` class — NOT `w-md-editor`, which belongs to the
+ * editing surface only. An earlier rule here targeted `.markdown-body
+ * .w-md-editor` and therefore matched nothing in the read-only renderer: the
+ * white block inside a support answer was the library's own
+ * `.wmde-markdown { background-color: var(--color-canvas-default) }`
+ * (`#ffffff` in the light theme), never our tokens.
+ *
+ * So the theming has to be applied to `.wmde-markdown` itself. This is the
+ * single source of truth for both `.markdown-body` (a stored ticket) and the
+ * preview column of the live editor, which the library renders with the same
+ * class — one rule, two surfaces, no drift.
+ */
+.markdown-body .wmde-markdown,
+.markdown-field .w-md-editor-preview .wmde-markdown {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+.markdown-body .wmde-markdown {
+  border: none;
+}
+
+.markdown-body p,
+.markdown-body li {
+  color: var(--text);
+}
+.markdown-body pre,
+.markdown-body code {
+  background: var(--bg-muted);
+  color: var(--text);
+}
+.markdown-body a {
+  color: var(--accent);
+}
+
+.ticket-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ticket-list-item {
+  display: block;
+  color: inherit;
+}
+.ticket-list-item:hover {
+  text-decoration: none;
+  border-color: var(--accent);
+}
+.ticket-list-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.ticket-list-id {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.ticket-list-subject {
+  margin: 6px 0;
+  font-weight: 600;
+}
+.ticket-list-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.ticket-conversation {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.ticket-message {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  background: var(--bg-elevated);
+}
+/* USER: the neutral surface. ADMIN: an accent-soft surface with an accent left
+   border, so the answer reads differently at a glance in both themes. */
+.ticket-message-admin {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  border-left-width: 3px;
+}
+/*
+ * The answer's BODY, not the whole card (п.4).
+ *
+ * The white block was NOT our `--bg-elevated`: it was the library's own
+ * `.wmde-markdown { background-color: var(--color-canvas-default) }`, which
+ * resolves to `#ffffff` in the light theme. An earlier attempt to override it
+ * targeted `.markdown-body .w-md-editor`, a class the read-only renderer never
+ * emits — so the rule matched nothing and the block stayed white while the text
+ * turned blue. These selectors name `.wmde-markdown`, the element that actually
+ * carries the background, and are specific enough to beat the library's
+ * single-class rule.
+ *
+ * The surface is transparent so the card's accent-soft shows through, and the
+ * text takes the accent colour. CODE is deliberately STRONGER than that text: a
+ * filled accent chip with white glyphs is the highest-contrast thing in the
+ * message, which is what a code sample in a support answer has to be.
+ */
+.ticket-message-admin .markdown-body .wmde-markdown {
+  background: transparent;
+  color: var(--accent);
+}
+.ticket-message-admin .markdown-body p,
+.ticket-message-admin .markdown-body li,
+.ticket-message-admin .markdown-body strong,
+.ticket-message-admin .markdown-body em,
+.ticket-message-admin .markdown-body blockquote,
+.ticket-message-admin .markdown-body h1,
+.ticket-message-admin .markdown-body h2,
+.ticket-message-admin .markdown-body h3 {
+  color: var(--accent);
+}
+.ticket-message-admin .markdown-body pre,
+.ticket-message-admin .markdown-body code {
+  background: var(--accent);
+  color: #fff;
+}
+/* Inline code sits inside a line of accent text: it needs its own padding and
+   radius to read as a chip instead of a solid bar across the paragraph. The
+   library sets `padding: 0.2em 0.4em` with `!important`-free specificity on
+   `.wmde-markdown code`, so a class-only rule here would be enough. */
+.ticket-message-admin .markdown-body p code,
+.ticket-message-admin .markdown-body li code,
+.ticket-message-admin .markdown-body td code {
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.ticket-message-admin .markdown-body pre {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+.ticket-message-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.ticket-message-author {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ticket-message-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+.ticket-message-email,
+.ticket-message-date {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.ticket-support-badge {
+  background: var(--accent);
+  color: #fff;
+}
+
+.ticket-attachments {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ticket-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text);
+}
+.ticket-attachment:hover {
+  text-decoration: none;
+  border-color: var(--accent);
+}
+.ticket-attachment-size {
+  color: var(--text-muted);
+}
+
+.admin-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+.admin-filter-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.admin-filter-row .feedback-input {
+  flex: 1 1 240px;
+}
+.admin-status-bar {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  margin-bottom: 16px;
+}
+.admin-pagination {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 14px;
+}
+.admin-recent {
+  margin-top: 22px;
+}
+
+/* Visible only to screen readers: the attachment link already names the file. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.confirm-dialog {
+  max-width: 460px;
+}
+
+/* --------------------------------------- administrator registry (ADR-0036)
+   Three rules only, all built from the existing tokens: the table itself is the
+   shared `.table-wrap`/`.data-table`, the modal is the shared `.modal`, and the
+   destructive button is the shared `.button-danger`. Nothing here introduces a
+   second style for a surface that already has one. */
+.admin-admins-table {
+  margin-top: 4px;
+}
+/* Keep the destructive action from stretching: the row decides its height. */
+.admin-admins-actions {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
+.admin-admins-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.confirm-dialog-icon {
+  color: var(--danger);
+  margin-bottom: 8px;
+}
+/* The destructive action is last and visually separated from Cancel. */
+.confirm-dialog-actions {
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
 }

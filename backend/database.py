@@ -117,11 +117,17 @@ def _import_models() -> None:
         StudentSubmission,
         SyncStatus,
     )
+    from models_admin import Admin  # noqa: F401
     from models_auth import (  # noqa: F401
         OAuthLoginState,
         OAuthToken,
         User,
         UserSession,
+    )
+    from models_feedback import (  # noqa: F401
+        FeedbackTicket,
+        TicketAttachment,
+        TicketMessage,
     )
 
 

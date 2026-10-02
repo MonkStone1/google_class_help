@@ -23,10 +23,10 @@ type Schemas = components["schemas"];
  * generated interface stays the source of truth for field names and types.
  */
 type DeepRequired<T> = T extends (infer U)[]
-  ? DeepRequired<U>[]
-  : T extends object
-    ? { [K in keyof T]-?: DeepRequired<T[K]> }
-    : T;
+    ? DeepRequired<U>[]
+    : T extends object
+      ? { [K in keyof T]-?: DeepRequired<T[K]> }
+      : T;
 
 type Wire<K extends keyof Schemas> = DeepRequired<Schemas[K]>;
 
@@ -48,10 +48,7 @@ export type UserRole = "TEACHER" | "STUDENT";
 
 /** Derived submission status; missing grade is never rendered as 0. */
 export type SubmissionStatus =
-  | "not_submitted"
-  | "turned_in"
-  | "returned"
-  | "graded";
+    "not_submitted" | "turned_in" | "returned" | "graded";
 
 export type Student = Wire<"StudentOut">;
 
@@ -59,26 +56,26 @@ export type Student = Wire<"StudentOut">;
 export type Submission = WithStatus<Wire<"SubmissionOut">>;
 
 export type Assignment = Omit<AssignmentWire, "priority" | "role"> & {
-  priority: PriorityLevel;
-  role: UserRole;
+    priority: PriorityLevel;
+    role: UserRole;
 };
 
 /** Assignment page payload: metadata plus every student's submission state. */
 export type AssignmentDetail = Omit<
-  Wire<"AssignmentDetailOut">,
-  "priority" | "role" | "submissions"
+    Wire<"AssignmentDetailOut">,
+    "priority" | "role" | "submissions"
 > & {
-  priority: PriorityLevel;
-  role: UserRole;
-  submissions: Submission[];
+    priority: PriorityLevel;
+    role: UserRole;
+    submissions: Submission[];
 };
 
 export type Course = Omit<Wire<"CourseOut">, "role"> & {
-  role: UserRole;
+    role: UserRole;
 };
 
 export type CourseDetail = Omit<Wire<"CourseDetailOut">, "role"> & {
-  role: UserRole;
+    role: UserRole;
 };
 
 export type GradeColumn = Wire<"GradeColumn">;
@@ -86,22 +83,22 @@ export type GradeColumn = Wire<"GradeColumn">;
 export type SubmissionCell = WithStatus<Wire<"SubmissionCell">>;
 
 export type StudentGradeRow = Omit<Wire<"StudentGradeRow">, "cells"> & {
-  cells: SubmissionCell[];
+    cells: SubmissionCell[];
 };
 
 /** Teacher grade matrix: students (rows) × assignments (columns). */
 export type TeacherGrades = Omit<
-  Wire<"TeacherGradesOut">,
-  "rows" | "assignments"
+    Wire<"TeacherGradesOut">,
+    "rows" | "assignments"
 > & {
-  assignments: GradeColumn[];
-  rows: StudentGradeRow[];
+    assignments: GradeColumn[];
+    rows: StudentGradeRow[];
 };
 
 export type StudentGradeItem = WithStatus<Wire<"StudentGradeItem">>;
 
 export type StudentGrades = Omit<Wire<"StudentGradesOut">, "items"> & {
-  items: StudentGradeItem[];
+    items: StudentGradeItem[];
 };
 
 export type GradeItem = Wire<"GradeItem">;
@@ -110,6 +107,97 @@ export type CourseGrades = Wire<"CourseGrades">;
 
 export type AppStatus = Wire<"SyncStatus">;
 
+/**
+ * Ticket types (ADR-0035). The wire shapes come from the generated schema like
+ * every other response; only the CLOSED SETS the UI must reason about are
+ * narrowed here, because the backend validates them server-side and an
+ * unexpected value must not compile into the UI as a legal one.
+ */
+export type FeedbackCategory = "suggestion" | "bug" | "problem" | "other";
+
+export type FeedbackStatus = "new" | "in_progress" | "resolved";
+
+/** USER | ADMIN — the machine-readable author distinction, never a name. */
+export type MessageAuthorType = "USER" | "ADMIN";
+
+export type TicketAttachment = Wire<"AttachmentOut">;
+
+/**
+ * The base message shape both surfaces share.
+ *
+ * `author_type` is narrowed here (the backend validates it against the closed
+ * set), so a component can compare it without a cast. `AdminTicketMessage`
+ * extends this with the internal author — it is a SUPERTYPE, so a component
+ * that takes `TicketMessage` renders either projection.
+ */
+type MessageBase = Omit<Wire<"MessageOut">, "author_type"> & {
+    author_type: MessageAuthorType;
+};
+
+export type TicketMessage = MessageBase;
+
+/** The admin projection of a message: the same body plus the real author. */
+export type AdminTicketMessage = MessageBase &
+    Pick<Wire<"AdminMessageOut">, "author_user_id" | "author_email">;
+
+export type FeedbackTicket = Omit<Wire<"TicketOut">, "status"> & {
+    status: FeedbackStatus;
+};
+
+export type FeedbackTicketDetail = Omit<
+    Wire<"TicketDetailOut">,
+    "status" | "messages"
+> & {
+    status: FeedbackStatus;
+    messages: TicketMessage[];
+};
+
+/** The admin projection of a ticket: the same row plus its owner. */
+export type AdminTicket = Omit<Wire<"AdminTicketOut">, "status"> & {
+    status: FeedbackStatus;
+};
+
+/** A page of the admin list; the items carry the narrowed status. */
+export type AdminTicketPage = Omit<Wire<"AdminTicketListOut">, "items"> & {
+    items: AdminTicket[];
+};
+
+export type AdminTicketDetail = Omit<
+    Wire<"AdminTicketDetailOut">,
+    "status" | "messages"
+> & {
+    status: FeedbackStatus;
+    messages: AdminTicketMessage[];
+};
+
+export type FeedbackStats = Wire<"FeedbackStatsOut">;
+
+/**
+ * One row of the administrator registry (ADR-0036).
+ *
+ * `name` is derived server-side from `email` — there is no editable name, and no
+ * field here identifies the Super Admin, because the Super Admin has no row at
+ * all: they are the `SUPER_ADMIN_EMAIL` environment value.
+ */
+export type Administrator = Wire<"AdminOut">;
+
+/** Whether the backend reports the signed-in user as an administrator. */
+export function isAdminUser(auth: AuthStatus | null): boolean {
+    return auth?.user?.is_admin === true;
+}
+
+/**
+ * Whether the backend reports the signed-in user as the SUPER administrator.
+ *
+ * The one place the console decides to show the Admins screen. Like
+ * `isAdminUser` it reads a server-derived boolean and nothing else: the Super
+ * Admin's address lives in the process environment and never reaches the
+ * browser (ADR-0036).
+ */
+export function isSuperAdminUser(auth: AuthStatus | null): boolean {
+    return auth?.user?.is_super_admin === true;
+}
+
 export type AuthStatus = Wire<"AuthStatus">;
 
 export type SyncResult = Wire<"SyncResult">;
@@ -117,17 +205,12 @@ export type SyncResult = Wire<"SyncResult">;
 export type Priority = Assignment["priority"];
 
 export type AssignmentStatusFilter =
-  | "all"
-  | "todo"
-  | "overdue"
-  | "completed"
-  | "graded"
-  | "ungraded";
+    "all" | "todo" | "overdue" | "completed" | "graded" | "ungraded";
 
 /** The four states the assignments filter panel lets you combine. */
 export type AssignmentFilterStatus = Exclude<
-  AssignmentStatusFilter,
-  "all" | "ungraded"
+    AssignmentStatusFilter,
+    "all" | "ungraded"
 >;
 
 /**
@@ -144,9 +227,9 @@ export type AssignmentDueFilter = "has_due" | "no_due";
  * `[]` = nothing selected (nothing matches).
  */
 export type AssignmentsFilter = {
-  statuses: AssignmentFilterStatus[] | null;
-  due: AssignmentDueFilter[] | null;
-  courses: string[] | null;
+    statuses: AssignmentFilterStatus[] | null;
+    due: AssignmentDueFilter[] | null;
+    courses: string[] | null;
 };
 
 export type SortKey = "due" | "priority" | "grade" | "newest" | "oldest";
@@ -158,68 +241,68 @@ export type ThemeMode = "light" | "dark" | "system";
 export type Language = "en" | "uk" | "ru";
 
 export type DashboardSections = {
-  overdue: boolean;
-  today: boolean;
-  tomorrow: boolean;
-  upcoming: boolean;
-  completed: boolean;
-  stats: boolean;
+    overdue: boolean;
+    today: boolean;
+    tomorrow: boolean;
+    upcoming: boolean;
+    completed: boolean;
+    stats: boolean;
 };
 
 export type NotificationPrefs = {
-  dueToday: boolean;
-  dueTomorrow: boolean;
-  overdue: boolean;
+    dueToday: boolean;
+    dueTomorrow: boolean;
+    overdue: boolean;
 };
 
 export type AppSettings = {
-  theme: ThemeMode;
-  language: Language;
-  upcomingDays: 3 | 7 | 14;
-  defaultSort: SortKey;
-  cardDensity: "compact" | "comfortable";
-  sections: DashboardSections;
-  notifications: NotificationPrefs;
-  /** Dismissed reminder keys ("kind:assignmentId") kept in storage. */
-  dismissedNotifications: string[];
-  assignmentsFilter: AssignmentsFilter;
-  /** Last used calendar view, so a reload reopens the same one. */
-  calendarView: CalendarViewMode;
-  /**
-   * Course ids whose grade groups are collapsed on the Grades tab. Groups not
-   * listed here are expanded, so a fresh profile starts with everything open.
-   */
-  collapsedGradeCourses: string[];
-  /** Last used status tab on the subject detail page. */
-  subjectTab: AssignmentStatusFilter | "all";
+    theme: ThemeMode;
+    language: Language;
+    upcomingDays: 3 | 7 | 14;
+    defaultSort: SortKey;
+    cardDensity: "compact" | "comfortable";
+    sections: DashboardSections;
+    notifications: NotificationPrefs;
+    /** Dismissed reminder keys ("kind:assignmentId") kept in storage. */
+    dismissedNotifications: string[];
+    assignmentsFilter: AssignmentsFilter;
+    /** Last used calendar view, so a reload reopens the same one. */
+    calendarView: CalendarViewMode;
+    /**
+     * Course ids whose grade groups are collapsed on the Grades tab. Groups not
+     * listed here are expanded, so a fresh profile starts with everything open.
+     */
+    collapsedGradeCourses: string[];
+    /** Last used status tab on the subject detail page. */
+    subjectTab: AssignmentStatusFilter | "all";
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  theme: "system",
-  language: "en",
-  upcomingDays: 7,
-  defaultSort: "due",
-  cardDensity: "comfortable",
-  sections: {
-    overdue: true,
-    today: true,
-    tomorrow: true,
-    upcoming: true,
-    completed: true,
-    stats: true,
-  },
-  notifications: {
-    dueToday: true,
-    dueTomorrow: true,
-    overdue: true,
-  },
-  dismissedNotifications: [],
-  assignmentsFilter: {
-    statuses: null,
-    due: null,
-    courses: null,
-  },
-  calendarView: "month",
-  collapsedGradeCourses: [],
-  subjectTab: "all",
+    theme: "system",
+    language: "en",
+    upcomingDays: 7,
+    defaultSort: "due",
+    cardDensity: "comfortable",
+    sections: {
+        overdue: true,
+        today: true,
+        tomorrow: true,
+        upcoming: true,
+        completed: true,
+        stats: true,
+    },
+    notifications: {
+        dueToday: true,
+        dueTomorrow: true,
+        overdue: true,
+    },
+    dismissedNotifications: [],
+    assignmentsFilter: {
+        statuses: null,
+        due: null,
+        courses: null,
+    },
+    calendarView: "month",
+    collapsedGradeCourses: [],
+    subjectTab: "all",
 };

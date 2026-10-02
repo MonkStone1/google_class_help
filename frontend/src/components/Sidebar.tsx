@@ -4,6 +4,7 @@ import {
     GraduationCap,
     LayoutDashboard,
     ListChecks,
+    MessageSquare,
     Settings as SettingsIcon,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
@@ -11,15 +12,18 @@ import { NavLink } from "react-router-dom";
 import { useSync, useCourses } from "../context/DataContext.tsx";
 import { useSettings } from "../context/SettingsContext.tsx";
 import { useI18n } from "../i18n.ts";
-import { cn } from "../lib/cn.ts";
-import type { I18nKey } from "../i18n.ts";
+import { SidebarNav, type NavItem } from "./SidebarNav.tsx";
 
-const ITEMS: Array<{
-    to: string;
-    labelKey: I18nKey;
-    icon: typeof LayoutDashboard;
-    counter?: "todo";
-}> = [
+/**
+ * Navigation of the USER site.
+ *
+ * There is no "Administration" entry here any more (D1/ADR-0036): the admin
+ * console is a separate shell reachable only by the URL `/admin`, so the public
+ * navigation neither advertises it nor has to decide who may see it. The
+ * console's own list lives in `AdminSidebar.tsx`; both render `SidebarNav`, so
+ * there is one navigation component and no duplicated markup or CSS.
+ */
+const ITEMS: NavItem[] = [
     { to: "/", labelKey: "nav.dashboard", icon: LayoutDashboard },
     { to: "/subjects", labelKey: "nav.subjects", icon: BookOpen },
     {
@@ -30,6 +34,7 @@ const ITEMS: Array<{
     },
     { to: "/grades", labelKey: "nav.grades", icon: GraduationCap },
     { to: "/calendar", labelKey: "nav.calendar", icon: CalendarDays },
+    { to: "/feedback", labelKey: "nav.feedback", icon: MessageSquare },
     { to: "/settings", labelKey: "nav.settings", icon: SettingsIcon },
 ];
 
@@ -43,51 +48,28 @@ export function Sidebar() {
     const overdueCount = status?.overdue ?? 0;
 
     return (
-        <aside
-            className={cn("sidebar", cardDensity === "compact" && "compact")}
-        >
-            <div className="sidebar-brand">
-                <div className="sidebar-brand-logo">GC</div>
-                <div>
-                    <div className="sidebar-brand-name">Classroom</div>
-                    <div className="sidebar-brand-sub">
-                        {t("nav.dashboard")}
-                    </div>
-                </div>
-            </div>
-
-            <nav className="sidebar-nav">
-                {ITEMS.map((item) => (
+        <SidebarNav
+            items={ITEMS}
+            compact={cardDensity === "compact"}
+            counters={{ todo: todoCount }}
+            t={t}
+            alert={
+                overdueCount > 0 ? (
                     <NavLink
-                        key={item.to}
-                        to={item.to}
-                        className={({ isActive }) =>
-                            cn("sidebar-link", isActive && "active")
-                        }
-                        end={item.to === "/"}
+                        to="/assignments?status=overdue"
+                        className="sidebar-alert"
                     >
-                        <item.icon size={18} />
-                        <span>{t(item.labelKey)}</span>
-                        {item.counter === "todo" && todoCount > 0 ? (
-                            <span className="sidebar-counter">{todoCount}</span>
-                        ) : null}
+                        <span>{overdueCount}</span>
+                        <span>
+                            {overdueCount === 1
+                                ? t("nav.overdue.one")
+                                : t("nav.overdue.many", {
+                                      count: overdueCount,
+                                  })}
+                        </span>
                     </NavLink>
-                ))}
-            </nav>
-
-            {overdueCount > 0 ? (
-                <NavLink
-                    to="/assignments?status=overdue"
-                    className="sidebar-alert"
-                >
-                    <span>{overdueCount}</span>
-                    <span>
-                        {overdueCount === 1
-                            ? t("nav.overdue.one")
-                            : t("nav.overdue.many", { count: overdueCount })}
-                    </span>
-                </NavLink>
-            ) : null}
-        </aside>
+                ) : null
+            }
+        />
     );
 }

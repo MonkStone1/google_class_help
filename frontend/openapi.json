@@ -740,6 +740,507 @@
         }
       }
     },
+    "/api/feedback/tickets": {
+      "get": {
+        "tags": ["feedback"],
+        "summary": "List My Tickets",
+        "description": "The caller's OWN tickets, newest activity first.\n\nSorted by ``updated_at`` (bumped by every message), not by creation date: a\nticket somebody just answered is the one being looked for.",
+        "operationId": "list_my_tickets_api_feedback_tickets_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/TicketOut" },
+                  "type": "array",
+                  "title": "Response List My Tickets Api Feedback Tickets Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["feedback"],
+        "summary": "Create Ticket",
+        "description": "Open a ticket: category, subject, the first Markdown message, files.\n\n201 with the created ticket and its conversation, so the UI can navigate\nstraight to the thread. The rate limit is checked BEFORE the body is read,\nso a spam loop never uploads a megabyte.",
+        "operationId": "create_ticket_api_feedback_tickets_post",
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TicketDetailOut" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/feedback/tickets/{ticket_id}": {
+      "get": {
+        "tags": ["feedback"],
+        "summary": "Get My Ticket",
+        "description": "One own ticket with its whole conversation, or 404.",
+        "operationId": "get_my_ticket_api_feedback_tickets__ticket_id__get",
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "title": "Ticket Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TicketDetailOut" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/feedback/tickets/{ticket_id}/messages": {
+      "post": {
+        "tags": ["feedback"],
+        "summary": "Reply To Ticket",
+        "description": "Reply to an own ticket.\n\nThe body carries ``body_markdown`` only. ``author_type``,\n``author_user_id``, ``author_email`` and ``display_name`` are not part of the\nmodel, so sending them changes nothing — a user cannot post under somebody\nelse's name (ADR-0035).\n\nReplying to a ``resolved`` ticket reopens it (``in_progress``), which the\nUI shows immediately.",
+        "operationId": "reply_to_ticket_api_feedback_tickets__ticket_id__messages_post",
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "title": "Ticket Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TicketDetailOut" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/feedback/attachments/{attachment_id}": {
+      "get": {
+        "tags": ["feedback"],
+        "summary": "Download Attachment",
+        "description": "Download an attachment of a ticket the caller OWNS (or any, as an admin).\n\nThe ownership check is a single joined statement: the attachment's ticket\nmust belong to the caller. Somebody else's file is 404 — indistinguishable\nfrom a missing one. Administrators may read any attachment, because support\nhas to see what was sent; the fallback path is still 404 for a missing row.",
+        "operationId": "download_attachment_api_feedback_attachments__attachment_id__get",
+        "parameters": [
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "title": "Attachment Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/feedback/tickets": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "List Tickets",
+        "description": "Every ticket, filtered by status/category/search, paginated.\n\n``q`` matches a subject or a message body as a substring (case-insensitive\nthrough ``ILIKE``; SQLite's ``like`` is case-insensitive for ASCII, which is\nwhat the tests assert). The filters are ANDed and the ordering is the same\n\"newest activity first\" as everywhere else, so the list stays stable while\nsomebody works on it.",
+        "operationId": "list_tickets_api_admin_feedback_tickets_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Category"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "maxLength": 200 },
+                { "type": "null" }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AdminTicketListOut" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/feedback/stats": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "Feedback Stats",
+        "description": "Dashboard counters: total and the per-status breakdown.\n\nOne grouped query (feedback_service.counts_by_status) rather than four\ncounts, and no ordering — the dashboard wants numbers, not rows.",
+        "operationId": "feedback_stats_api_admin_feedback_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FeedbackStatsOut" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/feedback/tickets/{ticket_id}": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "Read Ticket",
+        "description": "Any ticket with its full conversation and the real author identities.\n\nNot filtered by the caller — an administrator is supposed to see every\nticket. The dependency above already answered 401/403.",
+        "operationId": "read_ticket_api_admin_feedback_tickets__ticket_id__get",
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "title": "Ticket Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminTicketDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["admin"],
+        "summary": "Set Status",
+        "description": "Change the ticket status — and ONLY the status.\n\nThe body is ``{\"status\": \"resolved\"}``; anything else is ignored by the\nmodel, so this endpoint cannot become a way to rewrite a message, an author\nor an owner. An unknown status is 422 (the closed set).",
+        "operationId": "set_status_api_admin_feedback_tickets__ticket_id__patch",
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "title": "Ticket Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminTicketDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["admin"],
+        "summary": "Delete Ticket",
+        "description": "Delete a ticket permanently, with its conversation and its files.\n\nReal deletion, no ``deleted_at`` and no restore (ADR-0035): the row goes,\n``ON DELETE CASCADE`` takes the messages and attachment rows with it, and the\nfiles are unlinked from the volume. 204 on success, 404 for a ticket that\ndoes not exist — afterwards the id answers 404 for the owner as well, and\nthe ticket is gone from a fresh list.\n\nA file that cannot be unlinked does NOT fail the request: the row deletion\nis the contract, and the filesystem cleanup is best effort.",
+        "operationId": "delete_ticket_api_admin_feedback_tickets__ticket_id__delete",
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "title": "Ticket Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/feedback/tickets/{ticket_id}/messages": {
+      "post": {
+        "tags": ["admin"],
+        "summary": "Reply To Ticket",
+        "description": "Answer a ticket under a chosen public display name.\n\nThe stored identity is split in two, and this is the whole point of the\nfeature:\n\n- ``author_user_id`` / ``author_email`` = the AUTHENTICATED administrator,\n  taken from the session — never from the request, so the audit trail stays\n  correct;\n- ``display_name`` = the public label the ticket owner sees (default\n  ``GoogleClassHelp Support``, capped at 100 characters). Two administrators\n  may therefore answer under different names while both are recorded\n  correctly internally.",
+        "operationId": "reply_to_ticket_api_admin_feedback_tickets__ticket_id__messages_post",
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "title": "Ticket Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminTicketDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/admins/": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "List Admins",
+        "description": "Every normal administrator, newest first.\n\nThe Super Admin is absent by construction (their identity lives only in\n``SUPER_ADMIN_EMAIL``), so the list can never contain the one account that\nmanages it. ``admin`` is the guard's return value, not an input.\n\nRegistered under BOTH ``\"\"`` and ``\"/\"`` on purpose: with only ``\"/\"`` the\nun-slashed ``/api/admin/admins`` matches no route, misses the 403 below and\nfalls through to the SPA fallback — which answers an unauthorized probe with\n200 and an HTML shell instead of the contract's 403.",
+        "operationId": "list_admins_api_admin_admins__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/AdminOut" },
+                  "type": "array",
+                  "title": "Response List Admins Api Admin Admins  Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["admin"],
+        "summary": "Create Admin",
+        "description": "Add one administrator by e-mail; 409 on a duplicate or on the Super Admin.\n\n``payload.email`` is already normalized by the model's validator, so the\nduplicate comparison and the stored value are the same spelling.\n\nThe duplicate is checked twice on purpose: the SELECT answers the normal\ncase with a clean 409, and the unique index answers the race (two requests\npassing the SELECT at the same moment) that a SELECT alone cannot. Failures\nnever widen access — both paths refuse.",
+        "operationId": "create_admin_api_admin_admins__post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AdminCreateIn" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AdminOut" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/admins": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "List Admins",
+        "description": "Every normal administrator, newest first.\n\nThe Super Admin is absent by construction (their identity lives only in\n``SUPER_ADMIN_EMAIL``), so the list can never contain the one account that\nmanages it. ``admin`` is the guard's return value, not an input.\n\nRegistered under BOTH ``\"\"`` and ``\"/\"`` on purpose: with only ``\"/\"`` the\nun-slashed ``/api/admin/admins`` matches no route, misses the 403 below and\nfalls through to the SPA fallback — which answers an unauthorized probe with\n200 and an HTML shell instead of the contract's 403.",
+        "operationId": "list_admins_api_admin_admins_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/AdminOut" },
+                  "type": "array",
+                  "title": "Response List Admins Api Admin Admins Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["admin"],
+        "summary": "Create Admin",
+        "description": "Add one administrator by e-mail; 409 on a duplicate or on the Super Admin.\n\n``payload.email`` is already normalized by the model's validator, so the\nduplicate comparison and the stored value are the same spelling.\n\nThe duplicate is checked twice on purpose: the SELECT answers the normal\ncase with a clean 409, and the unique index answers the race (two requests\npassing the SELECT at the same moment) that a SELECT alone cannot. Failures\nnever widen access — both paths refuse.",
+        "operationId": "create_admin_api_admin_admins_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AdminCreateIn" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AdminOut" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/admins/{admin_id}": {
+      "delete": {
+        "tags": ["admin"],
+        "summary": "Delete Admin",
+        "description": "Remove one administrator; 404 when the row is gone, 409 for the Super Admin.\n\nThe 409 branch is reachable only if ``SUPER_ADMIN_EMAIL`` was changed AFTER\nthe row was inserted — the POST endpoint refuses to create such a row in the\nfirst place. It is kept because deleting the one account that manages the\nregistry would be unrecoverable through the UI.",
+        "operationId": "delete_admin_api_admin_admins__admin_id__delete",
+        "parameters": [
+          {
+            "name": "admin_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "title": "Admin Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/health": {
       "get": {
         "summary": "Health",
@@ -776,6 +1277,174 @@
   },
   "components": {
     "schemas": {
+      "AdminCreateIn": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": ["email"],
+        "title": "AdminCreateIn",
+        "description": "The add-administrator form: an e-mail and nothing else.\n\nIdentity is not a request field — this model creates a ROW, it does not\nauthenticate anybody. Pydantic's default ``extra=\"ignore\"`` stays, so a\nforged ``name`` / ``id`` / ``is_super_admin`` field is silently dropped\nrather than honoured."
+      },
+      "AdminMessageOut": {
+        "properties": {
+          "id": { "type": "integer", "title": "Id" },
+          "author_type": { "type": "string", "title": "Author Type" },
+          "display_name": { "type": "string", "title": "Display Name" },
+          "body_markdown": { "type": "string", "title": "Body Markdown" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "attachments": {
+            "items": { "$ref": "#/components/schemas/AttachmentOut" },
+            "type": "array",
+            "title": "Attachments"
+          },
+          "author_user_id": { "type": "integer", "title": "Author User Id" },
+          "author_email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Author Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "author_type",
+          "display_name",
+          "body_markdown",
+          "created_at",
+          "author_user_id"
+        ],
+        "title": "AdminMessageOut",
+        "description": "A message with the internal identity an administrator may read."
+      },
+      "AdminOut": {
+        "properties": {
+          "id": { "type": "integer", "title": "Id" },
+          "email": { "type": "string", "title": "Email" },
+          "name": { "type": "string", "title": "Name" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": ["id", "email", "name", "created_at"],
+        "title": "AdminOut",
+        "description": "One row of the administrator registry, as the Super Admin sees it.\n\n``name`` is DERIVED from ``email`` by the backend\n(``admin_auth.display_name_from_email``): the database stores the address\nonly, so the label can never drift from the identity it describes."
+      },
+      "AdminTicketDetailOut": {
+        "properties": {
+          "id": { "type": "integer", "title": "Id" },
+          "category": { "type": "string", "title": "Category" },
+          "subject": { "type": "string", "title": "Subject" },
+          "status": { "type": "string", "title": "Status" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "user_id": { "type": "integer", "title": "User Id" },
+          "user_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Name"
+          },
+          "user_email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Email"
+          },
+          "messages": {
+            "items": { "$ref": "#/components/schemas/AdminMessageOut" },
+            "type": "array",
+            "title": "Messages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "subject",
+          "status",
+          "created_at",
+          "updated_at",
+          "user_id"
+        ],
+        "title": "AdminTicketDetailOut",
+        "description": "Any ticket with the full conversation and the real author identities."
+      },
+      "AdminTicketListOut": {
+        "properties": {
+          "items": {
+            "items": { "$ref": "#/components/schemas/AdminTicketOut" },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": { "type": "integer", "title": "Total" },
+          "limit": { "type": "integer", "title": "Limit" },
+          "offset": { "type": "integer", "title": "Offset" }
+        },
+        "type": "object",
+        "required": ["total", "limit", "offset"],
+        "title": "AdminTicketListOut",
+        "description": "A page of the admin list plus the total for the pagination control."
+      },
+      "AdminTicketOut": {
+        "properties": {
+          "id": { "type": "integer", "title": "Id" },
+          "category": { "type": "string", "title": "Category" },
+          "subject": { "type": "string", "title": "Subject" },
+          "status": { "type": "string", "title": "Status" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "message_count": {
+            "type": "integer",
+            "title": "Message Count",
+            "default": 0
+          },
+          "user_id": { "type": "integer", "title": "User Id" },
+          "user_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Name"
+          },
+          "user_email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "subject",
+          "status",
+          "created_at",
+          "updated_at",
+          "user_id"
+        ],
+        "title": "AdminTicketOut",
+        "description": "A ticket row for the admin list, with its owner."
+      },
       "AssignmentDetailOut": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -990,6 +1659,29 @@
         "required": ["id", "course_id", "course_name", "title"],
         "title": "AssignmentOut"
       },
+      "AttachmentOut": {
+        "properties": {
+          "id": { "type": "integer", "title": "Id" },
+          "original_name": { "type": "string", "title": "Original Name" },
+          "content_type": { "type": "string", "title": "Content Type" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "original_name",
+          "content_type",
+          "size_bytes",
+          "created_at"
+        ],
+        "title": "AttachmentOut",
+        "description": "Metadata of one uploaded file; the bytes come from the download endpoint."
+      },
       "AuthStatus": {
         "properties": {
           "authenticated": { "type": "boolean", "title": "Authenticated" },
@@ -1117,6 +1809,18 @@
         "required": ["id", "name"],
         "title": "CourseOut"
       },
+      "FeedbackStatsOut": {
+        "properties": {
+          "total": { "type": "integer", "title": "Total" },
+          "new": { "type": "integer", "title": "New" },
+          "in_progress": { "type": "integer", "title": "In Progress" },
+          "resolved": { "type": "integer", "title": "Resolved" }
+        },
+        "type": "object",
+        "required": ["total", "new", "in_progress", "resolved"],
+        "title": "FeedbackStatsOut",
+        "description": "Dashboard counters: the totals per status plus the closed/open split."
+      },
       "GradeColumn": {
         "properties": {
           "assignment_id": { "type": "string", "title": "Assignment Id" },
@@ -1200,6 +1904,34 @@
         },
         "type": "object",
         "title": "MaterialOut"
+      },
+      "MessageOut": {
+        "properties": {
+          "id": { "type": "integer", "title": "Id" },
+          "author_type": { "type": "string", "title": "Author Type" },
+          "display_name": { "type": "string", "title": "Display Name" },
+          "body_markdown": { "type": "string", "title": "Body Markdown" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "attachments": {
+            "items": { "$ref": "#/components/schemas/AttachmentOut" },
+            "type": "array",
+            "title": "Attachments"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "author_type",
+          "display_name",
+          "body_markdown",
+          "created_at"
+        ],
+        "title": "MessageOut",
+        "description": "One conversation message as a regular user may see it.\n\nNo ``author_user_id`` and no ``author_email``: a regular user sees the\nPUBLIC byline of the conversation and nothing else."
       },
       "StudentGradeItem": {
         "properties": {
@@ -1590,6 +2322,74 @@
         "required": ["course_id", "course_name"],
         "title": "TeacherGradesOut"
       },
+      "TicketDetailOut": {
+        "properties": {
+          "id": { "type": "integer", "title": "Id" },
+          "category": { "type": "string", "title": "Category" },
+          "subject": { "type": "string", "title": "Subject" },
+          "status": { "type": "string", "title": "Status" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "messages": {
+            "items": { "$ref": "#/components/schemas/MessageOut" },
+            "type": "array",
+            "title": "Messages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "subject",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "TicketDetailOut",
+        "description": "One ticket with its whole conversation, as its OWNER sees it."
+      },
+      "TicketOut": {
+        "properties": {
+          "id": { "type": "integer", "title": "Id" },
+          "category": { "type": "string", "title": "Category" },
+          "subject": { "type": "string", "title": "Subject" },
+          "status": { "type": "string", "title": "Status" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "message_count": {
+            "type": "integer",
+            "title": "Message Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "subject",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "TicketOut",
+        "description": "One ticket in a list (no conversation)."
+      },
       "UserOut": {
         "properties": {
           "id": { "type": "integer", "title": "Id" },
@@ -1600,12 +2400,22 @@
           "email": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Email"
+          },
+          "is_admin": {
+            "type": "boolean",
+            "title": "Is Admin",
+            "default": false
+          },
+          "is_super_admin": {
+            "type": "boolean",
+            "title": "Is Super Admin",
+            "default": false
           }
         },
         "type": "object",
         "required": ["id"],
         "title": "UserOut",
-        "description": "Identity of the authenticated user (migration stage 6, §24).\n\nExactly the three fields the frontend needs to render \"signed in as\".\nNo Google credential material, no tokens, no OAuth state: the local\n``users.id`` is the only identifier and it is the caller's own."
+        "description": "Identity of the authenticated user (migration stage 6, §24).\n\nExactly the fields the frontend needs to render \"signed in as\", plus the two\nrole BOOLEANS of ADR-0035/ADR-0036. Those flags are computed by the backend\nfrom the same ``admin_auth.resolve_role`` call ``require_admin`` and\n``require_super_admin`` enforce, so the UI can hide the admin surfaces —\nwhile the API answers 403/409 regardless of what the UI decided.\n\nNeither the Super Admin ADDRESS nor the administrator list is part of this\nmodel: the frontend learns two booleans and nothing else, so the\nconfiguration cannot reach the browser bundle."
       },
       "ValidationError": {
         "properties": {
