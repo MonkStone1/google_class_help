@@ -18,6 +18,7 @@ import { useAuth } from "../context/DataContext.tsx";
 import { useSettings } from "../context/SettingsContext.tsx";
 import { LANGUAGE_OPTIONS, useI18n } from "../i18n.ts";
 import { useSignInChallenge } from "../lib/signInChallenge.ts";
+import { DonateCards } from "./DonateCards.tsx";
 
 /**
  * The public landing page of the hosted service (ADR-0029).
@@ -201,6 +202,17 @@ export function Landing() {
           >
             {t("landing.data.privacyLink")}
           </a>
+        </section>
+
+        {/*
+          Donations (ADR-0037). Placed between the data section and the closing
+          CTA: the visitor has just read what the site does with their data, so
+          the ask lands on an informed page rather than interrupting the
+          sign-in flow, and the codes are visible without a click.
+        */}
+        <section className="landing-section">
+          <h2>{t("donate.title")}</h2>
+          <DonateCards />
         </section>
 
         <section className="landing-cta">

@@ -208,6 +208,22 @@ describe("Landing", () => {
     await waitFor(() => expect(setLanguage).toHaveBeenCalledWith("ru"));
   });
 
+  it("offers the donation codes to a visitor with no session", () => {
+    // ADR-0037: an anonymous visitor is the audience this block exists for,
+    // and the codes must be on the page without a sign-in.
+    renderLanding("uk");
+
+    expect(screen.getByRole("heading", { name: "Підтримати проєкт" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Ці гроші підуть на підтримання та розвиток проєкту."),
+    ).toBeInTheDocument();
+    // The code is a labelled button, not a bare image: the bank name travels on
+    // the control, and clicking it opens the enlarged view.
+    expect(
+      screen.getByRole("button", { name: "Збільшити QR-код Monobank" }),
+    ).toBeInTheDocument();
+  });
+
   it("leaves the document language to the settings provider", () => {
     // The landing used to own `<html lang>` on its own (ADR-0029), which meant
     // the attribute only ever followed the language on THIS surface. The

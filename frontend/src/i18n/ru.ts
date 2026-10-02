@@ -119,6 +119,15 @@ export const ru = {
   "landing.footer.contact": "Вопросы и запросы на удаление данных:",
   "landing.footer.repository": "github.com/MonkStone1/google_class_help",
 
+  // Донаты (ADR-0037). Один текст, две поверхности: секция на лендинге и
+  // карточка в настройках отдают один и тот же блок.
+  "donate.title": "Поддержать проект",
+  "donate.note": "Эти деньги пойдут на поддержание и развитие проекта.",
+  "donate.qrAlt": "QR-код для доната в {bank}",
+  "donate.preview": "Увеличить QR-код {bank}",
+  "donate.bank.monobank": "Monobank",
+  "donate.bank.privatbank": "PrivatBank",
+
   "search.label": "Результаты поиска",
   "search.noResults": "Ничего не найдено по «{query}»",
   "search.assignments": "Задания",

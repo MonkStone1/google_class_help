@@ -121,6 +121,17 @@ export const en = {
   "landing.footer.contact": "Questions and data deletion requests:",
   "landing.footer.repository": "github.com/MonkStone1/google_class_help",
 
+  // Donations (ADR-0037). One wording, two surfaces: the public landing
+  // section and the Settings card render the same block, so the promise made
+  // to an anonymous visitor is the promise a signed-in user reads.
+  "donate.title": "Support the project",
+  "donate.note":
+    "This money goes to keeping the project running and developing it.",
+  "donate.qrAlt": "Donation QR code for {bank}",
+  "donate.preview": "Enlarge the {bank} QR code",
+  "donate.bank.monobank": "Monobank",
+  "donate.bank.privatbank": "PrivatBank",
+
   "search.label": "Search results",
   "search.noResults": "No matches for “{query}”",
   "search.assignments": "Assignments",

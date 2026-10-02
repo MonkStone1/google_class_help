@@ -28,7 +28,9 @@ import sys
 from pathlib import Path
 
 import access_log
+import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
 import hosted_auth
 import main
@@ -357,6 +359,105 @@ def test_site_ships_a_generated_favicon():
         text = page.read_text(encoding="utf-8")
         assert 'rel="icon"' in text, f"no favicon link in {page.name}"
         assert "/favicon.svg" in text, f"no SVG favicon in {page.name}"
+
+
+def test_donation_qr_codes_are_shipped_and_referenced():
+    """ADR-0037: the donation codes must survive the build and be reachable.
+
+    They live in `frontend/public/donate/`, which Vite copies into `dist` for
+    both the Docker image and the desktop exe. This pins the half that a
+    frontend unit test cannot see: that the FILES are there and that the
+    component points at those exact names.
+
+    A typo in the path would not fail loudly: `SPAStaticFiles` answers an
+    unknown non-`assets/` path with the SPA shell and HTTP 200, so the browser
+    would render HTML where a PNG was expected and the page would only look
+    broken. Hence the explicit reference check.
+    """
+    donate = FRONTEND_DIR / "public" / "donate"
+    component = (FRONTEND_DIR / "src" / "components" / "DonateCards.tsx").read_text(
+        encoding="utf-8"
+    )
+
+    for name in ("monobank.png", "privatbank.png"):
+        path = donate / name
+        assert path.is_file(), f"missing donation code: {name}"
+        assert path.stat().st_size > 0, f"empty donation code: {name}"
+        # Both banks' exports carry a .png name but are actually JPEG, which is
+        # why the browsers accept them and why the type is sniffed rather than
+        # trusted. The check is therefore that Pillow can DECODE the file, not
+        # that it starts with the PNG signature: a truncated or renamed file
+        # would still be served and would still "pass" an existence check.
+        try:
+            with Image.open(path) as image:
+                image.verify()
+            with Image.open(path) as image:
+                real_width, real_height = image.size
+        except OSError as exc:  # pragma: no cover - only on a corrupt file
+            pytest.fail(f"{name} is not a decodable image: {exc}")
+        assert name in component, f"{name} is shipped but never referenced"
+
+        # The dimensions declared in the component must match the real file.
+        # They are what the browser reserves before the image loads, and a
+        # stale pair would shift the layout — or, with a fixed CSS height,
+        # stretch the code until the bank app stops reading it. The two banks
+        # differ (1051×1280 vs 1056×1280), so each carries its own pair.
+        stem = name.removesuffix(".png")
+        assert (
+            f'file: "{name}"' in component
+        ), f"{name} is not declared in the banks list"
+        declared = re.search(
+            rf'id: "{stem}".*?width: (\d+),\s*height: (\d+)',
+            component,
+            re.DOTALL,
+        )
+        assert declared is not None, f"no declared size for {name}"
+        assert (int(declared.group(1)), int(declared.group(2))) == (
+            real_width,
+            real_height,
+        ), (
+            f"{name} is {real_width}x{real_height} on disk but the component "
+            f"declares {declared.group(1)}x{declared.group(2)}"
+        )
+
+    # The codes are same-origin, which is what the CSP allows (§48).
+    assert "/donate/" in component
+    assert "http://" not in component and "https://" not in component
+
+
+def test_donation_codes_are_not_recolored_by_css():
+    """ADR-0037: the artwork must render exactly as the bank ships it.
+
+    The QR codes come on a coloured background of the bank's own. Putting a
+    white plate, a tint or a filter UNDER the code is the classic way to make
+    it stop scanning, and the failure is silent — the page looks fine and the
+    money never arrives. The theme is therefore carried by `.donate-card`, the
+    frame around the image, and `.donate-qr` only sizes the artwork.
+
+    The assertion lives here rather than in a component test because Vitest
+    does not load the app's stylesheets: a jsdom `getComputedStyle` check would
+    pass without ever reading the rule it claims to verify.
+    """
+    css = (FRONTEND_DIR / "src" / "styles" / "components.css").read_text(
+        encoding="utf-8"
+    )
+    for selector in (r"\.donate-qr\s*\{", r"\.donate-preview-image\s*\{"):
+        match = re.search(selector + r"([^}]*)\}", css)
+        assert match is not None, f"the {selector} rule is missing"
+        declarations = match.group(1)
+        for forbidden in ("background", "filter", "mix-blend-mode", "opacity"):
+            assert forbidden not in declarations, (
+                f"{selector} must not set `{forbidden}`: it would alter the code"
+            )
+
+    # The artwork is portrait and the two banks differ (1051×1280 vs 1056×1280).
+    # A fixed `height` next to the width is what would stretch a QR past the
+    # point a bank app can read it, so only the width may be constrained.
+    for selector in (r"\.donate-qr\s*\{", r"\.donate-preview-image\s*\{"):
+        declarations = re.search(selector + r"([^}]*)\}", css).group(1)
+        assert "height: auto" in declarations, (
+            f"{selector} must keep `height: auto` so the QR is never stretched"
+        )
 
 
 def test_make_icon_tool_is_wired_into_the_build():
