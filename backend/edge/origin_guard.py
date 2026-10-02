@@ -14,8 +14,8 @@ monkeypatch targets moved here with the code (ADR-0039 stage 2).
 
 from fastapi import Request
 
-import config
-from proxy import effective_authority, host_and_port_from_value, public_origin
+from core import config
+from core.proxy import effective_authority, host_and_port_from_value, public_origin
 
 # Migration stage 7 (§27/§28): the accepted Host names are configuration, not
 # code. Desktop development keeps localhost/127.0.0.1 (the default), the

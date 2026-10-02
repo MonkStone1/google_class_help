@@ -15,8 +15,7 @@ from datetime import datetime
 from sqlalchemy import and_, case, func, select
 from sqlalchemy.orm import Session
 
-from grading import SUBMITTED_STATES
-from models import (
+from db.models.classroom import (
     Course,
     CourseRole,
     CourseStudent,
@@ -24,7 +23,8 @@ from models import (
     CourseWorkSubmission,
     StudentSubmission,
 )
-from schemas import CourseOut
+from schemas.dashboard import CourseOut
+from sync.grading import SUBMITTED_STATES
 
 # ------------------------------------------------------------ derived SQL
 

@@ -1,34 +1,32 @@
 # pyright: reportMissingImports=false
 # Backend modules are put on sys.path at runtime by tests/conftest.py; the type
 # checker does not execute that, so the flat imports resolve only at runtime.
-"""User isolation via get_current_user (migration stage 4 part 1, §12–§16).
+"""User isolation via get_current_user (migration stage 4 part 1, В§12вЂ“В§16).
 
 The core invariants under test:
 
-- §13: every data endpoint resolves the authenticated user through the
+- В§13: every data endpoint resolves the authenticated user through the
   ``get_current_user`` dependency — the session user in hosted mode, the
   local owner on desktop — and never trusts a request-supplied id;
-- §12: no data path leaks another user's rows, including coursework
+- В§12: no data path leaks another user's rows, including coursework
   reached by GUESSING Google ids that happen to exist in both caches;
-- §15: Google credentials are read/saved/refreshed/deleted per user;
-- §16: hosted status/login state is per session, never the desktop's
+- В§15: Google credentials are read/saved/refreshed/deleted per user;
+- В§16: hosted status/login state is per session, never the desktop's
   global login state.
 """
 
 from datetime import datetime, timedelta, timezone
 
-import google_credentials
 import pytest
 from google.oauth2.credentials import Credentials
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-import auth
-import hosted_auth
-import ownership
-import sync_store
-from models import Course
-from models_auth import OAuthToken, User, UserSession
+from auth import desktop, hosted, ownership
+from db.models.accounts import OAuthToken, User, UserSession
+from db.models.classroom import Course
+from gapi import credentials
+from sync import store
 
 
 def _now() -> datetime:
@@ -56,7 +54,7 @@ def _make_user(db: Session, subject: str, name: str | None = None) -> User:
 
 
 def _make_local_user(db: Session, subject: str) -> User:
-    """A user whose row carries NO profile — the desktop cache path (§17)."""
+    """A user whose row carries NO profile — the desktop cache path (В§17)."""
     user = User(
         provider=ownership.LOCAL_PROVIDER,
         provider_subject=subject,
@@ -73,7 +71,7 @@ def _make_local_user(db: Session, subject: str) -> User:
 
 def _seed_course(db: Session, user_id: int, name: str, points: float = 70) -> None:
     """One course with one assignment — identical Google ids for everyone."""
-    from models import CourseRole, CourseWork, StudentSubmission
+    from db.models.classroom import CourseRole, CourseWork, StudentSubmission
 
     db.add(Course(user_id=user_id, id="c1", name=name, course_state="ACTIVE"))
     db.add(CourseRole(user_id=user_id, course_id="c1", role="STUDENT"))
@@ -97,7 +95,7 @@ def _seed_course(db: Session, user_id: int, name: str, points: float = 70) -> No
         )
     )
     # Structured per-user sync state (stage 5) instead of the key/value row.
-    sync_store.mark_sync_succeeded(db, user_id, _utc(2026, 9, 19))
+    store.mark_sync_succeeded(db, user_id, _utc(2026, 9, 19))
     db.commit()
 
 
@@ -106,7 +104,7 @@ def _add_session(db: Session, user: User, raw_token: str) -> None:
     now = _now()
     db.add(
         UserSession(
-            session_token_hash=hosted_auth._sha256_hex(raw_token),
+            session_token_hash=hosted._sha256_hex(raw_token),
             user_id=user.id,
             created_at=now,
             expires_at=now + timedelta(days=1),
@@ -116,11 +114,11 @@ def _add_session(db: Session, user: User, raw_token: str) -> None:
     db.commit()
 
 
-# ----------------------------------------------------------------- §12 IDOR
+# ----------------------------------------------------------------- В§12 IDOR
 
 
 def test_foreign_course_is_404_on_every_path(hosted_client, db):
-    """§12: every nested data path resolves ids inside the caller's scope."""
+    """В§12: every nested data path resolves ids inside the caller's scope."""
     alice = _make_user(db, "sub-alice")
     bob = _make_user(db, "sub-bob")
     _seed_course(db, alice.id, "Alice's course")
@@ -142,8 +140,8 @@ def test_foreign_course_is_404_on_every_path(hosted_client, db):
 
 
 def test_coursework_google_id_guessing_does_not_cross_users(hosted_client, db):
-    """§12: coursework by guessed Google id stays inside the caller's scope."""
-    from models import CourseWork
+    """В§12: coursework by guessed Google id stays inside the caller's scope."""
+    from db.models.classroom import CourseWork
 
     alice = _make_user(db, "sub-alice")
     bob = _make_user(db, "sub-bob")
@@ -189,7 +187,7 @@ def test_course_list_and_grades_show_only_the_session_user(hosted_client, db):
 
 
 def test_cache_delete_only_clears_the_caller(hosted_client, db):
-    """§12/audit P4: DELETE /api/cache is destructive for one user only."""
+    """В§12/audit P4: DELETE /api/cache is destructive for one user only."""
     alice = _make_user(db, "sub-alice")
     bob = _make_user(db, "sub-bob")
     _seed_course(db, alice.id, "Alice's course")
@@ -207,7 +205,7 @@ def test_cache_delete_only_clears_the_caller(hosted_client, db):
 
 
 def test_sync_targets_the_session_user_only(hosted_client, db, monkeypatch):
-    """§12/DDoS §9: /api/sync queues the CALLER's job only, nothing else's."""
+    """В§12/DDoS В§9: /api/sync queues the CALLER's job only, nothing else's."""
     alice = _make_user(db, "sub-alice")
     bob = _make_user(db, "sub-bob")
     _seed_course(db, alice.id, "Alice's course")
@@ -221,12 +219,12 @@ def test_sync_targets_the_session_user_only(hosted_client, db, monkeypatch):
     assert body["queued"] is True
     assert body["status"] == "queued"
     # Only the session user's flag was set — nobody else's.
-    from models import SyncStatus
+    from db.models.classroom import SyncStatus
 
     alice_state = db.get(SyncStatus, alice.id)
     assert alice_state is not None
     assert alice_state.last_success_at == _utc(2026, 9, 19)
-    assert alice_state.status == sync_store.SYNC_OK
+    assert alice_state.status == store.SYNC_OK
     assert alice_state.sync_requested is False
     bob_state = db.get(SyncStatus, bob.id)
     assert bob_state is not None
@@ -235,15 +233,15 @@ def test_sync_targets_the_session_user_only(hosted_client, db, monkeypatch):
     # claims it; the frontend must not wait for `status == running` to start
     # watching and must not keep the old cache as the final view.
     queued_status = hosted_client.get("/api/status").json()
-    assert queued_status["sync_status"] == sync_store.SYNC_PENDING
+    assert queued_status["sync_status"] == store.SYNC_PENDING
     assert queued_status["syncing"] is True
 
 
-# ----------------------------------------------------- §16 per-session state
+# ----------------------------------------------------- В§16 per-session state
 
 
 def test_status_reports_the_session_user_not_a_global_state(hosted_client, db):
-    """§16/§26: identity comes from THIS session, sync state from THIS user."""
+    """В§16/В§26: identity comes from THIS session, sync state from THIS user."""
     alice = _make_user(db, "sub-alice", "Alice")
     bob = _make_user(db, "sub-bob", "Bob")
     _seed_course(db, alice.id, "Alice's course")
@@ -256,7 +254,7 @@ def test_status_reports_the_session_user_not_a_global_state(hosted_client, db):
     assert identity["user"]["name"] == "Alice"
     assert identity["user"]["email"] == "sub-alice@example.com"
     status = hosted_client.get("/api/status").json()
-    # §26: /api/status carries no identity at all — only the sync state.
+    # В§26: /api/status carries no identity at all — only the sync state.
     assert "user_name" not in status and "user_email" not in status
     assert status["last_sync"] == "2026-09-19T00:00:00"
 
@@ -269,7 +267,7 @@ def test_status_reports_the_session_user_not_a_global_state(hosted_client, db):
     assert hosted_client.get("/api/status").json()["last_sync"] == "2026-09-19T00:00:00"
 
 
-# ------------------------------------------- §15 user-scoped credentials
+# ------------------------------------------- В§15 user-scoped credentials
 
 
 def _creds(token: str) -> Credentials:
@@ -279,7 +277,7 @@ def _creds(token: str) -> Credentials:
         token_uri="https://oauth2.googleapis.com/token",
         client_id="test-web-client.apps.googleusercontent.com",
         client_secret="test-web-client-secret",
-        scopes=auth.SCOPES,
+        scopes=desktop.SCOPES,
         expiry=None,
     )
 
@@ -287,61 +285,61 @@ def _creds(token: str) -> Credentials:
 def test_credentials_are_stored_and_resolved_per_user(db: Session):
     alice = _make_user(db, "sub-alice")
     bob = _make_user(db, "sub-bob")
-    google_credentials.save_google_credentials(db, alice.id, _creds("at-alice"))
-    google_credentials.save_google_credentials(db, bob.id, _creds("at-bob"))
+    credentials.save_google_credentials(db, alice.id, _creds("at-alice"))
+    credentials.save_google_credentials(db, bob.id, _creds("at-bob"))
 
-    # Encrypted at rest, never plaintext (§8).
+    # Encrypted at rest, never plaintext (В§8).
     row_a = db.get(OAuthToken, alice.id)
     assert row_a is not None and row_a.access_token.startswith("enc.v1:")
     assert "at-alice" not in row_a.access_token
 
-    creds_a = google_credentials.get_google_credentials(db, alice)
-    creds_b = google_credentials.get_google_credentials(db, bob)
+    creds_a = credentials.get_google_credentials(db, alice)
+    creds_b = credentials.get_google_credentials(db, bob)
     assert creds_a is not None and creds_a.token == "at-alice"
     assert creds_b is not None and creds_b.token == "at-bob"
 
-    # Deleting one user's grant leaves the other untouched (§15).
-    google_credentials.delete_google_credentials(db, alice.id)
+    # Deleting one user's grant leaves the other untouched (В§15).
+    credentials.delete_google_credentials(db, alice.id)
     assert db.get(OAuthToken, alice.id) is None
     assert db.get(OAuthToken, bob.id) is not None
-    assert google_credentials.get_google_credentials(db, bob) is not None
+    assert credentials.get_google_credentials(db, bob) is not None
 
 
 def test_delete_google_credentials_desktop_unlinks_token_file(db: Session):
     """The desktop owner's credential deletion is the token.json unlink."""
     owner = ownership.ensure_local_owner(db)
-    token_file = auth.TOKEN_FILE
+    token_file = desktop.TOKEN_FILE
     token_file.parent.mkdir(parents=True, exist_ok=True)
     token_file.write_text("{}", encoding="utf-8")
     try:
-        google_credentials.delete_google_credentials(db, owner.id)
+        credentials.delete_google_credentials(db, owner.id)
         assert not token_file.exists()
     finally:
         token_file.unlink(missing_ok=True)
 
 
 def test_desktop_owner_gets_the_desktop_backend(db: Session):
-    """provider dispatch (§15): the local owner reads token.json, not oauth_tokens."""
+    """provider dispatch (В§15): the local owner reads token.json, not oauth_tokens."""
     owner = ownership.ensure_local_owner(db)
-    # No token.json in the hermetic data dir → not signed in, and no row.
-    assert google_credentials.get_google_credentials(db, owner) is None
+    # No token.json in the hermetic data dir в†’ not signed in, and no row.
+    assert credentials.get_google_credentials(db, owner) is None
     assert db.get(OAuthToken, owner.id) is None
 
 
 def test_refresh_locks_are_per_user():
-    """§15: one user's refresh must not serialize another user's."""
-    lock_a1 = google_credentials._refresh_lock_for(101)
-    lock_a2 = google_credentials._refresh_lock_for(101)
-    lock_b = google_credentials._refresh_lock_for(202)
+    """В§15: one user's refresh must not serialize another user's."""
+    lock_a1 = credentials._refresh_lock_for(101)
+    lock_a2 = credentials._refresh_lock_for(101)
+    lock_b = credentials._refresh_lock_for(202)
     assert lock_a1 is lock_a2
     assert lock_a1 is not lock_b
 
 
-# ------------------------------------------------------------------ §13 deps
+# ------------------------------------------------------------------ В§13 deps
 
 
 def test_desktop_get_current_user_is_the_local_owner(db: Session):
-    """§13: a desktop request has no session — the user is the local owner."""
+    """В§13: a desktop request has no session — the user is the local owner."""
     from types import SimpleNamespace
 
     from starlette.requests import Request as StarletteRequest
@@ -358,7 +356,7 @@ def test_desktop_get_current_user_is_the_local_owner(db: Session):
 
 
 def test_desktop_data_endpoint_works_without_a_session(client, db):
-    """§13: the desktop app keeps its pre-migration no-login behaviour."""
+    """В§13: the desktop app keeps its pre-migration no-login behaviour."""
     response = client.get("/api/courses")
     assert response.status_code == 200
     assert response.json() == []
@@ -381,17 +379,17 @@ def test_desktop_data_endpoint_works_without_a_session(client, db):
     ],
 )
 def test_hosted_data_endpoints_reject_anonymous_calls(hosted_client, path):
-    """§13: no data path answers without a validated session user."""
+    """В§13: no data path answers without a validated session user."""
     response = hosted_client.get(path)
     assert response.status_code == 401
 
 
-# ------------------------------------------------- §17 profile is per user
+# ------------------------------------------------- В§17 profile is per user
 
 
 def test_profile_cache_is_keyed_by_user(db: Session, monkeypatch):
-    """§17: user_id -> profile; one user's lookup never answers another's."""
-    from api import identity
+    """В§17: user_id -> profile; one user's lookup never answers another's."""
+    from auth import identity
 
     calls: list[str] = []
 
@@ -431,8 +429,8 @@ def test_profile_cache_is_keyed_by_user(db: Session, monkeypatch):
 
 
 def test_auth_status_never_reads_a_global_profile_cache(db: Session):
-    """§17: a hosted profile comes from the users row, not a shared cache."""
-    from api import identity
+    """В§17: a hosted profile comes from the users row, not a shared cache."""
+    from auth import identity
 
     identity._reset_profile_cache()
     alice = _make_user(db, "sub-alice", "Alice")
@@ -446,14 +444,14 @@ def test_auth_status_never_reads_a_global_profile_cache(db: Session):
     assert identity._profile_cache == {}
 
 
-# ------------------------------------------------- §67 response ownership
+# ------------------------------------------------- В§67 response ownership
 
 
 def test_every_cache_table_has_an_ownership_path():
-    """§67: each cache table's user_id is in its PK and joins only to
+    """В§67: each cache table's user_id is in its PK and joins only to
     another ownership column (a chain that ends at users.id)."""
-    import models as _models  # noqa: F401 - populate Base.metadata
-    from database import Base
+    from db.models import classroom as _models  # noqa: F401 - populate Base.metadata
+    from db.session import Base
 
     auth_tables = {"users", "sessions", "oauth_tokens", "oauth_login_states"}
     # The feedback domain (ADR-0035) is user-scoped but is NOT part of the
@@ -513,8 +511,8 @@ def test_feedback_ownership_path():
     its message and ticket. Deleting an account therefore removes exactly its
     own rows and nothing else.
     """
-    import models as _models  # noqa: F401 - populate Base.metadata
-    from database import Base
+    from db.models import classroom as _models  # noqa: F401 - populate Base.metadata
+    from db.session import Base
 
     cascades = {
         "feedback_tickets": ("user_id",),
@@ -539,7 +537,7 @@ def test_feedback_ownership_path():
 
 
 def test_student_aggregates_do_not_join_across_users(hosted_client, db):
-    """§67: identical Google ids never leak into course/status aggregates."""
+    """В§67: identical Google ids never leak into course/status aggregates."""
     alice = _make_user(db, "sub-alice")
     bob = _make_user(db, "sub-bob")
     _seed_course(db, alice.id, "Alice's course", points=10)
@@ -567,8 +565,13 @@ def test_student_aggregates_do_not_join_across_users(hosted_client, db):
 
 
 def test_teacher_aggregates_do_not_join_across_users(hosted_client, db):
-    """§67: the teacher grade matrix stays inside one user's rows."""
-    from models import CourseRole, CourseStudent, CourseWork, CourseWorkSubmission
+    """В§67: the teacher grade matrix stays inside one user's rows."""
+    from db.models.classroom import (
+        CourseRole,
+        CourseStudent,
+        CourseWork,
+        CourseWorkSubmission,
+    )
 
     alice = _make_user(db, "sub-alice")
     bob = _make_user(db, "sub-bob")

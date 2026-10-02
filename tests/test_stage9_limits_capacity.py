@@ -29,17 +29,16 @@ Pins the decisions of this stage (§39–§46, §59–§62, §66, §68, §70, §
 import hashlib
 from datetime import datetime, timedelta, timezone
 
-import google_credentials
 import pytest
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
+import gapi.credentials as google_credentials
 import maintenance
-import metrics
-import rate_limit
-import sync_store
-from database import engine
-from models import (
+import sync.store as sync_store
+from core import metrics, rate_limit
+from db.models.accounts import OAuthToken, User, UserSession
+from db.models.classroom import (
     Course,
     CourseRole,
     CourseStudent,
@@ -47,7 +46,7 @@ from models import (
     StudentSubmission,
     SyncStatus,
 )
-from models_auth import OAuthToken, User, UserSession
+from db.session import engine
 
 
 def _now() -> datetime:
@@ -91,7 +90,7 @@ def _add_session(db: Session, user: User, raw_token: str, **overrides) -> UserSe
 
 
 def _add_grant(db: Session, user: User) -> OAuthToken:
-    import token_crypto
+    import core.crypto as token_crypto
 
     row = OAuthToken(
         user_id=user.id,
@@ -166,7 +165,7 @@ def test_rate_limiter_capacity_change_replaces_the_bucket():
 
 def test_hosted_sync_endpoint_is_throttled_per_ip(hosted_client, db, monkeypatch):
     """§39: repeated manual syncs from one client hit 429 with Retry-After."""
-    import config
+    from core import config
 
     monkeypatch.setattr(config, "RATE_LIMIT_SYNC_PER_MINUTE", 2)
     user = _make_user(db, "sub-alice")
@@ -182,8 +181,8 @@ def test_hosted_sync_endpoint_is_throttled_per_ip(hosted_client, db, monkeypatch
 
 def test_desktop_sync_endpoint_is_not_throttled(client, monkeypatch):
     """§39/§74: the desktop build keeps its unrestricted local endpoint."""
-    import config
     import sync
+    from core import config
 
     monkeypatch.setattr(config, "RATE_LIMIT_SYNC_PER_MINUTE", 1)
     monkeypatch.setattr(
@@ -197,7 +196,7 @@ def test_desktop_sync_endpoint_is_not_throttled(client, monkeypatch):
 
 
 def test_hosted_login_redirect_is_throttled(hosted_client, monkeypatch):
-    import config
+    from core import config
 
     monkeypatch.setattr(config, "RATE_LIMIT_LOGIN_PER_MINUTE", 1)
     first = hosted_client.get("/api/auth/login", follow_redirects=False)
@@ -208,7 +207,7 @@ def test_hosted_login_redirect_is_throttled(hosted_client, monkeypatch):
 
 def test_rejected_callbacks_are_capped(hosted_client, monkeypatch):
     """§39: rejected callbacks are counted; a success is not."""
-    import config
+    from core import config
 
     monkeypatch.setattr(config, "RATE_LIMIT_CALLBACK_FAILURES_PER_MINUTE", 1)
     first = hosted_client.get("/api/auth/callback", follow_redirects=False)
@@ -219,7 +218,7 @@ def test_rejected_callbacks_are_capped(hosted_client, monkeypatch):
 
 def test_manual_sync_cooldown_refuses_the_same_user(hosted_client, db):
     """§39: a second manual sync inside the cooldown is refused with 429."""
-    from config import SYNC_MANUAL_COOLDOWN_SECONDS
+    from core.config import SYNC_MANUAL_COOLDOWN_SECONDS
 
     assert SYNC_MANUAL_COOLDOWN_SECONDS > 0
     user = _make_user(db, "sub-alice")
@@ -242,7 +241,7 @@ def test_manual_sync_cooldown_refuses_the_same_user(hosted_client, db):
 
 
 def test_manual_sync_cooldown_expires(hosted_client, db, monkeypatch):
-    from config import SYNC_MANUAL_COOLDOWN_SECONDS
+    from core.config import SYNC_MANUAL_COOLDOWN_SECONDS
 
     user = _make_user(db, "sub-alice")
     _add_session(db, user, "raw-alice")
@@ -293,8 +292,8 @@ def test_cooldown_is_per_user(hosted_client, db, monkeypatch):
 
 def test_invalid_grant_drops_only_that_users_credentials(db):
     """§41: a revoked grant is deleted per user, never globally."""
-    import google_credentials
-    import oauth_transport
+    import gapi.credentials as google_credentials
+    from gapi import oauth_transport
 
     alice = _make_user(db, "sub-alice")
     bob = _make_user(db, "sub-bob")
@@ -317,8 +316,8 @@ def test_invalid_grant_drops_only_that_users_credentials(db):
 
 def test_transient_refresh_failure_keeps_the_grant(db):
     """§41: only a permanently dead grant removes the row."""
-    import google_credentials
-    import oauth_transport
+    import gapi.credentials as google_credentials
+    from gapi import oauth_transport
 
     alice = _make_user(db, "sub-alice")
     _add_grant(db, alice)
@@ -336,12 +335,13 @@ def test_transient_refresh_failure_keeps_the_grant(db):
 
 
 def test_sync_marks_needs_reauth_and_removes_only_that_grant(db, monkeypatch):
+    import sync.service._fetch as fetch_mod
     """§41: a 401 during the sync pauses THIS account and keeps user B."""
-    import google_credentials
     from googleapiclient.errors import HttpError
 
-    import sync_service
-    import sync_store
+    import gapi.credentials as google_credentials
+    import sync.service as sync_service
+    import sync.store as sync_store
 
     alice = _make_user(db, "sub-alice")
     bob = _make_user(db, "sub-bob")
@@ -357,7 +357,7 @@ def test_sync_marks_needs_reauth_and_removes_only_that_grant(db, monkeypatch):
     def boom(_credentials):
         raise HttpError(_Resp(), b'{"error": {"message": "Invalid Credentials"}}')
 
-    monkeypatch.setattr(sync_service, "build_service", boom)
+    monkeypatch.setattr(fetch_mod, "build_service", boom)
     # The credential lookup returns a usable object so the sync reaches the
     # fetch phase (where the 401 arrives).
     monkeypatch.setattr(
@@ -383,7 +383,7 @@ def test_sync_marks_needs_reauth_and_removes_only_that_grant(db, monkeypatch):
 def test_log_records_never_carry_token_material():
     import logging
 
-    import access_log
+    import core.logging_filters as access_log
 
     record = logging.LogRecord(
         name="api",
@@ -402,7 +402,7 @@ def test_log_records_never_carry_token_material():
 
 
 def test_secret_redaction_keeps_operational_fields():
-    import access_log
+    import core.logging_filters as access_log
 
     text = "Sync ok user=42 courses=3 google_requests=128 duration=4.2s"
     assert access_log.redact_secrets_in_text(text) == text
@@ -411,17 +411,17 @@ def test_secret_redaction_keeps_operational_fields():
 def test_redaction_filter_installed_on_hosted_app():
     import logging
 
-    import access_log
+    import core.logging_filters as access_log
 
     access_log.install_secret_redaction()
     assert any(
         isinstance(item, access_log.RedactSecretsFilter)
-        for item in logging.getLogger("sync_service").filters
+        for item in logging.getLogger("sync.service").filters
     )
     # Idempotent: installing twice must not stack filters.
-    before = len(logging.getLogger("sync_service").filters)
+    before = len(logging.getLogger("sync.service").filters)
     access_log.install_secret_redaction()
-    assert len(logging.getLogger("sync_service").filters) == before
+    assert len(logging.getLogger("sync.service").filters) == before
 
 
 # ------------------------------------------- §44/§66 deletion stays per user
@@ -429,7 +429,7 @@ def test_redaction_filter_installed_on_hosted_app():
 
 def test_retention_sweep_removes_only_dead_rows(db):
     """§44: expired/revoked sessions and stale login attempts are swept."""
-    from models_auth import OAuthLoginState
+    from db.models.accounts import OAuthLoginState
 
     alive = _make_user(db, "sub-alive")
     gone = _make_user(db, "sub-gone")
@@ -569,11 +569,11 @@ def test_cache_delete_alias_clears_only_the_caller(hosted_client, db):
 
 
 def test_sync_fetch_phase_holds_no_database_connection(client, monkeypatch):
+    import sync.service._fetch as fetch_mod
     """§45: the Classroom fetch runs outside any open transaction."""
-    import google_credentials
-
-    import sync_service
-    from database import SessionLocal, engine
+    import gapi.credentials as google_credentials
+    import sync.service as sync_service
+    from db.session import SessionLocal, engine
 
     with SessionLocal() as setup:
         user = _make_user(setup, "sub-alice")
@@ -591,7 +591,7 @@ def test_sync_fetch_phase_holds_no_database_connection(client, monkeypatch):
     monkeypatch.setattr(
         google_credentials, "get_google_credentials", lambda _db, _user: object()
     )
-    monkeypatch.setattr(sync_service, "build_service", capture)
+    monkeypatch.setattr(fetch_mod, "build_service", capture)
     result = sync_service.sync_user_id(user_id)
 
     assert result["ok"] is False
@@ -599,11 +599,11 @@ def test_sync_fetch_phase_holds_no_database_connection(client, monkeypatch):
 
 
 def test_scheduled_sync_closes_its_session_before_the_fetch(client, monkeypatch):
+    import sync.service._fetch as fetch_mod
     """§45: the claim/credential session is closed before the network phase."""
-    import google_credentials
-
-    import sync_service
-    from database import SessionLocal
+    import gapi.credentials as google_credentials
+    import sync.service as sync_service
+    from db.session import SessionLocal
 
     with SessionLocal() as setup:
         user = _make_user(setup, "sub-alice")
@@ -623,7 +623,7 @@ def test_scheduled_sync_closes_its_session_before_the_fetch(client, monkeypatch)
     monkeypatch.setattr(
         google_credentials, "get_google_credentials", lambda _db, _user: object()
     )
-    monkeypatch.setattr(sync_service, "build_service", capture)
+    monkeypatch.setattr(fetch_mod, "build_service", capture)
     sync_service.sync_user_id(user_id)
     assert seen == [True]
     with SessionLocal() as check:
@@ -635,10 +635,11 @@ def test_scheduled_sync_closes_its_session_before_the_fetch(client, monkeypatch)
 
 
 def test_public_error_mapping_is_short_and_status_based():
+    from sync.service import common
     """§59: the user-facing message is a stable phrase, never a traceback."""
     from googleapiclient.errors import HttpError
 
-    import sync_service
+    import sync.service as sync_service
 
     class _Resp:
         def __init__(self, status):
@@ -652,12 +653,12 @@ def test_public_error_mapping_is_short_and_status_based():
     }
     for status, expected in cases.items():
         exc = HttpError(_Resp(status), b'{"error": "x"}')
-        assert sync_service._public_error(exc) == expected
-    assert "HTTP 500" in sync_service._public_error(HttpError(_Resp(500), b"{}"))
+        assert common.public_error(exc) == expected
+    assert "HTTP 500" in common.public_error(HttpError(_Resp(500), b"{}"))
     # A non-HTTP failure carries no exception text at all.
     raw = RuntimeError("client_secret=SECRETVALUE")
-    assert "SECRETVALUE" not in sync_service._public_error(raw)
-    assert "Traceback" not in sync_service._public_error(raw)
+    assert "SECRETVALUE" not in common.public_error(raw)
+    assert "Traceback" not in common.public_error(raw)
 
 
 def test_metrics_count_sessions_syncs_and_logins(hosted_client, db):
@@ -691,7 +692,7 @@ def test_metrics_count_sessions_syncs_and_logins(hosted_client, db):
 
 def test_request_stats_count_quota_and_server_errors():
     """§60: 429 and 5xx are counted separately from total requests."""
-    from classroom_api import RequestStats, _classify_http_status
+    from gapi.classroom import RequestStats, _classify_http_status
 
     assert _classify_http_status(429) == "quota"
     assert _classify_http_status(503) == "server"
@@ -714,7 +715,7 @@ def test_sync_workers_report_a_metrics_snapshot(caplog):
 
     metrics.reset()
     metrics.record("sync_succeeded", 3)
-    with caplog.at_level(logging.INFO, logger="metrics"):
+    with caplog.at_level(logging.INFO, logger=metrics.__name__):
         snapshot = metrics.log_snapshot("test")
     assert snapshot["sync_succeeded"] == 3
     assert any("metrics[test]" in record.message for record in caplog.records)
@@ -724,8 +725,9 @@ def test_sync_workers_report_a_metrics_snapshot(caplog):
 
 
 def test_failed_sync_keeps_the_cache_and_reports_its_age(db, monkeypatch):
+    import sync.service._fetch as fetch_mod
     """§61: a missed sync never turns stale cache into "current" data."""
-    import sync_service
+    import sync.service as sync_service
 
     user = _make_user(db, "sub-alice")
     _add_grant(db, user)
@@ -745,7 +747,7 @@ def test_failed_sync_keeps_the_cache_and_reports_its_age(db, monkeypatch):
     monkeypatch.setattr(
         google_credentials, "get_google_credentials", lambda _db, _user: object()
     )
-    monkeypatch.setattr(sync_service, "ClassroomClient", _EmptyClient)
+    monkeypatch.setattr(fetch_mod, "ClassroomClient", _EmptyClient)
     monkeypatch.setattr(sync_service, "build_service", lambda _creds: object())
     result = sync_service.sync_user_id(user_id)
 
@@ -765,7 +767,7 @@ def test_failed_sync_keeps_the_cache_and_reports_its_age(db, monkeypatch):
 
 def test_profile_cache_is_keyed_by_local_user_id(db, monkeypatch):
     """§62: in-memory caches are keyed by the LOCAL user, not by a Google id."""
-    from api import identity
+    from auth import identity
 
     alice = _make_user(db, "sub-alice")
     bob = _make_user(db, "sub-bob")
@@ -865,17 +867,17 @@ def test_indexes_follow_the_ownership_query_patterns(client):
 
 
 def test_all_stored_timestamps_are_naive_utc():
+    from sync.scheduler import due as due_rules
     """§70: the backend compares naive UTC values; nothing stores tz-aware."""
-    import hosted_auth
+    import auth.hosted as hosted_auth
     import maintenance
-    import ownership
-    import sync_scheduler
+    from auth import ownership
 
     for factory in (
         ownership._utcnow,
         hosted_auth._utcnow,
         maintenance._utcnow,
-        sync_scheduler._now,
+        due_rules._now,
     ):
         assert factory().tzinfo is None
 
@@ -892,7 +894,7 @@ def test_all_stored_timestamps_are_naive_utc():
 
 def test_capacity_defaults_stay_conservative():
     """§88: the first-production configuration is the small one."""
-    from config import (
+    from core.config import (
         DB_MAX_OVERFLOW,
         DB_POOL_SIZE,
         SYNC_MANUAL_COOLDOWN_SECONDS,
@@ -916,7 +918,7 @@ def test_capacity_target_matches_the_compose_header():
     deploy actually advertises keeps the sync/DB budgets in ``.env.example``
     justified by real arithmetic instead of by stale prose.
     """
-    import capacity
+    from core import capacity
 
     assert capacity.TARGET_USERS == 1500
     assert capacity.TARGET_TEACHERS == 100
@@ -936,7 +938,7 @@ def test_capacity_target_matches_the_compose_header():
 
 def test_capacity_math_for_a_thousand_users():
     """§88: the estimate is computed, not assumed."""
-    import capacity
+    from core import capacity
 
     average = capacity.estimate_requests_per_minute(
         users=1000, teachers=25, interval_minutes=10
@@ -962,7 +964,7 @@ def test_capacity_math_for_a_thousand_users():
 
 def test_thread_budget_is_the_product_of_the_two_limits():
     """§88: the worker thread budget is bounded and explicit."""
-    import capacity
+    from core import capacity
 
     assert capacity.sync_thread_budget(workers=4, concurrent_users=2) == 8
     assert capacity.sync_thread_budget() == capacity.sync_thread_budget(

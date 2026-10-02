@@ -6,7 +6,7 @@ without starting an app. The header is attached by
 ``CONTENT_SECURITY_POLICY`` from here through the module object.
 """
 
-import config
+from core import config
 
 
 # §48: CSP matched to the ACTUAL React bundle — every origin is same-origin

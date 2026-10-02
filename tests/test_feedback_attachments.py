@@ -31,8 +31,8 @@ from feedback_helpers import (
 )
 from sqlalchemy.orm import Session
 
-import feedback_attachments as attachments
-from models_feedback import FeedbackTicket, TicketAttachment
+from db.models.feedback import FeedbackTicket, TicketAttachment
+from feedback import attachments
 
 # 1x1 PNG — the smallest real PNG, the "valid" baseline.
 PNG = (
@@ -290,7 +290,7 @@ def test_the_traversal_filename_never_writes_outside_the_feedback_root(
 
 
 def test_deleting_a_ticket_unlinks_its_files(hosted_client, db, monkeypatch):
-    from models_feedback import TicketMessage
+    from db.models.feedback import TicketMessage
 
     grant_admin(db, "boss@example.com")
     _alice(hosted_client, db)
@@ -316,7 +316,7 @@ def test_deleting_a_ticket_unlinks_its_files(hosted_client, db, monkeypatch):
 def test_account_deletion_removes_tickets_messages_and_files(hosted_client, db):
     """maintenance.delete_user_data covers the feedback domain too (§5.5)."""
     import maintenance
-    from models_auth import User
+    from db.models.accounts import User
 
     _alice(hosted_client, db)
     _upload(hosted_client, "notes.txt", b"mine")

@@ -15,16 +15,17 @@ import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-import ownership
-import sync_store
-from database import _build_engine
-from models import (
+from auth import ownership
+from db.models.accounts import User
+from db.models.classroom import (
     Course,
     CourseRole,
     CourseWork,
     StudentSubmission,
 )
-from models_auth import User
+from db.session import _build_engine
+from sync import store
+from sync.store import cache
 
 
 def _now() -> datetime:
@@ -78,7 +79,7 @@ def _seed_course(db: Session, user_id: int, name: str) -> None:
         )
     )
     # Structured per-user sync state (stage 5) instead of the key/value row.
-    sync_store.mark_sync_succeeded(db, user_id, _utc(2026, 9, 19))
+    store.mark_sync_succeeded(db, user_id, _utc(2026, 9, 19))
     db.commit()
 
 
@@ -114,15 +115,15 @@ def test_get_submission_respects_the_owner(db: Session):
     _seed_course(db, alice.id, "Alice")
     _seed_course(db, bob.id, "Bob")
 
-    a = sync_store.get_submission(db, alice.id, "c1", "w1", "me", is_teacher=False)
-    b = sync_store.get_submission(db, bob.id, "c1", "w1", "me", is_teacher=False)
+    a = store.get_submission(db, alice.id, "c1", "w1", "me", is_teacher=False)
+    b = store.get_submission(db, bob.id, "c1", "w1", "me", is_teacher=False)
     assert a is not None and b is not None
     assert a.user_id == alice.id
     assert b.user_id == bob.id
     # A third user has no row even though the Google ids all match.
     carol = _make_user(db, "sub-carol")
     assert (
-        sync_store.get_submission(db, carol.id, "c1", "w1", "me", is_teacher=False)
+        store.get_submission(db, carol.id, "c1", "w1", "me", is_teacher=False)
         is None
     )
 
@@ -133,21 +134,21 @@ def test_sync_status_is_per_user(db: Session):
     bob = _make_user(db, "sub-bob")
     early = _utc(2026, 9, 19)
     later = _utc(2026, 9, 20)
-    sync_store.mark_sync_succeeded(db, alice.id, early)
-    sync_store.mark_sync_succeeded(db, bob.id, later)
-    assert sync_store.last_sync_time(db, alice.id) == early
-    assert sync_store.last_sync_time(db, bob.id) == later
+    store.mark_sync_succeeded(db, alice.id, early)
+    store.mark_sync_succeeded(db, bob.id, later)
+    assert store.last_sync_time(db, alice.id) == early
+    assert store.last_sync_time(db, bob.id) == later
 
     # A failure is recorded against ITS user only, with a sanitized message.
     message = "Google API error (HTTP 500); the next sync will retry."
-    sync_store.mark_sync_failed(db, alice.id, message, later)
-    assert sync_store.last_sync_error(db, alice.id) == message
-    assert sync_store.last_sync_error(db, bob.id) is None
-    alice_row = sync_store.sync_status(db, alice.id)
-    bob_row = sync_store.sync_status(db, bob.id)
-    assert alice_row is not None and alice_row.status == sync_store.SYNC_ERROR
+    store.mark_sync_failed(db, alice.id, message, later)
+    assert store.last_sync_error(db, alice.id) == message
+    assert store.last_sync_error(db, bob.id) is None
+    alice_row = store.sync_status(db, alice.id)
+    bob_row = store.sync_status(db, bob.id)
+    assert alice_row is not None and alice_row.status == store.SYNC_ERROR
     assert alice_row.consecutive_failures == 1
-    assert bob_row is not None and bob_row.status == sync_store.SYNC_OK
+    assert bob_row is not None and bob_row.status == store.SYNC_OK
     assert bob_row.consecutive_failures == 0
 
 
@@ -160,7 +161,7 @@ def test_purge_stale_courses_keeps_other_users(db: Session):
     _seed_course(db, bob.id, "Bob")
 
     # The API no longer returns c1 for alice, but still does for bob.
-    sync_store._purge_stale_courses(db, alice.id, set())
+    cache._purge_stale_courses(db, alice.id, set())
     remaining = {user_id for (user_id,) in db.execute(select(Course.user_id)).all()}
     assert remaining == {bob.id}
 
@@ -171,13 +172,13 @@ def test_reset_cache_only_deletes_the_caller_rows(db: Session):
     _seed_course(db, alice.id, "Alice")
     _seed_course(db, bob.id, "Bob")
 
-    sync_store.reset_cache(db, alice.id)
+    store.reset_cache(db, alice.id)
     assert db.query(Course).filter_by(user_id=alice.id).count() == 0
     assert db.query(Course).filter_by(user_id=bob.id).count() == 1
     assert db.query(StudentSubmission).filter_by(user_id=bob.id).count() == 1
     # The sync state of the caller is gone, the other user's is intact.
-    assert sync_store.last_sync_time(db, alice.id) is None
-    assert sync_store.last_sync_time(db, bob.id) == _utc(2026, 9, 19)
+    assert store.last_sync_time(db, alice.id) is None
+    assert store.last_sync_time(db, bob.id) == _utc(2026, 9, 19)
 
 
 def test_deleting_a_user_cascades_their_cache(db: Session):
@@ -230,7 +231,7 @@ def test_database_url_selects_the_postgres_dialect(monkeypatch):
 
 def test_hosted_mode_without_database_url_fails_closed(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    import database
+    from db import session as database
 
     monkeypatch.setattr(database, "HOSTED_MODE", True)
     with pytest.raises(RuntimeError, match="DATABASE_URL"):
@@ -242,13 +243,13 @@ def test_hosted_mode_without_database_url_fails_closed(monkeypatch):
 
 def _add_session(db: Session, user: User, raw_token: str) -> None:
     """A valid session row without the OAuth dance (identity is stage-2 code)."""
-    import hosted_auth
-    from models_auth import UserSession
+    from auth import hosted
+    from db.models.accounts import UserSession
 
     now = _now()
     db.add(
         UserSession(
-            session_token_hash=hosted_auth._sha256_hex(raw_token),
+            session_token_hash=hosted._sha256_hex(raw_token),
             user_id=user.id,
             created_at=now,
             expires_at=now + timedelta(days=1),

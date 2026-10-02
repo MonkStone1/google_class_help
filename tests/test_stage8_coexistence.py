@@ -27,15 +27,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-import access_log
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-import config
-import hosted_auth
 import main
 import path_config
+from auth import hosted
+from core import config, logging_filters
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 BACKEND_DIR = PROJECT_DIR / "backend"
@@ -74,7 +73,14 @@ def _run(code: str, env: dict[str, str]) -> subprocess.CompletedProcess:
 
 
 def test_hosted_startup_imports_no_desktop_module(tmp_path):
-    """Importing the hosted app must not load any desktop-only module (§32)."""
+    """Importing the hosted app must not load any desktop-only module (§32).
+
+    Since ADR-0039 the desktop code lives in ``auth/desktop.py`` and
+    ``sync/background.py``, so the check is on the MODULE names: ``auth`` and
+    ``sync`` themselves are packages the hosted path legitimately imports
+    (``auth.hosted``, ``sync.store``), and what must stay unloaded is the
+    desktop module inside them.
+    """
     env = _subprocess_env(
         tmp_path,
         GC_DASHBOARD_HOSTED="1",
@@ -85,7 +91,7 @@ def test_hosted_startup_imports_no_desktop_module(tmp_path):
     )
     completed = _run(
         "import sys, main\n"
-        "desktop_modules = {'launcher', 'background_sync', 'auth', 'pystray'}\n"
+        "desktop_modules = {'launcher', 'pystray', 'auth.desktop', 'sync.background'}\n"
         "found = sorted(desktop_modules & set(sys.modules))\n"
         "print(found)\n"
         "raise SystemExit(1 if found else 0)\n",
@@ -133,7 +139,7 @@ def test_production_hosted_refuses_plain_http_redirect(tmp_path):
         APP_ENV="production",
         APP_BASE_URL="http://insecure.example",
     )
-    completed = _run("import config", env)
+    completed = _run("import core.config", env)
     assert completed.returncode != 0, "plain-http production startup must fail"
     assert "requires HTTPS" in completed.stderr
 
@@ -145,7 +151,7 @@ def test_production_hosted_accepts_https_redirect(tmp_path):
         APP_ENV="production",
         APP_BASE_URL="https://secure.example",
     )
-    completed = _run("import config; print(config.GOOGLE_REDIRECT_URI)", env)
+    completed = _run("import core.config; print(core.config.GOOGLE_REDIRECT_URI)", env)
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.strip() == "https://secure.example/api/auth/callback"
 
@@ -158,7 +164,7 @@ def test_desktop_mode_has_no_https_requirement(tmp_path):
         APP_ENV="production",
         APP_BASE_URL="http://localhost:8000",
     )
-    completed = _run("import config; print('ok')", env)
+    completed = _run("import core.config; print('ok')", env)
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.strip() == "ok"
 
@@ -174,7 +180,7 @@ def test_access_log_redacts_query_strings():
         None,
         None,
     )
-    assert access_log.RedactQueryFilter().filter(record)
+    assert logging_filters.RedactQueryFilter().filter(record)
     message = record.getMessage()
     assert "/api/auth/callback" in message
     assert "code=" not in message and "state=" not in message
@@ -184,7 +190,7 @@ def test_query_redaction_installed_once_for_hosted():
     main.create_app(hosted=True)
     main.create_app(hosted=True)
     logger = logging.getLogger("uvicorn.access")
-    filters = [f for f in logger.filters if isinstance(f, access_log.RedactQueryFilter)]
+    filters = [f for f in logger.filters if isinstance(f, logging_filters.RedactQueryFilter)]
     assert len(filters) == 1
 
 
@@ -193,15 +199,15 @@ def test_query_redaction_installed_once_for_hosted():
 
 def test_session_cookie_defaults_and_ttl():
     """§37: finite TTL, prefix off by default, names stay readable in docs."""
-    assert hosted_auth.SESSION_COOKIE_NAME == "gch_session"
-    assert hosted_auth.NONCE_COOKIE_NAME == "gch_oauth_nonce"
-    assert hosted_auth.SESSION_TTL_SECONDS == 14 * 24 * 60 * 60
+    assert hosted.SESSION_COOKIE_NAME == "gch_session"
+    assert hosted.NONCE_COOKIE_NAME == "gch_oauth_nonce"
+    assert hosted.SESSION_TTL_SECONDS == 14 * 24 * 60 * 60
 
 
 def test_session_cookie_host_prefix_opt_in(tmp_path):
     """§37: GC_DASHBOARD_COOKIE_HOST_PREFIX=1 yields __Host- cookies."""
     env = _subprocess_env(tmp_path, GC_DASHBOARD_COOKIE_HOST_PREFIX="1")
-    completed = _run("import hosted_auth; print(hosted_auth.SESSION_COOKIE_NAME)", env)
+    completed = _run("import auth.hosted; print(auth.hosted.SESSION_COOKIE_NAME)", env)
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.strip() == "__Host-gch_session"
 
@@ -522,8 +528,12 @@ def test_donation_codes_are_not_recolored_by_css():
     # A fixed `height` next to the width is what would stretch a QR past the
     # point a bank app can read it, so only the width may be constrained.
     for selector in (r"\.donate-qr\s*\{", r"\.donate-preview-image\s*\{"):
-        declarations = re.search(selector + r"([^}]*)\}", css).group(1)
-        assert "height: auto" in declarations, (
+        found = re.search(selector + r"([^}]*)\}", css)
+        # Not None-checked before this: a rename of either class in the
+        # stylesheet would raise AttributeError here instead of saying which
+        # selector is gone.
+        assert found is not None, f"{selector} is missing from donate.css"
+        assert "height: auto" in found.group(1), (
             f"{selector} must keep `height: auto` so the QR is never stretched"
         )
 

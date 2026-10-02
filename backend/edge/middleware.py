@@ -28,10 +28,10 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-import config
-from database import SessionLocal
+from core import config
+from core.proxy import client_ip, external_scheme
+from db.session import SessionLocal
 from edge import origin_guard, security
-from proxy import client_ip, external_scheme
 
 
 def install_throttle(app: FastAPI) -> None:
@@ -116,7 +116,7 @@ def install_session_gate(app: FastAPI) -> None:
     """
     # Lazy import: the desktop build must never load the hosted OAuth
     # module (§32/§74). Only the hosted branch calls this factory.
-    from hosted_auth import resolve_session_user
+    from auth.hosted import resolve_session_user
 
     def _resolve_gate_user(request: Request) -> int:
         """Session cookie -> user id, in a worker thread.

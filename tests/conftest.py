@@ -3,7 +3,7 @@
 The app modules import each other as top-level packages, so ``backend/`` is
 put on ``sys.path`` before anything is imported. ``GC_DASHBOARD_DATA_DIR``
 points at a throwaway directory created before ``config`` is imported, so
-tests never touch the real token or database (review §1.8).
+tests never touch the real token or database (review В§1.8).
 """
 
 import os
@@ -33,20 +33,20 @@ os.environ.setdefault("GOOGLE_CLIENT_ID", "test-web-client.apps.googleuserconten
 os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-web-client-secret")
 os.environ.setdefault("GOOGLE_REDIRECT_URI", "https://gch.test/api/auth/callback")
 
-# Host/Origin allow-list (migration stage 7, §28). Set, not setdefault: a
+# Host/Origin allow-list (migration stage 7, В§28). Set, not setdefault: a
 # stray value from the developer's shell must not silently change which Host
 # names the app under test accepts. The hosted fixture serves gch.test; the
 # desktop fixtures and Starlette's default "testserver" stay covered too.
 os.environ["GC_DASHBOARD_ALLOWED_HOSTS"] = "gch.test,testserver,localhost,127.0.0.1"
 
-# Stage-8 edge flags (§37/§48): a stray value in the developer's shell must
+# Stage-8 edge flags (В§37/В§48): a stray value in the developer's shell must
 # not change the session-cookie name or enable HSTS under the suite. Popped,
 # not defaulted — the assertions pin both to "off" (before config/main are
 # imported below).
 os.environ.pop("GC_DASHBOARD_COOKIE_HOST_PREFIX", None)
 os.environ.pop("GC_DASHBOARD_HSTS_MAX_AGE", None)
 
-# Stage-9 abuse-control and capacity knobs (§39/§40/§44/§88): a stray value
+# Stage-9 abuse-control and capacity knobs (В§39/В§40/В§44/В§88): a stray value
 # from the developer's shell must not change the limits, cooldowns or
 # conservative defaults the suite pins. Popped, not defaulted — the stage-9
 # tests assert the code defaults (rate limits > 0, cooldown > 0, small pool).
@@ -83,7 +83,7 @@ for _feedback_knob in (
 
 from fastapi.testclient import TestClient
 
-from database import Base, SessionLocal, engine
+from db.session import Base, SessionLocal, engine
 from main import app
 
 
@@ -120,9 +120,9 @@ def owner_id(db):
     Committed, not just flushed: the API under test opens its OWN SQLite
     connection, and an uncommitted write transaction in this fixture would
     make that connection fail with "database is locked" (or block it). The
-    real desktop path commits the synthetic owner too (sync_service).
+    real desktop path commits the synthetic owner too (service).
     """
-    import ownership
+    from auth import ownership
 
     owner = ownership.local_owner_id(db)
     db.commit()

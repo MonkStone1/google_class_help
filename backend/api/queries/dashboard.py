@@ -14,8 +14,8 @@ from datetime import datetime, timedelta
 from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import Session
 
-from grading import SUBMITTED_STATES
-from models import Course, CourseRole, CourseWork, StudentSubmission
+from db.models.classroom import Course, CourseRole, CourseWork, StudentSubmission
+from sync.grading import SUBMITTED_STATES
 
 
 def _student_totals_sql(db: Session, owner_id: int) -> dict:

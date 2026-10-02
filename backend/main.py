@@ -44,10 +44,14 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from access_log import install_query_redaction
 from api import router
-from config import HOSTED_MODE
-from database import get_db
+from api.routes import admins as admins_routes
+from api.routes import feedback as feedback_routes
+from api.routes import feedback_admin as feedback_admin_routes
+from core import rate_limit
+from core.config import HOSTED_MODE
+from core.logging_filters import install_query_redaction
+from db.session import get_db
 from edge import static
 from edge.lifespan import lifespan
 from edge.middleware import (
@@ -87,8 +91,6 @@ def create_app(hosted: bool = False) -> FastAPI:
     # Stage 9 (§39): in-memory token buckets live on the app instance, not in
     # a module global — two apps in one process (desktop + hosted in tests)
     # never share quota, and a fresh app starts with fresh buckets.
-    import rate_limit
-
     app.state.rate_limiter = rate_limit.RateLimiter()
 
     if hosted:
@@ -99,7 +101,7 @@ def create_app(hosted: bool = False) -> FastAPI:
         # load the desktop OAuth modules (stage 8, §32/§74). The router is
         # included BEFORE the api router below so its /api/auth/* shadow the
         # desktop ones.
-        from hosted_auth import router as hosted_router
+        from auth.hosted import router as hosted_router
 
         app.include_router(hosted_router)
 
@@ -117,13 +119,13 @@ def create_app(hosted: bool = False) -> FastAPI:
     # guard, the CSRF check and Cache-Control: no-store apply to it exactly as
     # they do to every other /api endpoint — the registry is not a weaker
     # surface than the tickets.
-    from admins_api import router as admins_router
-    from feedback_admin_api import router as feedback_admin_router
-    from feedback_api import router as feedback_router
-
-    app.include_router(feedback_router)
-    app.include_router(feedback_admin_router)
-    app.include_router(admins_router)
+    #
+    # These three live in ``api/routes/`` but are mounted by ``create_app``
+    # instead of by ``api/__init__.py``, because they are hosted-only: putting
+    # them into the shared router would expose them on the desktop build.
+    app.include_router(feedback_routes.router)
+    app.include_router(feedback_admin_routes.router)
+    app.include_router(admins_routes.router)
 
     @app.get("/api/health")
     def health() -> dict:

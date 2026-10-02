@@ -121,8 +121,12 @@ services:
     restart: unless-stopped
 
     command:
+      # `-m` is REQUIRED (ADR-0039 §7.3): run as a file, backend/ would not be
+      # first on sys.path and the absolute imports of the flat-module layout
+      # would not resolve.
       - python
-      - sync_worker.py
+      - -m
+      - sync.worker
 
     # Allow long Google Classroom fan-out operations to finish
     # gracefully before Docker sends SIGKILL.

@@ -28,7 +28,7 @@ from feedback_helpers import (
 )
 from sqlalchemy.orm import Session
 
-from models_feedback import AUTHOR_ADMIN, STATUS_RESOLVED
+from db.models.feedback import AUTHOR_ADMIN, STATUS_RESOLVED
 
 
 def _seed(hosted_client, db: Session):
@@ -58,8 +58,8 @@ def test_an_empty_registry_admits_nobody(hosted_client, db):
     session that exists (a real Google user) is answered 403 — the API must not
     treat "nobody was appointed yet" as "everybody is".
     """
-    import config
-    from models_admin import Admin
+    from core import config
+    from db.models.admins import Admin
 
     assert config.SUPER_ADMIN_EMAIL is None
     assert db.query(Admin).count() == 0
@@ -339,7 +339,7 @@ def test_two_admins_post_under_different_names_and_stay_correct_internally(
 
 
 def test_an_admin_reply_defaults_to_the_support_name(hosted_client, db, monkeypatch):
-    from config import FEEDBACK_DEFAULT_ADMIN_NAME
+    from core.config import FEEDBACK_DEFAULT_ADMIN_NAME
 
     grant_admin(db, "boss@example.com")
     _alice, _boss, ticket_id = _seed(hosted_client, db)
@@ -507,7 +507,7 @@ def test_a_status_patch_changes_nothing_but_the_status(hosted_client, db, monkey
 
 def test_an_admin_deletes_a_ticket_permanently(hosted_client, db, monkeypatch):
     """Real delete: the row, its messages and its attachment rows are gone."""
-    from models_feedback import FeedbackTicket, TicketMessage
+    from db.models.feedback import FeedbackTicket, TicketMessage
 
     grant_admin(db, "boss@example.com")
     _alice, _boss, ticket_id = _seed(hosted_client, db)

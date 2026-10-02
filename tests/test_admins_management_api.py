@@ -30,7 +30,7 @@ from feedback_helpers import (
 )
 from sqlalchemy.orm import Session
 
-from models_admin import Admin
+from db.models.admins import Admin
 
 # Both spellings are exercised throughout: an API path must never answer with the
 # SPA shell (see test_admin_roles.test_the_registry_never_answers_with_the_spa_shell).

@@ -11,8 +11,8 @@ a router that reached for the user id itself is the exact defect §12/§13
 
 from fastapi import Depends
 
-import ownership
-from models_auth import User
+from auth import ownership
+from db.models.accounts import User
 
 # ------------------------------------------------------- current user (§13)
 

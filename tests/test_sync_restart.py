@@ -17,26 +17,25 @@ was in flight. These tests pin the replacement:
 - the fence: a run whose claim was taken over while it was fetching writes
   nothing — not the cache, not the purge, not the terminal status;
 - ``POST /api/sync`` still answers 409 without ``restart=true``, so the ordinary
-  double-click protection of §3.9 / ADR-0027 is unchanged.
+  double-click protection of В§3.9 / ADR-0027 is unchanged.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-import oauth_transport
 import pytest
 
-import hosted_auth
-import metrics
-import sync_scheduler
-import sync_service
-import sync_store
-from classroom_api import RequestStats
-from config import SYNC_STUCK_SECONDS
-from database import SessionLocal
-from models import Course, SyncStatus
-from models_auth import OAuthToken, User, UserSession
+from auth import hosted
+from core import metrics
+from core.config import SYNC_STUCK_SECONDS
+from db.models.accounts import OAuthToken, User, UserSession
+from db.models.classroom import Course, SyncStatus
+from db.session import SessionLocal
+from gapi import oauth_transport
+from gapi.classroom import RequestStats
+from sync import scheduler, store
+from sync.service import _fetch, results
 
 
 def _utc(year: int, month: int, day: int) -> datetime:
@@ -66,7 +65,7 @@ def _make_user(db, subject: str, *, created_at: datetime | None = None) -> User:
 def _add_session(db, user: User, raw_token: str) -> UserSession:
     base = _now()
     session = UserSession(
-        session_token_hash=hosted_auth._sha256_hex(raw_token),
+        session_token_hash=hosted._sha256_hex(raw_token),
         user_id=user.id,
         created_at=base,
         expires_at=base + timedelta(hours=14),
@@ -87,7 +86,7 @@ def _claim(user_id: int, started_at: datetime) -> None:
         own.add(
             SyncStatus(
                 user_id=user_id,
-                status=sync_store.SYNC_RUNNING,
+                status=store.SYNC_RUNNING,
                 last_started_at=started_at,
                 sync_requested=False,
             )
@@ -135,23 +134,23 @@ def test_abandon_claim_refuses_a_running_but_young_claim(db):
     user = _make_user(db, "sub-young")
     _claim(user.id, _now() - timedelta(seconds=30))
 
-    assert sync_store.abandon_claim(db, user.id, _now(), older_than=300) is False
+    assert store.abandon_claim(db, user.id, _now(), older_than=300) is False
     row = db.get(SyncStatus, user.id)
     assert row is not None
-    assert row.status == sync_store.SYNC_RUNNING
+    assert row.status == store.SYNC_RUNNING
 
 
 def test_abandon_claim_releases_a_stale_claim(db):
     user = _make_user(db, "sub-stuck")
     _claim(user.id, _now() - timedelta(seconds=3600))
 
-    assert sync_store.abandon_claim(db, user.id, _now(), older_than=300) is True
+    assert store.abandon_claim(db, user.id, _now(), older_than=300) is True
     row = db.get(SyncStatus, user.id)
     assert row is not None
-    assert row.status == sync_store.SYNC_PENDING
+    assert row.status == store.SYNC_PENDING
     # Released, so the next run claims it without waiting out the
     # SYNC_CLAIM_STALE_SECONDS backstop.
-    assert sync_store.claim_sync(db, user.id, _now(), stale_after=3600) is True
+    assert store.claim_sync(db, user.id, _now(), stale_after=3600) is True
 
 
 def test_abandon_claim_twice_reports_only_the_first_release(db):
@@ -159,8 +158,8 @@ def test_abandon_claim_twice_reports_only_the_first_release(db):
     user = _make_user(db, "sub-double")
     _claim(user.id, _now() - timedelta(seconds=3600))
 
-    assert sync_store.abandon_claim(db, user.id, _now(), older_than=300) is True
-    assert sync_store.abandon_claim(db, user.id, _now(), older_than=300) is False
+    assert store.abandon_claim(db, user.id, _now(), older_than=300) is True
+    assert store.abandon_claim(db, user.id, _now(), older_than=300) is False
 
 
 def test_abandon_claim_leaves_the_timestamps_that_the_toaster_reads(db):
@@ -171,7 +170,7 @@ def test_abandon_claim_leaves_the_timestamps_that_the_toaster_reads(db):
     db.add(
         SyncStatus(
             user_id=user.id,
-            status=sync_store.SYNC_RUNNING,
+            status=store.SYNC_RUNNING,
             last_started_at=_now() - timedelta(seconds=3600),
             last_finished_at=finished,
             last_success_at=succeeded,
@@ -180,12 +179,12 @@ def test_abandon_claim_leaves_the_timestamps_that_the_toaster_reads(db):
     )
     db.commit()
 
-    assert sync_store.abandon_claim(db, user.id, _now(), older_than=300) is True
+    assert store.abandon_claim(db, user.id, _now(), older_than=300) is True
     row = db.get(SyncStatus, user.id)
     assert row is not None
     # Untouched: SyncToaster compares last_sync_finished_at and would fire.
     assert row.last_finished_at == finished
-    # ADR-0027 §61: the age of the cache still on screen must stay visible.
+    # ADR-0027 В§61: the age of the cache still on screen must stay visible.
     assert row.last_success_at == succeeded
     # An abandoned attempt is not an account failure: the retry backoff must
     # not be inflated by a run that never reported anything.
@@ -197,8 +196,8 @@ def test_abandon_claim_is_confined_to_its_owner(db):
     bob = _make_user(db, "sub-bob")
     _claim(bob.id, _now() - timedelta(seconds=3600))
 
-    assert sync_store.abandon_claim(db, alice.id, _now(), older_than=300) is False
-    assert db.get(SyncStatus, bob.id).status == sync_store.SYNC_RUNNING
+    assert store.abandon_claim(db, alice.id, _now(), older_than=300) is False
+    assert db.get(SyncStatus, bob.id).status == store.SYNC_RUNNING
 # ---------------------------------------------------------------- the fence
 
 
@@ -207,11 +206,11 @@ def test_claim_is_own_recognises_the_current_holder(db):
     claimed_at = _now() - timedelta(seconds=10)
     _claim(user.id, claimed_at)
 
-    assert sync_store.claim_is_own(db, user.id, claimed_at) is True
+    assert store.claim_is_own(db, user.id, claimed_at) is True
     # A different run's timestamp, and a moment that was never claimed.
-    assert sync_store.claim_is_own(db, user.id, _now()) is False
+    assert store.claim_is_own(db, user.id, _now()) is False
     assert (
-        sync_store.claim_is_own(db, user.id, claimed_at - timedelta(hours=1)) is False
+        store.claim_is_own(db, user.id, claimed_at - timedelta(hours=1)) is False
     )
 
 
@@ -219,14 +218,14 @@ def test_claim_is_own_is_false_after_the_claim_was_taken_over(db):
     user = _make_user(db, "sub-taken")
     old_claim = _now() - timedelta(seconds=3600)
     _claim(user.id, old_claim)
-    assert sync_store.claim_is_own(db, user.id, old_claim) is True
+    assert store.claim_is_own(db, user.id, old_claim) is True
 
     # The restart releases the claim and the replacement run claims it.
-    assert sync_store.abandon_claim(db, user.id, _now(), older_than=300) is True
+    assert store.abandon_claim(db, user.id, _now(), older_than=300) is True
     new_claim = _now()
-    assert sync_store.claim_sync(db, user.id, new_claim, stale_after=3600) is True
+    assert store.claim_sync(db, user.id, new_claim, stale_after=3600) is True
     # The zombie run must now see that it lost the row.
-    assert sync_store.claim_is_own(db, user.id, old_claim) is False
+    assert store.claim_is_own(db, user.id, old_claim) is False
 
 
 def test_superseded_run_writes_neither_cache_nor_status(db):
@@ -246,9 +245,9 @@ def test_superseded_run_writes_neither_cache_nor_status(db):
     db.commit()
 
     # The claim moved on: this run is no longer the owner.
-    sync_store.claim_sync(db, user.id, _now(), stale_after=3600)
+    store.claim_sync(db, user.id, _now(), stale_after=3600)
 
-    result = sync_service._write_sync_results(
+    result = results.write_sync_results(
         user.id,
         courses=[{"id": "course_old", "name": "Old"}],
         active_ids={"course_old"},
@@ -260,11 +259,11 @@ def test_superseded_run_writes_neither_cache_nor_status(db):
         started_at=old_claim,
     )
 
-    assert result == {"ok": False, "error": sync_service.SUPERSEDED}
+    assert result == {"ok": False, "error": results.SUPERSEDED}
     # Nothing written, nothing purged, no "ok" recorded.
     assert db.get(Course, (user.id, "course_old")) is None
     assert db.get(Course, (user.id, "course_new")) is not None
-    assert db.get(SyncStatus, user.id).status == sync_store.SYNC_RUNNING
+    assert db.get(SyncStatus, user.id).status == store.SYNC_RUNNING
     assert metrics.snapshot().get(metrics.SYNC_SUCCEEDED) is None
     metrics.reset()
 
@@ -308,16 +307,15 @@ def test_claim_lost_mid_write_stops_the_loop_instead_of_colliding(db):
         written.append(course_id)
         monkey_calls["n"] += 1
         if monkey_calls["n"] == 2:
-            assert sync_store.abandon_claim(db_, user_id, _now(), older_than=0)
-            assert sync_store.claim_sync(db_, user_id, _now(), stale_after=3600)
+            assert store.abandon_claim(db_, user_id, _now(), older_than=0)
+            assert store.claim_sync(db_, user_id, _now(), stale_after=3600)
         return 0
 
-    import sync_service as _svc
 
-    original = _svc._write_teacher_course
-    _svc._write_teacher_course = _fake_write
+    original = results._write_teacher_course
+    results._write_teacher_course = _fake_write
     try:
-        result = _svc._write_sync_results(
+        result = results.write_sync_results(
             user.id,
             courses=[
                 ({"id": "c1", "name": "One"}, "TEACHER"),
@@ -335,14 +333,14 @@ def test_claim_lost_mid_write_stops_the_loop_instead_of_colliding(db):
             started_at=claimed_at,
         )
     finally:
-        _svc._write_teacher_course = original
+        results._write_teacher_course = original
 
-    assert result == {"ok": False, "error": sync_service.SUPERSEDED}
+    assert result == {"ok": False, "error": results.SUPERSEDED}
     # Stopped at the course where the claim was gone; never reached c3.
     assert written == ["c1", "c2"]
     assert db.get(Course, (user.id, "c3")) is None
     # The run that owns the row now reports the outcome, not the zombie.
-    assert db.get(SyncStatus, user.id).status == sync_store.SYNC_RUNNING
+    assert db.get(SyncStatus, user.id).status == store.SYNC_RUNNING
     assert metrics.snapshot().get(metrics.SYNC_SUCCEEDED) is None
     metrics.reset()
 
@@ -359,23 +357,23 @@ def test_claim_sync_logs_only_a_stale_takeover(db, caplog):
     now = _now()
 
     # An ordinary first claim: nothing was running before it.
-    with caplog.at_level("WARNING", logger="sync_store"):
-        assert sync_store.claim_sync(db, user.id, now, stale_after=600) is True
+    with caplog.at_level("WARNING", logger="sync.store"):
+        assert store.claim_sync(db, user.id, now, stale_after=600) is True
     assert "stale sync claim" not in caplog.text
 
     # A second claim inside the window is refused, and must stay quiet too.
-    with caplog.at_level("WARNING", logger="sync_store"):
+    with caplog.at_level("WARNING", logger="sync.store"):
         assert (
-            sync_store.claim_sync(db, user.id, now + timedelta(seconds=30), stale_after=600)
+            store.claim_sync(db, user.id, now + timedelta(seconds=30), stale_after=600)
             is False
         )
     assert "stale sync claim" not in caplog.text
 
     # Past the window: the takeover this log line exists for.
     caplog.clear()
-    with caplog.at_level("WARNING", logger="sync_store"):
+    with caplog.at_level("WARNING", logger="sync.store"):
         assert (
-            sync_store.claim_sync(
+            store.claim_sync(
                 db, user.id, now + timedelta(seconds=601), stale_after=600
             )
             is True
@@ -410,7 +408,7 @@ def test_a_running_user_is_due_again_once_the_window_passes(db):
     db.add(
         SyncStatus(
             user_id=user.id,
-            status=sync_store.SYNC_PENDING,
+            status=store.SYNC_PENDING,
             last_finished_at=now - timedelta(days=2),
             last_success_at=now - timedelta(days=2),
             consecutive_failures=0,
@@ -419,11 +417,11 @@ def test_a_running_user_is_due_again_once_the_window_passes(db):
     )
     db.commit()
 
-    assert sync_store.claim_sync(db, user.id, now, stale_after=600) is True
+    assert store.claim_sync(db, user.id, now, stale_after=600) is True
 
     # The scheduler's view: the run is in flight, yet the account looks due
     # because the only finish stamp it can see belongs to the previous run.
-    assert user.id in sync_scheduler.select_due_users(
+    assert user.id in scheduler.select_due_users(
         db,
         now + timedelta(minutes=30),
         interval_seconds=3600,
@@ -431,12 +429,12 @@ def test_a_running_user_is_due_again_once_the_window_passes(db):
     )
     # Inside the window the claim still holds, so a scan is harmless.
     assert (
-        sync_store.claim_sync(db, user.id, now + timedelta(seconds=30), stale_after=600)
+        store.claim_sync(db, user.id, now + timedelta(seconds=30), stale_after=600)
         is False
     )
     # Past the window the same scan would take the claim over.
     assert (
-        sync_store.claim_sync(
+        store.claim_sync(
             db, user.id, now + timedelta(seconds=601), stale_after=600
         )
         is True
@@ -449,12 +447,12 @@ def test_owning_run_writes_every_course(db, monkeypatch):
     claimed_at = _now()
     _claim(user.id, claimed_at)
     monkeypatch.setattr(
-        sync_service,
+        results,
         "_write_teacher_course",
         lambda db, user_id, course_id, payload: 0,
     )
 
-    result = sync_service._write_sync_results(
+    result = results.write_sync_results(
         user.id,
         # ``courses`` is the (raw_course, role) pairs the fetch stages produce.
         courses=[({"id": "course_a", "name": "Course A"}, "TEACHER")],
@@ -471,7 +469,7 @@ def test_owning_run_writes_every_course(db, monkeypatch):
     assert db.get(Course, (user.id, "course_a")) is not None
     row = db.get(SyncStatus, user.id)
     assert row is not None
-    assert row.status == sync_store.SYNC_OK
+    assert row.status == store.SYNC_OK
     assert row.last_success_at is not None
 # --------------------------------------------------------- the hosted endpoint
 
@@ -491,14 +489,14 @@ def test_restart_replaces_a_stuck_claim(hosted_client, db):
     assert response.status_code == 200
     body = response.json()
     assert body["ok"] is True
-    # Hosted still answers immediately: the worker does the fan-out (§9).
+    # Hosted still answers immediately: the worker does the fan-out (В§9).
     assert body["queued"] is True
     assert body["restarted"] is True
 
     row = db.get(SyncStatus, user.id)
     assert row is not None
     # Released and re-queued, so the worker's next scan picks it up.
-    assert row.status == sync_store.SYNC_PENDING
+    assert row.status == store.SYNC_PENDING
     assert row.sync_requested is True
 
 
@@ -511,7 +509,7 @@ def test_restart_is_refused_while_the_sync_is_healthy(hosted_client, db):
     assert response.status_code == 409
     row = db.get(SyncStatus, user.id)
     assert row is not None
-    assert row.status == sync_store.SYNC_RUNNING
+    assert row.status == store.SYNC_RUNNING
     assert row.sync_requested is False
 
 
@@ -531,9 +529,9 @@ def test_restart_touches_only_the_calling_user(hosted_client, db):
 
     assert hosted_client.post("/api/sync?restart=true").status_code == 200
 
-    assert db.get(SyncStatus, alice.id).status == sync_store.SYNC_PENDING
-    # Bob's stuck sync is his own business (§12).
-    assert db.get(SyncStatus, bob.id).status == sync_store.SYNC_RUNNING
+    assert db.get(SyncStatus, alice.id).status == store.SYNC_PENDING
+    # Bob's stuck sync is his own business (В§12).
+    assert db.get(SyncStatus, bob.id).status == store.SYNC_RUNNING
 
 
 def test_restart_requires_a_session(hosted_client, db):
@@ -552,7 +550,7 @@ def test_status_publishes_the_threshold_the_restart_uses(hosted_client, db):
 
 
 def test_restart_is_counted_separately_from_a_refusal(hosted_client, db):
-    """§60: "people hit stuck syncs" and "the threshold is wrong" are different."""
+    """В§60: "people hit stuck syncs" and "the threshold is wrong" are different."""
     metrics.reset()
     try:
         user = _sign_in(hosted_client, db, "sub-metrics")
@@ -575,7 +573,7 @@ def test_restart_is_counted_separately_from_a_refusal(hosted_client, db):
 
 def test_desktop_restart_releases_a_stale_claim_then_runs(client, db):
     """Desktop has no queue: the restart releases the claim and runs inline."""
-    import ownership
+    from auth import ownership
 
     owner = ownership.ensure_local_owner(db)
     db.commit()
@@ -584,28 +582,28 @@ def test_desktop_restart_releases_a_stale_claim_then_runs(client, db):
     # A signed-out desktop sync is the observable outcome of a claim that WAS
     # taken, i.e. the inline run really started instead of answering 409.
     assert client.post("/api/sync?restart=true").status_code == 200
-    assert db.get(SyncStatus, owner.id).status == sync_store.SYNC_PENDING
+    assert db.get(SyncStatus, owner.id).status == store.SYNC_PENDING
 
 
 def test_desktop_restart_is_refused_while_the_sync_is_healthy(client, db):
-    import ownership
+    from auth import ownership
 
     owner = ownership.ensure_local_owner(db)
     db.commit()
     _claim(owner.id, _now() - timedelta(seconds=30))
 
     assert client.post("/api/sync?restart=true").status_code == 409
-    assert db.get(SyncStatus, owner.id).status == sync_store.SYNC_RUNNING
+    assert db.get(SyncStatus, owner.id).status == store.SYNC_RUNNING
 
 
 def test_desktop_restart_says_so_when_the_hung_thread_holds_the_lock(client, db):
     """The claim is released even when a second fan-out cannot start yet."""
-    import ownership
+    from auth import ownership
 
     owner = ownership.ensure_local_owner(db)
     db.commit()
     _claim(owner.id, _now() - timedelta(seconds=3600))
-    lock = sync_service._sync_lock_for(owner.id)
+    lock = _fetch._sync_lock_for(owner.id)
     lock.acquire()
     try:
         response = client.post("/api/sync?restart=true")
@@ -615,7 +613,7 @@ def test_desktop_restart_says_so_when_the_hung_thread_holds_the_lock(client, db)
     assert response.status_code == 409
     assert "shutting down" in response.json()["detail"]
     # The important half: the stale claim is gone, so the next attempt works.
-    assert db.get(SyncStatus, owner.id).status == sync_store.SYNC_PENDING
+    assert db.get(SyncStatus, owner.id).status == store.SYNC_PENDING
 
 
 @pytest.mark.parametrize("age_seconds", [0, 60, 299])
@@ -624,9 +622,9 @@ def test_no_age_below_the_threshold_is_ever_abandoned(db, age_seconds):
     user = _make_user(db, f"sub-boundary-{age_seconds}")
     _claim(user.id, _now() - timedelta(seconds=age_seconds))
 
-    released = sync_store.abandon_claim(
+    released = store.abandon_claim(
         db, user.id, _now(), older_than=SYNC_STUCK_SECONDS
     )
 
     assert released is False
-    assert db.get(SyncStatus, user.id).status == sync_store.SYNC_RUNNING
+    assert db.get(SyncStatus, user.id).status == store.SYNC_RUNNING

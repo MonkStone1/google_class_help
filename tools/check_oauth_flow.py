@@ -36,7 +36,7 @@ os.environ.setdefault(
 )
 sys.path.insert(0, str(PROJECT_DIR / "backend"))
 
-import auth
+from auth import desktop
 
 RESULTS: list[bool] = []
 
@@ -65,7 +65,7 @@ def wait_for(predicate, seconds: float = 30) -> bool:
 
 def check_callback_server() -> None:
     print("== loopback callback server ==", flush=True)
-    server = auth._CallbackServer()
+    server = desktop._CallbackServer()
     host, port = server.server_address[:2]
     waiter = threading.Thread(
         target=lambda: server.wait_for_callback(20), name="waiter"
@@ -109,7 +109,7 @@ def check_callback_server() -> None:
         server.server_close()
     check("wait loop finished after the callback", not waiter.is_alive())
 
-    server = auth._CallbackServer()
+    server = desktop._CallbackServer()
     started = time.monotonic()
     try:
         server.wait_for_callback(1)
@@ -127,7 +127,7 @@ def check_callback_server() -> None:
 def check_transports() -> bool:
     """Exercise both token transports; returns False when config is missing."""
     print("== token transports ==", flush=True)
-    config = auth._client_config()
+    config = desktop._client_config()
     if config is None:
         check(
             "OAuth client config is available",
@@ -137,7 +137,7 @@ def check_transports() -> bool:
         return False
     check("OAuth client config is available", True)
 
-    flow = auth.InstalledAppFlow.from_client_config(config, auth.SCOPES)
+    flow = desktop.InstalledAppFlow.from_client_config(config, desktop.SCOPES)
     redirect_uri = "http://127.0.0.1:9/"
     flow.redirect_uri = redirect_uri
     auth_url, _state = flow.authorization_url()
@@ -146,7 +146,7 @@ def check_transports() -> bool:
 
     client = config.get("installed") or config.get("web") or config
     try:
-        auth.post_token_request(client, "bogus-code", redirect_uri, flow.code_verifier)
+        desktop.post_token_request(client, "bogus-code", redirect_uri, flow.code_verifier)
         check("httplib2 reaches the token endpoint", False, "no error raised")
     # The `and` in this handler's body is not an `except` expression; the
     # rule matches descendants and flags a false positive.
@@ -170,7 +170,7 @@ def check_transports() -> bool:
 
     flow.fetch_token = failing_fetch_token
     try:
-        auth._exchange_code(flow, "bogus-code", redirect_uri)
+        desktop._exchange_code(flow, "bogus-code", redirect_uri)
         check("OSError falls back to httplib2", False, "no error raised")
     except RuntimeError as exc:
         check(
@@ -186,20 +186,20 @@ def check_transports() -> bool:
 def check_login_flow() -> None:
     print("== login flow as the dashboard triggers it ==", flush=True)
     opened: dict[str, str] = {}
-    auth.webbrowser = types.SimpleNamespace(
+    desktop.webbrowser = types.SimpleNamespace(
         open=lambda url, **_kwargs: opened.setdefault("url", url) or True
     )
 
-    auth.start_login()
+    desktop.start_login()
     check(
-        "start_login starts a background flow", auth.login_status()["login_in_progress"]
+        "start_login starts a background flow", desktop.login_status()["login_in_progress"]
     )
     check(
         "consent URL is published while waiting",
-        wait_for(lambda: auth.login_status().get("auth_url") is not None),
+        wait_for(lambda: desktop.login_status().get("auth_url") is not None),
     )
 
-    auth_url = opened.get("url") or auth.login_status()["auth_url"]
+    auth_url = opened.get("url") or desktop.login_status()["auth_url"]
     params = urllib.parse.parse_qs(urllib.parse.urlparse(auth_url).query)
     check(
         "consent URL advertises the loopback redirect",
@@ -213,31 +213,31 @@ def check_login_flow() -> None:
     check("browser-facing callback answers 200", status == 200, f"status={status}")
     check(
         "flow finishes",
-        wait_for(lambda: not auth.login_status()["login_in_progress"], 40),
+        wait_for(lambda: not desktop.login_status()["login_in_progress"], 40),
     )
-    error = auth.login_status().get("error") or ""
+    error = desktop.login_status().get("error") or ""
     check(
         "Google's rejection is reported, not a socket error",
         "invalid_grant" in error or "code" in error.lower(),
         error[:110],
     )
     check(
-        "consent URL is cleared afterwards", auth.login_status().get("auth_url") is None
+        "consent URL is cleared afterwards", desktop.login_status().get("auth_url") is None
     )
 
     # A redirect from another attempt must be refused.
     opened.clear()
-    auth.start_login()
-    wait_for(lambda: auth.login_status().get("auth_url") is not None)
+    desktop.start_login()
+    wait_for(lambda: desktop.login_status().get("auth_url") is not None)
     foreign = urllib.parse.parse_qs(
-        urllib.parse.urlparse(auth.login_status()["auth_url"]).query
+        urllib.parse.urlparse(desktop.login_status()["auth_url"]).query
     )
     get(f"{foreign['redirect_uri'][0]}?code=bogus&state=not-the-real-state")
-    wait_for(lambda: not auth.login_status()["login_in_progress"], 20)
+    wait_for(lambda: not desktop.login_status()["login_in_progress"], 20)
     check(
         "state mismatch is reported",
-        "state mismatch" in (auth.login_status().get("error") or ""),
-        (auth.login_status().get("error") or "")[:110],
+        "state mismatch" in (desktop.login_status().get("error") or ""),
+        (desktop.login_status().get("error") or "")[:110],
     )
 
 

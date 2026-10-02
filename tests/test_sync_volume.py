@@ -1,7 +1,7 @@
 # pyright: reportMissingImports=false
 # Backend modules are put on sys.path at runtime by tests/conftest.py; the type
 # checker does not execute that, so the flat imports resolve only at runtime.
-"""Teacher-mode sync volume (migration stage 6, §65).
+"""Teacher-mode sync volume (migration stage 6, В§65).
 
 Teacher mode fans out to more Google requests than the student view, so the
 service must bound that volume and make it observable:
@@ -17,9 +17,9 @@ service must bound that volume and make it observable:
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
-import sync_service
-from classroom_api import ClassroomClient, RequestStats
-from models_auth import User
+from db.models.accounts import User
+from gapi.classroom import ClassroomClient, RequestStats
+from sync.service import _fetch as service
 
 
 class _FakeExecutable:
@@ -52,7 +52,7 @@ class _FakeListResource:
         return _FakeExecutable(self._pages, self._calls)
 
 
-# --------------------------------- §65 removed ceiling / queued contract
+# --------------------------------- В§65 removed ceiling / queued contract
 
 # Stage 10 (queued manual sync): the hosted POST /api/sync no longer runs
 # the Classroom fan-out inside the HTTP request, so there is no global
@@ -67,21 +67,21 @@ def test_interactive_sync_returns_503_when_the_global_limit_is_reached(
     """Desktop inline path: when the interactive pool is saturated, POST /api/sync
     fails fast with 503 SERVER_BUSY.
     """
-    monkeypatch.setattr(sync_service, "SYNC_MAX_CONCURRENT_USERS", 1)
-    assert sync_service._acquire_interactive_slot() is True
+    monkeypatch.setattr(service, "SYNC_MAX_CONCURRENT_USERS", 1)
+    assert service._acquire_interactive_slot() is True
     try:
         response = client.post("/api/sync")
         assert response.status_code == 503
-        assert response.json()["detail"] == sync_service.SERVER_BUSY
+        assert response.json()["detail"] == service.SERVER_BUSY
     finally:
-        sync_service._release_interactive_slot()
+        service._release_interactive_slot()
 
 
 def test_sync_now_is_busy_when_no_interactive_slot_exists(db, owner_id, monkeypatch):
-    monkeypatch.setattr(sync_service, "SYNC_MAX_CONCURRENT_USERS", 0)
+    monkeypatch.setattr(service, "SYNC_MAX_CONCURRENT_USERS", 0)
     user = db.get(User, owner_id)
-    result = sync_service.sync_now(user=user, interactive=True)
-    assert result == {"ok": False, "error": sync_service.SERVER_BUSY}
+    result = service.sync_now(user=user, interactive=True)
+    assert result == {"ok": False, "error": service.SERVER_BUSY}
 
 
 def test_scheduled_sync_is_not_limited_by_the_interactive_ceiling(
@@ -89,24 +89,24 @@ def test_scheduled_sync_is_not_limited_by_the_interactive_ceiling(
 ):
     """The scheduler bounds its own pool; the interactive gate must not
     turn a scheduled run into a fake failure."""
-    monkeypatch.setattr(sync_service, "SYNC_MAX_CONCURRENT_USERS", 1)
-    assert sync_service._acquire_interactive_slot() is True
+    monkeypatch.setattr(service, "SYNC_MAX_CONCURRENT_USERS", 1)
+    assert service._acquire_interactive_slot() is True
     try:
         user = db.get(User, owner_id)
-        result = sync_service.sync_now(user=user, interactive=False)
+        result = service.sync_now(user=user, interactive=False)
         # No Google grant is configured in the test environment; the point
         # is that the call reached the sync body instead of the busy gate.
         assert result["ok"] is False
-        assert result["error"] != sync_service.SERVER_BUSY
+        assert result["error"] != service.SERVER_BUSY
     finally:
-        sync_service._release_interactive_slot()
+        service._release_interactive_slot()
 
 
-# ------------------------------------------------- §65 observability + paging
+# ------------------------------------------------- В§65 observability + paging
 
 
 def test_teacher_roster_is_never_requested_for_a_student_course():
-    """``courses.list`` is shared, but the teacher roster is not (§65).
+    """``courses.list`` is shared, but the teacher roster is not (В§65).
 
     A STUDENT course answers HTTP 500 on ``courses.teachers.list`` (not 403),
     and googleapiclient retries every 5xx three times with a backoff before
@@ -119,7 +119,7 @@ def test_teacher_roster_is_never_requested_for_a_student_course():
     class _Client(ClassroomClient):
         """A stand-in for the real client: the fan-out only calls these five
         methods, and none of them touches ``self._service``, so a dummy
-        service is enough to keep the real ``__init__`` contract."""
+        discovery resource is enough to keep the real ``__init__`` contract."""
 
         def __init__(self) -> None:
             super().__init__(service=None)
@@ -148,7 +148,7 @@ def test_teacher_roster_is_never_requested_for_a_student_course():
         ({"id": "s-two"}, "STUDENT"),
     ]
     with ThreadPoolExecutor(max_workers=4) as pool:
-        teacher_names, payloads = sync_service._fetch_course_payloads(
+        teacher_names, payloads = service._fetch_course_payloads(
             lambda: _Client(), courses, pool
         )
 
@@ -170,9 +170,11 @@ def test_course_list_follows_pagination_and_counts_requests():
         ],
         calls,
     )
-    service = SimpleNamespace(courses=lambda: resource)
+    # Named `discovery`, not `service`: the module `service` is imported in this
+    # file (sync.service) and a local of the same name would shadow it.
+    discovery = SimpleNamespace(courses=lambda: resource)
     stats = RequestStats()
-    client = ClassroomClient(service, stats=stats)
+    client = ClassroomClient(discovery, stats=stats)
 
     courses = client.list_courses() or []
     assert [course["id"] for course in courses] == ["c1", "c2"]
@@ -193,13 +195,15 @@ def test_teacher_submission_sweep_paginates_and_is_counted():
         ],
         calls,
     )
-    service = SimpleNamespace(
+    # Named `discovery`, not `service`: the module `service` is imported in this
+    # file (sync.service) and a local of the same name would shadow it.
+    discovery = SimpleNamespace(
         courses=lambda: SimpleNamespace(
             courseWork=lambda: SimpleNamespace(studentSubmissions=lambda: submissions)
         )
     )
     stats = RequestStats()
-    client = ClassroomClient(service, stats=stats)
+    client = ClassroomClient(discovery, stats=stats)
 
     rows = client.list_all_submissions("c1") or []
     assert [row["userId"] for row in rows] == ["s1", "s2"]

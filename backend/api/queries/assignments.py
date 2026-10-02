@@ -17,15 +17,15 @@ from sqlalchemy.orm import Session
 
 import sync
 from api import queries
-from models import (
+from db.models.classroom import (
     Course,
     CourseStudent,
     CourseWork,
     CourseWorkSubmission,
     StudentSubmission,
 )
-from schemas import AssignmentOut, MaterialOut
-from sync_store import SubmissionRow, get_submission
+from schemas.dashboard import AssignmentOut, MaterialOut
+from sync.store import SubmissionRow, get_submission
 
 
 def _build_assignment_out(

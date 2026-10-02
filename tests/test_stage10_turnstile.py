@@ -11,14 +11,15 @@ for scripts and frames only.
 
 from __future__ import annotations
 
-import hosted_auth
+from auth import hosted
+from auth.hosted import turnstile
+from db.models.accounts import OAuthLoginState
 from edge import security
-from models_auth import OAuthLoginState
 
 
 def _enable_turnstile(monkeypatch, site_key="test-site-key", secret="test-secret"):
-    monkeypatch.setattr(hosted_auth, "TURNSTILE_SITE_KEY", site_key)
-    monkeypatch.setattr(hosted_auth, "TURNSTILE_SECRET_KEY", secret)
+    monkeypatch.setattr(turnstile, "TURNSTILE_SITE_KEY", site_key)
+    monkeypatch.setattr(turnstile, "TURNSTILE_SECRET_KEY", secret)
 
 
 def test_turnstile_is_disabled_by_default(hosted_client):
@@ -75,7 +76,7 @@ def test_login_start_with_valid_token_builds_the_google_redirect(
     _enable_turnstile(monkeypatch)
     seen: list[str] = []
     monkeypatch.setattr(
-        hosted_auth, "_verify_turnstile", lambda token: seen.append(token) or True
+        hosted, "_verify_turnstile", lambda token: seen.append(token) or True
     )
     response = hosted_client.post(
         "/api/auth/login/start", json={"token": "widget-token"}
@@ -85,7 +86,7 @@ def test_login_start_with_valid_token_builds_the_google_redirect(
     assert seen == ["widget-token"]
     assert db.query(OAuthLoginState).count() == 1
     # The browser binding travels with the response (nonce cookie).
-    assert hosted_auth.NONCE_COOKIE_NAME in response.cookies
+    assert hosted.NONCE_COOKIE_NAME in response.cookies
 
 
 def test_login_start_with_failed_verification_is_rejected(
@@ -93,7 +94,7 @@ def test_login_start_with_failed_verification_is_rejected(
 ):
     _enable_turnstile(monkeypatch)
     before = db.query(OAuthLoginState).count()
-    monkeypatch.setattr(hosted_auth, "_verify_turnstile", lambda token: False)
+    monkeypatch.setattr(hosted, "_verify_turnstile", lambda token: False)
     response = hosted_client.post(
         "/api/auth/login/start", json={"token": "forged-token"}
     )
@@ -114,8 +115,8 @@ def test_verify_turnstile_fails_closed_when_siteverify_is_unreachable(
         def request(self, *args, **kwargs):
             raise RuntimeError("network down")
 
-    monkeypatch.setattr(hosted_auth.httplib2, "Http", _BrokenHttp)
-    assert hosted_auth._verify_turnstile("token") is False
+    monkeypatch.setattr(turnstile.httplib2, "Http", _BrokenHttp)
+    assert hosted._verify_turnstile("token") is False
 
 
 def test_csp_is_same_origin_without_turnstile():

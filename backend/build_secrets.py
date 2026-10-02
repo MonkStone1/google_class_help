@@ -32,7 +32,7 @@ import json
 import sys
 from pathlib import Path
 
-from config import CREDENTIALS_FILE
+from core.config import CREDENTIALS_FILE
 
 OUTPUT_FILE = Path(__file__).resolve().parent / "embedded_secrets.py"
 

@@ -7,7 +7,7 @@ Before the fix, ``/students/{id}/grades`` always read CourseWorkSubmission
 
 import pytest
 
-from models import Course, CourseRole, CourseWork, StudentSubmission
+from db.models.classroom import Course, CourseRole, CourseWork, StudentSubmission
 
 
 @pytest.fixture()

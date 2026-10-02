@@ -12,7 +12,7 @@ row is "not submitted", not 0/100.
 from sqlalchemy.orm import Session
 
 import sync
-from models import (
+from db.models.classroom import (
     Course,
     CourseRole,
     CourseStudent,
@@ -20,8 +20,8 @@ from models import (
     CourseWorkSubmission,
     StudentSubmission,
 )
-from schemas import MaterialOut, StudentOut, SubmissionOut
-from sync_store import SubmissionRow, get_submission
+from schemas.dashboard import MaterialOut, StudentOut, SubmissionOut
+from sync.store import SubmissionRow, get_submission
 
 
 def course_role(db: Session, owner_id: int, course: Course) -> str:

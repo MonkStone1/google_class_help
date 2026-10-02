@@ -24,16 +24,15 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-import hosted_auth
-import ownership
-from models import (
+from auth import hosted, ownership
+from db.models.accounts import User, UserSession
+from db.models.classroom import (
     Course,
     CourseRole,
     CourseStudent,
     CourseWork,
     CourseWorkSubmission,
 )
-from models_auth import User, UserSession
 
 
 def _now() -> datetime:
@@ -59,7 +58,7 @@ def _add_session(db: Session, user: User, raw_token: str) -> None:
     now = _now()
     db.add(
         UserSession(
-            session_token_hash=hosted_auth._sha256_hex(raw_token),
+            session_token_hash=hosted._sha256_hex(raw_token),
             user_id=user.id,
             created_at=now,
             expires_at=now + timedelta(days=1),
@@ -293,11 +292,12 @@ def test_auth_status_carries_a_nested_user_and_no_oauth_material(
 ):
     """§26: ``user`` is the only identity shape — the stage-6 flat mirrors
     were dropped once the frontend switched over."""
-    import auth
+    from auth import desktop, identity
 
-    monkeypatch.setattr(auth, "get_valid_credentials", lambda: object())
+    monkeypatch.setattr(desktop, "get_valid_credentials", lambda: object())
     monkeypatch.setattr(
-        "api.identity._cached_profile",
+        identity,
+        "_cached_profile",
         lambda user, creds: ("Desk Owner", "owner@example.com"),
     )
     body = client.get("/api/auth/status").json()

@@ -12,13 +12,13 @@ sync runs, so its cost is multiplied by the number of open browsers.
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-import ownership
 import sync
-from api import identity, queries
-from config import SYNC_STUCK_SECONDS
-from database import get_db
-from models_auth import User
-from schemas import SyncStatus
+from api import queries
+from auth import identity, ownership
+from core.config import SYNC_STUCK_SECONDS
+from db.models.accounts import User
+from db.session import get_db
+from schemas.dashboard import SyncStatus
 
 router = APIRouter()
 

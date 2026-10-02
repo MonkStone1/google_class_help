@@ -5,7 +5,7 @@ worker processes run `init_db()` from inside an already-configured process, so
 that call used to destroy the application's logging in two ways at once:
 
 - `disable_existing_loggers=True` (the default) set `.disabled = True` on every
-  existing application logger (sync_service, sync_scheduler, sync_worker, api);
+  existing application logger (sync.service, sync.scheduler, sync_worker, api);
 - it also replaced the ROOT configuration with alembic.ini's, i.e. level WARNING
   and a stderr handler, dropping the application's INFO records.
 
@@ -90,7 +90,9 @@ print("root_handlers=" + str(len(logging.getLogger().handlers)))
     assert "root_handlers=1" in result.stdout, result.stdout
 
 
-@pytest.mark.parametrize("logger_name", ["sync_service", "sync_scheduler", "api"])
+# The logger names are the `__name__` of the modules that call
+# `logging.getLogger(__name__)`, so they carry the layer package name (ADR-0039).
+@pytest.mark.parametrize("logger_name", ["sync.service", "sync.scheduler", "api"])
 def test_application_loggers_stay_enabled_after_init(logger_name):
     """A named application logger must be enabled and report INFO afterwards.
 
@@ -105,8 +107,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path({str(PROJECT_DIR / "backend")!r})))
 logging.basicConfig(level=logging.INFO, stream=sys.stdout,
                     format="%(levelname)s %(name)s: %(message)s")
-import sync_service, sync_scheduler  # noqa: F401 - registers the loggers
-for name in ("sync_service", "sync_scheduler", "api"):
+import sync.service, sync.scheduler  # noqa: F401 - registers the loggers
+for name in ("sync.service", "sync.scheduler", "api"):
     logger = logging.getLogger(name)
     print(name, "disabled=" + str(logger.disabled),
           "info=" + str(logger.isEnabledFor(logging.INFO)))
@@ -126,7 +128,7 @@ for name in ("sync_service", "sync_scheduler", "api"):
 def test_sync_service_logger_reports_at_info():
     """Guard the specific record the diagnosis depends on.
 
-    `sync_service` logs "Sync ok user=... google_requests=... duration=..." at
+    `sync.service` logs "Sync ok user=... google_requests=... duration=..." at
     INFO; if that logger is ever disabled again the whole incident becomes
     invisible, so the level is asserted explicitly.
     """
@@ -136,9 +138,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path({str(PROJECT_DIR / "backend")!r})))
 logging.basicConfig(level=logging.INFO, stream=sys.stdout,
                     format="%(levelname)s %(name)s: %(message)s")
-import sync_service  # noqa: F401 - registers the logger
+import sync.service  # noqa: F401 - registers the logger
 print("sync_service_info=" + str(
-    logging.getLogger("sync_service").isEnabledFor(logging.INFO)))
+    logging.getLogger("sync.service").isEnabledFor(logging.INFO)))
 """
     result = subprocess.run(
         [sys.executable, "-c", script],

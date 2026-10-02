@@ -11,9 +11,13 @@ Layer rules (docs/BACKEND_STRUCTURE.md):
 
 - ``routes/*`` — dependencies, validation, HTTP status codes. No SQL.
 - ``queries/*`` — cache reads. No ``fastapi``, no ``HTTPException``.
-- ``identity.py`` — the profile cache and the ``UserOut``/``AuthStatus``
-  projection, shared with ``hosted_auth.py``.
+- ``deps.py``   — "who is calling", resolved one way for every route.
 - ``guards.py`` — the only place a cache fact becomes 404 or 403.
+
+The identity projection (the profile cache and the ``UserOut``/``AuthStatus``
+builders) is NOT here: it moved to ``auth/identity.py`` with the rest of the
+identity code, and both this package's routes and ``auth/hosted.py`` call that
+one module rather than a re-export of it.
 
 Order of the ``include_router`` calls below follows the original file. It does
 not decide any match today (no static path here competes with a parameterised

@@ -20,9 +20,9 @@ from sqlalchemy.orm import Session
 import sync
 from api import guards, queries
 from api.deps import current_user_id
-from database import get_db
-from models import CourseStudent, CourseWork
-from schemas import (
+from db.models.classroom import CourseStudent, CourseWork
+from db.session import get_db
+from schemas.dashboard import (
     CourseGrades,
     GradeItem,
     MaterialOut,

@@ -15,9 +15,9 @@ from sqlalchemy.orm import Session
 
 from api import guards, queries
 from api.deps import current_user_id
-from database import get_db
-from models import CourseWork
-from schemas import AssignmentDetailOut, AssignmentOut, SubmissionOut
+from db.models.classroom import CourseWork
+from db.session import get_db
+from schemas.dashboard import AssignmentDetailOut, AssignmentOut, SubmissionOut
 
 router = APIRouter()
 

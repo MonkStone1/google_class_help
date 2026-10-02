@@ -18,11 +18,10 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
-import config
-import hosted_auth
 import main
 import path_config
-import proxy
+from auth.hosted import sessions
+from core import config, http_config, origins, proxy
 from edge import origin_guard
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
@@ -64,22 +63,28 @@ def _new_client(host: str = "api.example") -> TestClient:
 
 class TestEnvironmentLayer:
     def test_production_defaults_to_the_public_host_only(self, monkeypatch):
-        monkeypatch.setattr(config, "IS_PRODUCTION", True)
-        monkeypatch.setattr(config, "APP_ORIGIN", "https://classroomhelp.pp.ua")
-        assert config._default_allowed_hosts() == ["classroomhelp.pp.ua"]
+        # Patched on http_config, the module that READS them: the allow-list
+        # defaults are derived there, so a patch on core.config would set an
+        # attribute nobody looks at (ADR-0039).
+        monkeypatch.setattr(http_config, "IS_PRODUCTION", True)
+        monkeypatch.setattr(http_config, "APP_ORIGIN", "https://classroomhelp.pp.ua")
+        assert http_config._default_allowed_hosts() == ["classroomhelp.pp.ua"]
 
     def test_development_defaults_keep_loopback(self, monkeypatch):
-        monkeypatch.setattr(config, "IS_PRODUCTION", False)
-        monkeypatch.setattr(config, "APP_ORIGIN", "https://dev.example")
-        assert config._default_allowed_hosts() == [
+        monkeypatch.setattr(http_config, "IS_PRODUCTION", False)
+        monkeypatch.setattr(http_config, "APP_ORIGIN", "https://dev.example")
+        assert http_config._default_allowed_hosts() == [
             "dev.example",
             "localhost",
             "127.0.0.1",
         ]
 
     def test_wildcard_cors_is_dropped_and_origins_are_normalized(self):
-        assert config._normalize_origins(["*"]) == ()
-        assert config._normalize_origins(
+        # The normalization rules moved to core/origins.py (ADR-0039); this
+        # asserts the RULE, and the wiring from config is asserted by the
+        # CORS/allow-list tests below, which read the real config constants.
+        assert origins.normalize_origin_list(["*"]) == ()
+        assert origins.normalize_origin_list(
             ["*", "HTTP://Trusted.Example:80/", "https://trusted.example:443"]
         ) == ("http://trusted.example", "https://trusted.example")
 
@@ -106,7 +111,7 @@ class TestEnvironmentLayer:
                 sys.executable,
                 "-c",
                 (
-                    "import json, config; "
+                    "import json; from core import config; "
                     "print(json.dumps({'secure': config.COOKIE_SECURE, "
                     "'samesite': config.COOKIE_SAMESITE}))"
                 ),
@@ -140,7 +145,7 @@ class TestEnvironmentLayer:
                 sys.executable,
                 "-c",
                 (
-                    "import json, config; "
+                    "import json; from core import config; "
                     "print(json.dumps({"
                     "'allowed': list(config.ALLOWED_HOSTS), "
                     "'cors': list(config.CORS_ORIGINS), "
@@ -323,23 +328,23 @@ class TestTrustedProxy:
 
 class TestCookieFlags:
     def test_explicit_cookie_secure_wins(self, monkeypatch):
-        monkeypatch.setattr(hosted_auth, "COOKIE_SECURE", False)
-        assert hosted_auth._session_cookie_secure(_request(scheme="https")) is False
-        monkeypatch.setattr(hosted_auth, "COOKIE_SECURE", True)
-        assert hosted_auth._session_cookie_secure(_request(scheme="http")) is True
+        monkeypatch.setattr(sessions, "COOKIE_SECURE", False)
+        assert sessions._session_cookie_secure(_request(scheme="https")) is False
+        monkeypatch.setattr(sessions, "COOKIE_SECURE", True)
+        assert sessions._session_cookie_secure(_request(scheme="http")) is True
 
     def test_cookie_secure_trusts_only_a_configured_proxy(self, monkeypatch):
-        monkeypatch.setattr(hosted_auth, "COOKIE_SECURE", None)
+        monkeypatch.setattr(sessions, "COOKIE_SECURE", None)
         monkeypatch.setattr(proxy, "TRUSTED_PROXIES", ())
         assert (
-            hosted_auth._session_cookie_secure(
+            sessions._session_cookie_secure(
                 _request(scheme="http", headers={"x-forwarded-proto": "https"})
             )
             is False
         )
         monkeypatch.setattr(proxy, "TRUSTED_PROXIES", ("203.0.113.0/24",))
         assert (
-            hosted_auth._session_cookie_secure(
+            sessions._session_cookie_secure(
                 _request(scheme="http", headers={"x-forwarded-proto": "https"})
             )
             is True

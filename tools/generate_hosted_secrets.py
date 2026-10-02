@@ -23,6 +23,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from token_crypto import KEY_ENV_VAR, generate_key  # import after sys.path
+from core.crypto import KEY_ENV_VAR, generate_key  # import after sys.path
 
 print(f"{KEY_ENV_VAR}={generate_key()}")

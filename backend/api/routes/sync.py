@@ -16,13 +16,13 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
-import metrics
-import ownership
 import sync
-from config import SYNC_STUCK_SECONDS
-from database import get_db
-from models_auth import User
-from schemas import SyncResult
+from auth import ownership
+from core import metrics
+from core.config import SYNC_STUCK_SECONDS
+from db.models.accounts import User
+from db.session import get_db
+from schemas.dashboard import SyncResult
 
 router = APIRouter()
 
@@ -74,8 +74,8 @@ def run_sync(
     # sync that does not exist.
 
     if request.app.state.hosted:
-        from config import SYNC_MANUAL_COOLDOWN_SECONDS
-        from sync_store import sync_status as _sync_row
+        from core.config import SYNC_MANUAL_COOLDOWN_SECONDS
+        from sync.store import sync_status as _sync_row
 
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         row = _sync_row(db, user.id)
@@ -102,15 +102,20 @@ def run_sync(
     result = sync.sync_now(user=user, interactive=True)
     if not result.get("ok"):
         error = str(result.get("error", ""))
-        if "already running" in error:
+        if error == sync.ALREADY_RUNNING:
             # A running sync is not an error: 409 tells the client to keep
             # showing its spinner instead of surfacing a failure (§3.9).
+            # Compared against the constant, not against a phrase — the code and
+            # the sentence drift apart otherwise, and the check silently stops
+            # matching while both still look correct.
             raise HTTPException(
                 status_code=409, detail="A synchronization is already running."
             )
         if error == sync.SERVER_BUSY:
             raise HTTPException(status_code=503, detail=error)
     return SyncResult(**result)
+
+
 def _is_sync_running(db: Session, user_id: int) -> bool:
     """Whether the calling user currently has a claimed sync in flight.
 
@@ -144,7 +149,7 @@ def _restart_desktop_sync(user: User, db: Session) -> SyncResult:
         )
     metrics.record(metrics.SYNC_RESTARTED)
     result = sync.sync_now(user=user, interactive=True)
-    if not result.get("ok") and "already running" in str(result.get("error", "")):
+    if not result.get("ok") and result.get("error") == sync.ALREADY_RUNNING:
         # The claim is free again, but the hung thread still owns the in-process
         # lock. Say so plainly instead of surfacing a generic failure.
         raise HTTPException(

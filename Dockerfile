@@ -6,8 +6,10 @@
 # database file (.dockerignore enforces that at the build-context level).
 #
 # One image serves both roles:
-#   web    → uvicorn main:app   (from /app/backend)
-#   worker → python sync_worker.py (same image, different command)
+#   web    → uvicorn main:app     (from /app/backend)
+#   worker → python -m sync.worker (same image, different command).
+#           `-m` is required: run as a file, /app/backend would not be first on
+#           sys.path and the absolute imports would not resolve (ADR-0039 §7.3).
 
 # --------------------------------------------------------------- frontend
 FROM node:22-slim AS frontend-build

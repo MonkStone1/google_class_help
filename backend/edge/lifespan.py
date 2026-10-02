@@ -9,9 +9,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from access_log import install_secret_redaction
-from config import EMBEDDED_SCHEDULER
-from database import init_db
+from core.config import EMBEDDED_SCHEDULER
+from core.logging_filters import install_secret_redaction
+from db.session import init_db
 
 
 @asynccontextmanager
@@ -41,16 +41,16 @@ async def lifespan(app: FastAPI):
         # Desktop-only schedule (ADR-0015). Imported HERE, not at module
         # level: the hosted deployment must never load the desktop global
         # scheduler (migration stage 8, §32/§74).
-        from background_sync import start as start_background_sync
+        from sync.background import start as start_background_sync
 
         start_background_sync()
     elif EMBEDDED_SCHEDULER:
-        from sync_scheduler import start as start_user_scheduler
+        from sync.scheduler import start as start_user_scheduler
 
         user_scheduler = start_user_scheduler()
     yield
     if not app.state.hosted:
-        from background_sync import stop as stop_background_sync
+        from sync.background import stop as stop_background_sync
 
         stop_background_sync()
     elif user_scheduler is not None:

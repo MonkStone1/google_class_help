@@ -48,10 +48,10 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-import metrics
-from models import Course, SyncStatus
-from models_auth import OAuthLoginState, OAuthToken, User, UserSession
-from models_feedback import FeedbackTicket, TicketAttachment
+from core import metrics
+from db.models.accounts import OAuthLoginState, OAuthToken, User, UserSession
+from db.models.classroom import Course, SyncStatus
+from db.models.feedback import FeedbackTicket, TicketAttachment
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +140,7 @@ def delete_user_data(db: Session, user: User) -> dict[str, int]:
     collected and removed while the rows are still known. A file that is
     already gone is not an error — the deletion must not fail over cleanup.
     """
-    import feedback_attachments as attachments
+    from feedback import attachments
 
     user_id = user.id
     sessions = (

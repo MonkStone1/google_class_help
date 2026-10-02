@@ -12,16 +12,15 @@ cookie, gate, logout — runs as shipped.
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 
-import google_credentials
-import oauth_transport
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-import auth as auth_module
-import hosted_auth
-import token_crypto
-from models_auth import OAuthLoginState, OAuthToken, User, UserSession
+from auth import desktop as auth_module
+from auth import hosted
+from core import crypto
+from db.models.accounts import OAuthLoginState, OAuthToken, User, UserSession
+from gapi import credentials, oauth_transport
 
 REDIRECT = "https://gch.test/api/auth/callback"
 
@@ -52,10 +51,10 @@ def fake_google(monkeypatch):
 
     identity = {"sub": "google-sub-1", "email": "alice@example.com", "name": "Alice"}
 
-    # Stage 8 (§32): the transport lives in oauth_transport — patch the
+    # Stage 8 (В§32): the transport lives in oauth_transport — patch the
     # module the production code actually calls, not the desktop re-export.
     monkeypatch.setattr(oauth_transport, "post_token_request", fake_post_token_request)
-    monkeypatch.setattr(hosted_auth, "_fetch_identity", lambda token: dict(identity))
+    monkeypatch.setattr(hosted, "_fetch_identity", lambda token: dict(identity))
     return identity
 
 
@@ -179,7 +178,7 @@ def test_full_login_creates_user_session_and_encrypted_tokens(
     set_cookie = response.headers["set-cookie"]
     assert "gch_session=" in set_cookie
     assert "HttpOnly" in set_cookie
-    # HTTPS deployment (Caddy in production) → Secure cookie.
+    # HTTPS deployment (Caddy in production) в†’ Secure cookie.
     assert "Secure" in set_cookie
     assert "SameSite=lax" in set_cookie
     # The one-time nonce is cleared.
@@ -194,12 +193,12 @@ def test_full_login_creates_user_session_and_encrypted_tokens(
 
     token = db.scalars(select(OAuthToken)).one()
     assert token.user_id == user.id
-    # Tokens are encrypted at rest, never plaintext (§8).
+    # Tokens are encrypted at rest, never plaintext (В§8).
     assert token.access_token.startswith("enc.v1:")
     assert "at-123" not in token.access_token
-    assert token_crypto.decrypt(token.access_token) == "at-123"
+    assert crypto.decrypt(token.access_token) == "at-123"
     assert token.refresh_token is not None
-    assert token_crypto.decrypt(token.refresh_token) == "rt-456"
+    assert crypto.decrypt(token.refresh_token) == "rt-456"
     assert set(auth_module.SCOPES).issubset(set(token.scopes))
 
     session = db.scalars(select(UserSession)).one()
@@ -210,7 +209,7 @@ def test_full_login_creates_user_session_and_encrypted_tokens(
     )
     # Only the hash is stored; the raw cookie token never reaches the DB.
     assert session.session_token_hash != raw_cookie
-    assert session.session_token_hash == hosted_auth._sha256_hex(raw_cookie)
+    assert session.session_token_hash == hosted._sha256_hex(raw_cookie)
     assert session.revoked_at is None
 
     # Status resolves from the session and the users table (no Google call).
@@ -218,7 +217,7 @@ def test_full_login_creates_user_session_and_encrypted_tokens(
     assert status.status_code == 200
     body = status.json()
     assert body["authenticated"] is True
-    # §26: identity is nested, never flat and never a token.
+    # В§26: identity is nested, never flat and never a token.
     assert body["user"]["name"] == "Alice"
     assert body["user"]["email"] == "alice@example.com"
     assert "user_name" not in body and "user_email" not in body
@@ -254,7 +253,7 @@ def test_changed_email_updates_the_same_user(
     _finish_login(hosted_client, state)
 
     monkeypatch.setattr(
-        hosted_auth,
+        hosted,
         "_fetch_identity",
         lambda token: {
             "sub": "google-sub-1",
@@ -324,8 +323,8 @@ def _make_user_with_token(
     db.add(
         OAuthToken(
             user_id=user.id,
-            access_token=token_crypto.encrypt("at-old"),
-            refresh_token=token_crypto.encrypt(refresh_token)
+            access_token=crypto.encrypt("at-old"),
+            refresh_token=crypto.encrypt(refresh_token)
             if refresh_token
             else None,
             token_uri="https://oauth2.googleapis.com/token",
@@ -348,13 +347,13 @@ def test_expired_token_is_refreshed_and_persisted_encrypted(db: Session, monkeyp
 
     monkeypatch.setattr(oauth_transport, "refresh_credentials", fake_refresh)
 
-    creds = google_credentials.get_google_credentials(db, user)
+    creds = credentials.get_google_credentials(db, user)
     assert creds is not None
     assert creds.token == "at-new"
     row = db.get(OAuthToken, user.id)
     assert row is not None
     assert row.expires_at is not None
-    assert token_crypto.decrypt(row.access_token) == "at-new"
+    assert crypto.decrypt(row.access_token) == "at-new"
     assert row.expires_at > _now()
 
 
@@ -365,14 +364,14 @@ def test_failed_refresh_reports_signed_out(db: Session, monkeypatch):
         raise RuntimeError("invalid_grant")
 
     monkeypatch.setattr(oauth_transport, "refresh_credentials", boom)
-    assert google_credentials.get_google_credentials(db, user) is None
+    assert credentials.get_google_credentials(db, user) is None
 
 
 def test_stale_scope_set_forces_a_new_consent(db: Session):
     user = _make_user_with_token(
         db, expires_at=_now() + timedelta(hours=1), scopes=["openid"]
     )
-    assert google_credentials.get_google_credentials(db, user) is None
+    assert credentials.get_google_credentials(db, user) is None
     # The unusable row is dropped so the next login re-consents.
     assert db.get(OAuthToken, user.id) is None
 
@@ -384,7 +383,7 @@ def test_valid_token_is_returned_without_a_refresh(db: Session, monkeypatch):
         raise AssertionError("a valid token must not be refreshed")
 
     monkeypatch.setattr(oauth_transport, "refresh_credentials", unexpected)
-    creds = google_credentials.get_google_credentials(db, user)
+    creds = credentials.get_google_credentials(db, user)
     assert creds is not None and creds.token == "at-old"
 
 
@@ -392,23 +391,23 @@ def test_valid_token_is_returned_without_a_refresh(db: Session, monkeypatch):
 
 
 def test_token_crypto_roundtrip_and_plaintext_rejection(monkeypatch):
-    ciphertext = token_crypto.encrypt("secret-value")
+    ciphertext = crypto.encrypt("secret-value")
     assert ciphertext.startswith("enc.v1:")
     assert "secret-value" not in ciphertext
-    assert token_crypto.decrypt(ciphertext) == "secret-value"
-    with pytest.raises(token_crypto.TokenEncryptionError):
-        token_crypto.decrypt("plaintext-value")
+    assert crypto.decrypt(ciphertext) == "secret-value"
+    with pytest.raises(crypto.TokenEncryptionError):
+        crypto.decrypt("plaintext-value")
     # A wrong key must not silently decrypt garbage.
     from cryptography.fernet import Fernet
 
-    monkeypatch.setenv(token_crypto.KEY_ENV_VAR, Fernet.generate_key().decode("ascii"))
-    with pytest.raises(token_crypto.TokenEncryptionError):
-        token_crypto.decrypt(ciphertext)
+    monkeypatch.setenv(crypto.KEY_ENV_VAR, Fernet.generate_key().decode("ascii"))
+    with pytest.raises(crypto.TokenEncryptionError):
+        crypto.decrypt(ciphertext)
 
 
 def test_safe_relative_only_allows_same_origin_paths():
-    assert hosted_auth._safe_relative("/subjects/1") == "/subjects/1"
-    assert hosted_auth._safe_relative("//evil.example") == "/"
-    assert hosted_auth._safe_relative("https://evil.example/x") == "/"
-    assert hosted_auth._safe_relative("/a\\b") == "/"
-    assert hosted_auth._safe_relative("/a\nb") == "/"
+    assert hosted._safe_relative("/subjects/1") == "/subjects/1"
+    assert hosted._safe_relative("//evil.example") == "/"
+    assert hosted._safe_relative("https://evil.example/x") == "/"
+    assert hosted._safe_relative("/a\\b") == "/"
+    assert hosted._safe_relative("/a\nb") == "/"

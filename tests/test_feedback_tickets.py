@@ -28,7 +28,7 @@ from feedback_helpers import (
 )
 from sqlalchemy.orm import Session
 
-from models_feedback import (
+from db.models.feedback import (
     AUTHOR_USER,
     STATUS_IN_PROGRESS,
     FeedbackTicket,
@@ -302,7 +302,7 @@ def test_a_malformed_body_is_422_and_never_leaks_internals(hosted_client, db):
 def test_the_creation_rate_limit_answers_429_with_retry_after(
     hosted_client, db, monkeypatch
 ):
-    import feedback_service
+    from feedback import service as feedback_service
 
     _alice_bob(db)
     # Patched on the module that READS it: the endpoint must see the test's
@@ -319,7 +319,7 @@ def test_the_creation_rate_limit_answers_429_with_retry_after(
 
 
 def test_the_reply_rate_limit_answers_429(hosted_client, db, monkeypatch):
-    import feedback_service
+    from feedback import service as feedback_service
 
     _alice_bob(db)
     monkeypatch.setattr(feedback_service, "FEEDBACK_REPLIES_PER_HOUR", 1)
@@ -334,7 +334,7 @@ def test_the_reply_rate_limit_answers_429(hosted_client, db, monkeypatch):
 
 def test_the_rate_limit_is_per_user_not_per_ip(hosted_client, db, monkeypatch):
     """A school NAT shares one address: exhausting Alice must not block Bob."""
-    import feedback_service
+    from feedback import service as feedback_service
 
     alice, bob = _alice_bob(db)
     monkeypatch.setattr(feedback_service, "FEEDBACK_TICKETS_PER_HOUR", 1)

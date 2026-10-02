@@ -28,15 +28,15 @@ from feedback_helpers import (
 )
 from sqlalchemy.orm import Session
 
-import admin_auth
-from admin_auth import (
+from auth import roles
+from auth.roles import (
     ROLE_ADMIN,
     ROLE_SUPER_ADMIN,
     ROLE_USER,
     display_name_from_email,
     resolve_role,
 )
-from config import normalize_email
+from core.config import normalize_email
 
 
 def _role_of(db: Session, email: str | None) -> str:
@@ -51,7 +51,7 @@ def test_the_super_admin_is_recognized_from_the_environment(db: Session, monkeyp
     as_super_admin(monkeypatch, "boss@example.com")
     assert _role_of(db, "boss@example.com") == ROLE_SUPER_ADMIN
     # They are also an administrator: ``is_admin`` means "any administrator".
-    assert admin_auth.is_admin_email(db, "boss@example.com") is True
+    assert roles.is_admin_email(db, "boss@example.com") is True
 
 
 def test_a_registry_row_is_an_administrator_not_a_super_admin(db: Session, monkeypatch):
@@ -60,7 +60,7 @@ def test_a_registry_row_is_an_administrator_not_a_super_admin(db: Session, monke
     grant_admin(db, "boss@example.com")
 
     assert _role_of(db, "boss@example.com") == ROLE_ADMIN
-    assert admin_auth.is_admin_email(db, "boss@example.com") is True
+    assert roles.is_admin_email(db, "boss@example.com") is True
     assert _role_of(db, "root@example.com") == ROLE_SUPER_ADMIN
 
 
@@ -68,7 +68,7 @@ def test_a_normal_user_is_neither_admin_nor_super_admin(db: Session, monkeypatch
     """The default for anybody with no row and no configuration."""
     as_super_admin(monkeypatch, "root@example.com")
     assert _role_of(db, "alice@example.com") == ROLE_USER
-    assert admin_auth.is_admin_email(db, "alice@example.com") is False
+    assert roles.is_admin_email(db, "alice@example.com") is False
 
 
 # --------------------------------------------------------- normalization rules
@@ -103,21 +103,21 @@ def test_an_unusable_super_admin_configuration_admits_nobody(
     could otherwise half-match a real address. A malformed configuration is
     treated as a MISSING one, so a typo in the deployment can never widen access.
     """
-    import config
+    from core import config
 
     monkeypatch.setattr(config, "SUPER_ADMIN_EMAIL", normalize_email(configured))
     for candidate in ("boss@example.com", "admin@example.com", "root@example.com"):
-        assert admin_auth.is_super_admin_email(candidate) is False
-        assert admin_auth.is_admin_email(db, candidate) is False
+        assert roles.is_super_admin_email(candidate) is False
+        assert roles.is_admin_email(db, candidate) is False
 
 
 @pytest.mark.parametrize("configured", [None, "", "   "])
 def test_an_unset_configuration_is_no_super_admin(monkeypatch, configured):
     """``None`` is the shipped default: the feature exists, nobody is Super."""
-    import config
+    from core import config
 
     monkeypatch.setattr(config, "SUPER_ADMIN_EMAIL", configured)
-    assert admin_auth.is_super_admin_email("boss@example.com") is False
+    assert roles.is_super_admin_email("boss@example.com") is False
 
 
 def test_the_desktop_local_owner_is_never_an_administrator(db: Session, monkeypatch):
@@ -142,7 +142,7 @@ def test_admin_emails_no_longer_grants_anything(db: Session, monkeypatch):
     read by nobody — both halves are asserted here, so a future "compatibility
     shim" cannot creep back in unnoticed.
     """
-    import config
+    from core import config
 
     monkeypatch.setenv("ADMIN_EMAILS", "boss@example.com")
     assert not hasattr(config, "ADMIN_EMAILS")
@@ -150,7 +150,7 @@ def test_admin_emails_no_longer_grants_anything(db: Session, monkeypatch):
     boss = make_user(db, "sub-boss", email="boss@example.com")
     add_session(db, boss, "raw-boss")
     assert _role_of(db, boss.email) == ROLE_USER
-    assert admin_auth.is_admin_email(db, boss.email) is False
+    assert roles.is_admin_email(db, boss.email) is False
 
 
 # ---------------------------------------------------------- derived display name
@@ -193,7 +193,7 @@ def test_the_guard_and_the_handler_share_one_session(
     counted here: what remains is exactly the request's dependency sessions.
     One request, one session — that is the cache working.
     """
-    import database
+    from db import session as database
 
     opened: list[object] = []
     real_session_local = database.SessionLocal

@@ -21,9 +21,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import func, insert, select
 
-import sync_store
-from database import SessionLocal
-from models import (
+from db.models.classroom import (
     Course,
     CourseRole,
     CourseStudent,
@@ -31,6 +29,9 @@ from models import (
     CourseWorkSubmission,
     StudentSubmission,
 )
+from db.session import SessionLocal
+from sync import store
+from sync.store import writing
 
 
 def _now() -> datetime:
@@ -109,7 +110,7 @@ def test_repeated_teacher_sync_does_not_raise_and_keeps_one_row(db, owner_id):
     payload = _teacher_payload([_submission("w1", "s1", assigned=5)])
 
     for _ in range(3):
-        sync_store._write_teacher_course(db, owner_id, "t1", payload)
+        writing._write_teacher_course(db, owner_id, "t1", payload)
         db.commit()
 
     assert _count(db, CourseWorkSubmission, owner_id, "t1") == 1
@@ -121,7 +122,7 @@ def test_existing_submission_is_updated_not_duplicated(db, owner_id):
     first = _teacher_payload(
         [_submission("w1", "s1", state="CREATED", assigned=None, attachment="draft")]
     )
-    sync_store._write_teacher_course(db, owner_id, "t1", first)
+    writing._write_teacher_course(db, owner_id, "t1", first)
     db.commit()
 
     graded = _teacher_payload(
@@ -138,7 +139,7 @@ def test_existing_submission_is_updated_not_duplicated(db, owner_id):
             )
         ]
     )
-    sync_store._write_teacher_course(db, owner_id, "t1", graded)
+    writing._write_teacher_course(db, owner_id, "t1", graded)
     db.commit()
 
     row = db.get(CourseWorkSubmission, (owner_id, "t1", "w1", "s1"))
@@ -166,7 +167,7 @@ def test_many_students_and_courseworks_stay_one_row_each(db, owner_id):
     payload = {"coursework": works, "students": roster, "submissions": submissions}
 
     for _ in range(2):
-        sync_store._write_teacher_course(db, owner_id, "t1", payload)
+        writing._write_teacher_course(db, owner_id, "t1", payload)
         db.commit()
 
     assert _count(db, CourseWorkSubmission, owner_id, "t1") == 5 * 20
@@ -182,7 +183,7 @@ def test_submission_is_rewritten_when_the_key_already_exists(db, owner_id):
     second write updates the same row and leaves the fresh facts in place.
     """
     _seed_course(db, owner_id, "t1")
-    sync_store._upsert_work(db, owner_id, "t1", {"id": "w1", "title": "HW"})
+    writing._upsert_work(db, owner_id, "t1", {"id": "w1", "title": "HW"})
     # Committed before the second writer: an uncommitted write here would pin the
     # SQLite file lock and the other session would fail with "database is locked".
     db.commit()
@@ -204,7 +205,7 @@ def test_submission_is_rewritten_when_the_key_already_exists(db, owner_id):
         )
         other.commit()
 
-    sync_store._write_teacher_course(
+    writing._write_teacher_course(
         db, owner_id, "t1", _teacher_payload([_submission("w1", "s1", assigned=5)])
     )
     db.commit()
@@ -221,7 +222,7 @@ def test_submission_is_rewritten_when_the_key_already_exists(db, owner_id):
 
 def test_coursework_and_roster_are_updated_in_place(db, owner_id):
     _seed_course(db, owner_id, "t1")
-    sync_store._write_teacher_course(
+    writing._write_teacher_course(
         db,
         owner_id,
         "t1",
@@ -232,7 +233,7 @@ def test_coursework_and_roster_are_updated_in_place(db, owner_id):
     )
     db.commit()
 
-    sync_store._write_teacher_course(
+    writing._write_teacher_course(
         db,
         owner_id,
         "t1",
@@ -252,14 +253,14 @@ def test_coursework_and_roster_are_updated_in_place(db, owner_id):
 
 def test_roster_entry_is_refreshed(db, owner_id):
     _seed_course(db, owner_id, "t1")
-    sync_store._write_teacher_course(db, owner_id, "t1", _teacher_payload([]))
+    writing._write_teacher_course(db, owner_id, "t1", _teacher_payload([]))
     db.commit()
 
     renamed = _teacher_payload([])
     renamed["students"] = [
         {"userId": "s1", "fullName": "Anna Nowak", "emailAddress": "new@x.test"}
     ]
-    sync_store._write_teacher_course(db, owner_id, "t1", renamed)
+    writing._write_teacher_course(db, owner_id, "t1", renamed)
     db.commit()
 
     row = db.get(CourseStudent, (owner_id, "t1", "s1"))
@@ -275,7 +276,7 @@ def test_roster_entry_is_refreshed(db, owner_id):
 def test_submissions_classroom_dropped_are_still_removed(db, owner_id):
     """An upsert must not become "keep everything": the mirror still converges."""
     _seed_course(db, owner_id, "t1")
-    sync_store._write_teacher_course(
+    writing._write_teacher_course(
         db,
         owner_id,
         "t1",
@@ -284,7 +285,7 @@ def test_submissions_classroom_dropped_are_still_removed(db, owner_id):
     db.commit()
     assert _count(db, CourseWorkSubmission, owner_id, "t1") == 2
 
-    sync_store._write_teacher_course(
+    writing._write_teacher_course(
         db, owner_id, "t1", _teacher_payload([_submission("w1", "s1")])
     )
     db.commit()
@@ -300,12 +301,12 @@ def test_students_unenrolled_are_still_removed(db, owner_id):
         {"userId": "s1", "fullName": "A"},
         {"userId": "s2", "fullName": "B"},
     ]
-    sync_store._write_teacher_course(db, owner_id, "t1", both)
+    writing._write_teacher_course(db, owner_id, "t1", both)
     db.commit()
 
     one = _teacher_payload([])
     one["students"] = [{"userId": "s1", "fullName": "A"}]
-    sync_store._write_teacher_course(db, owner_id, "t1", one)
+    writing._write_teacher_course(db, owner_id, "t1", one)
     db.commit()
 
     assert _count(db, CourseStudent, owner_id, "t1") == 1
@@ -331,7 +332,7 @@ def test_student_course_sync_is_idempotent(db, owner_id):
     work_cache = {("s-course", "w1"): raw_work}
 
     for _ in range(2):
-        count = sync_store._write_student_course(
+        count = writing._write_student_course(
             db, owner_id, "s-course", submissions, work_cache
         )
         db.commit()
@@ -359,11 +360,11 @@ def test_student_submission_grade_change_is_persisted(db, owner_id):
             "updateTime": "2026-01-01T10:00:00Z",
         }
 
-    sync_store._write_student_course(
+    writing._write_student_course(
         db, owner_id, "s-course", [_sub(None)], work_cache
     )
     db.commit()
-    sync_store._write_student_course(db, owner_id, "s-course", [_sub(9.0)], work_cache)
+    writing._write_student_course(db, owner_id, "s-course", [_sub(9.0)], work_cache)
     db.commit()
 
     row = db.get(StudentSubmission, (owner_id, "s-course", "w1"))
@@ -378,7 +379,7 @@ def test_student_submission_grade_change_is_persisted(db, owner_id):
 
 def test_two_users_caching_the_same_google_ids_do_not_collide(db, owner_id):
     """The PK is user-scoped on purpose: identical Google ids, separate rows."""
-    from models_auth import User
+    from db.models.accounts import User
 
     other = User(
         provider="google",
@@ -397,8 +398,8 @@ def test_two_users_caching_the_same_google_ids_do_not_collide(db, owner_id):
     _seed_course(db, other_id, "shared")
     payload = _teacher_payload([_submission("w1", "s1", assigned=5)])
 
-    sync_store._write_teacher_course(db, owner_id, "shared", payload)
-    sync_store._write_teacher_course(db, other_id, "shared", payload)
+    writing._write_teacher_course(db, owner_id, "shared", payload)
+    writing._write_teacher_course(db, other_id, "shared", payload)
     db.commit()
 
     assert _count(db, CourseWorkSubmission, owner_id, "shared") == 1
@@ -409,7 +410,7 @@ def test_course_row_is_upserted_by_key(db, owner_id):
     """The course row itself goes through the same conditional write."""
     _seed_course(db, owner_id, "t1")
     first = _now()
-    sync_store.upsert_submission(
+    store.upsert_submission(
         db,
         Course,
         {"user_id": owner_id, "id": "t1"},
@@ -417,7 +418,7 @@ def test_course_row_is_upserted_by_key(db, owner_id):
     )
     db.commit()
     second = _now()
-    sync_store.upsert_submission(
+    store.upsert_submission(
         db,
         Course,
         {"user_id": owner_id, "id": "t1"},
@@ -454,7 +455,7 @@ def test_upsert_builds_on_conflict_for_both_backends():
         ("postgresql", postgresql.dialect()),
         ("sqlite", sqlite.dialect()),
     ):
-        insert = sync_store._upsert_insert(dialect_name)
+        insert = writing._upsert_insert(dialect_name)
         stmt = insert(CourseWorkSubmission).values(
             user_id=1,
             course_id="c",

@@ -15,10 +15,9 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 import maintenance
-import ownership
-from api import identity
-from database import get_db
-from models_auth import User
+from auth import identity, ownership
+from db.models.accounts import User
+from db.session import get_db
 
 router = APIRouter()
 
@@ -44,9 +43,9 @@ def disconnect_google_account(
         )
     # Desktop has no application account: this is exactly /api/auth/logout.
     if user.provider != "google":
-        import auth
+        from auth import desktop
 
-        auth.logout()
+        desktop.logout()
         identity._reset_profile_cache(user.id)
         return {"ok": True, "disconnected": True}
     maintenance.disconnect_google(db, user.id)
@@ -90,7 +89,7 @@ def delete_own_account(
     response = JSONResponse({"ok": True, "deleted": True, **removed})
     # The session no longer exists server-side; drop the cookie too so the
     # browser does not keep presenting a dead token (§37).
-    from hosted_auth import SESSION_COOKIE_NAME
+    from auth.hosted import SESSION_COOKIE_NAME
 
     response.delete_cookie(SESSION_COOKIE_NAME, path="/")
     return response

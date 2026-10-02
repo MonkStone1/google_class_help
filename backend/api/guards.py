@@ -17,7 +17,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from api import queries
-from models import Course
+from db.models.classroom import Course
 
 
 def _get_course(db: Session, owner_id: int, course_id: str) -> Course:

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from models import Course, CourseRole, CourseWork, StudentSubmission
+from db.models.classroom import Course, CourseRole, CourseWork, StudentSubmission
 
 NOW = datetime.now()  # noqa: DTZ005 - naive local time matches the cache
 

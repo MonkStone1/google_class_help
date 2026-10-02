@@ -23,9 +23,9 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-import config
-import hosted_auth
-from models_auth import User, UserSession
+from auth import hosted
+from core import config
+from db.models.accounts import User, UserSession
 
 
 def _now() -> datetime:
@@ -71,7 +71,7 @@ def add_session(db: Session, user: User, raw_token: str) -> None:
     now = _now()
     db.add(
         UserSession(
-            session_token_hash=hosted_auth._sha256_hex(raw_token),
+            session_token_hash=hosted._sha256_hex(raw_token),
             user_id=user.id,
             created_at=now,
             expires_at=now + timedelta(days=1),
@@ -102,8 +102,8 @@ def grant_admin(db: Session, *emails: str) -> None:
     it with "database is locked". This is the same lesson as the ``owner_id``
     fixture in conftest.py.
     """
-    from config import normalize_email
-    from models_admin import Admin
+    from core.config import normalize_email
+    from db.models.admins import Admin
 
     for email in emails:
         db.add(
@@ -124,7 +124,7 @@ def as_super_admin(monkeypatch, email: str) -> None:
     next one. Normalized here as well: ``resolve_role`` compares normalized
     values, so the fixture must store the same spelling.
     """
-    from config import normalize_email
+    from core.config import normalize_email
 
     monkeypatch.setattr(config, "SUPER_ADMIN_EMAIL", normalize_email(email))
 

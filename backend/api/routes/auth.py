@@ -14,11 +14,10 @@ loads it (migration stage 8, §32).
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-import ownership
-from api import identity
-from database import get_db
-from models_auth import User
-from schemas import AuthStatus, UserOut
+from auth import identity, ownership
+from db.models.accounts import User
+from db.session import get_db
+from schemas.dashboard import AuthStatus, UserOut
 
 router = APIRouter()
 
@@ -55,9 +54,9 @@ def login(
     user: User = Depends(ownership.get_current_user),
     db: Session = Depends(get_db),
 ) -> AuthStatus:
-    import auth
+    from auth import desktop
 
-    result = auth.start_login()
+    result = desktop.start_login()
     if not result.get("started"):
         raise HTTPException(
             status_code=500, detail=result.get("error", "Login failed.")
@@ -70,9 +69,9 @@ def logout(
     user: User = Depends(ownership.get_current_user),
     db: Session = Depends(get_db),
 ) -> AuthStatus:
-    import auth
+    from auth import desktop
 
-    auth.logout()
+    desktop.logout()
     # Only the caller's cached profile is dropped (§17); the next sign-in on
     # this browser may be another account, but other users' entries stay.
     identity._reset_profile_cache(user.id)

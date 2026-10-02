@@ -15,15 +15,15 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-import google_credentials
 import pytest
 
-import hosted_auth
-import proxy
-import sync_service
-import sync_store
-from models import Course, CourseRole, CourseWork, SyncStatus
-from models_auth import User, UserSession
+from auth import hosted
+from core import proxy
+from db.models.accounts import User, UserSession
+from db.models.classroom import Course, CourseRole, CourseWork, SyncStatus
+from gapi import credentials
+from sync import store
+from sync.service import _fetch as service
 
 
 def _utc(year: int, month: int, day: int) -> datetime:
@@ -54,7 +54,7 @@ def _now() -> datetime:
 def _add_session(db, user: User, raw_token: str, ttl_hours: int = 14) -> UserSession:
     base = _now()
     session = UserSession(
-        session_token_hash=hosted_auth._sha256_hex(raw_token),
+        session_token_hash=hosted._sha256_hex(raw_token),
         user_id=user.id,
         created_at=base,
         expires_at=base + timedelta(hours=ttl_hours),
@@ -242,7 +242,7 @@ def test_user_a_sync_does_not_touch_b_state(hosted_client, db, monkeypatch):
     db.add(
         SyncStatus(
             user_id=bob.id,
-            status=sync_store.SYNC_OK,
+            status=store.SYNC_OK,
             last_success_at=_utc(2026, 9, 19),
             consecutive_failures=0,
             sync_requested=False,
@@ -273,16 +273,16 @@ def test_token_material_never_appears_in_responses(hosted_client, db):
 def test_one_user_has_no_credentials_when_the_other_does(db):
     alice = _make_user(db, "sub-alice")
     bob = _make_user(db, "sub-bob")
-    assert google_credentials.get_google_credentials(db, alice) is None
-    assert google_credentials.get_google_credentials(db, bob) is None
+    assert credentials.get_google_credentials(db, alice) is None
+    assert credentials.get_google_credentials(db, bob) is None
 
 
 def test_deleting_one_grant_leaves_the_other_user_alone(db):
     alice = _make_user(db, "sub-alice")
     bob = _make_user(db, "sub-bob")
-    google_credentials.delete_google_credentials(db, alice.id)
+    credentials.delete_google_credentials(db, alice.id)
     assert db.get(User, bob.id) is not None
-    assert google_credentials.has_google_grant(db, alice) is False
+    assert credentials.has_google_grant(db, alice) is False
 
 
 def test_invalid_grant_refresh_is_confined_to_its_owner(db, monkeypatch):
@@ -296,8 +296,8 @@ def test_invalid_grant_refresh_is_confined_to_its_owner(db, monkeypatch):
 
     # The grant is dead for Alice only; Bob's user row (and session) survive.
 
-    monkeypatch.setattr(google_credentials, "refresh_google_credentials", fake_refresh)
-    assert google_credentials.refresh_google_credentials(db, alice) is None
+    monkeypatch.setattr(credentials, "refresh_google_credentials", fake_refresh)
+    assert credentials.refresh_google_credentials(db, alice) is None
     assert calls == [alice.id]
     assert db.get(User, bob.id) is not None
 
@@ -306,27 +306,27 @@ def test_invalid_grant_refresh_is_confined_to_its_owner(db, monkeypatch):
 
 
 def test_two_users_have_independent_sync_locks():
-    assert sync_service._sync_lock_for(1) is not sync_service._sync_lock_for(2)
-    assert sync_service._sync_lock_for(1) is sync_service._sync_lock_for(1)
+    assert service._sync_lock_for(1) is not service._sync_lock_for(2)
+    assert service._sync_lock_for(1) is service._sync_lock_for(1)
 
 
 def test_one_user_has_at_most_one_active_sync(db, owner_id, monkeypatch):
     user = db.get(User, owner_id)
-    lock = sync_service._sync_lock_for(user.id)
+    lock = service._sync_lock_for(user.id)
     acquired = lock.acquire(blocking=False)
     try:
-        result = sync_service.sync_now(user=user, interactive=True)
+        result = service.sync_now(user=user, interactive=True)
         assert result["ok"] is False
-        assert "already running" in str(result.get("error", "")).lower()
+        assert result.get("error") == service.ALREADY_RUNNING
     finally:
         if acquired:
             lock.release()
 
 
 def test_queue_flag_and_claim_helpers_exist(db):
-    assert hasattr(sync_store, "claim_sync")
-    assert hasattr(sync_store, "request_sync")
-    assert hasattr(sync_store, "mark_sync_pending")
+    assert hasattr(store, "claim_sync")
+    assert hasattr(store, "request_sync")
+    assert hasattr(store, "mark_sync_pending")
 
 
 # --------------------------------------------------------- §52 teacher matrix
@@ -411,7 +411,7 @@ def test_deleting_a_user_cascades_their_cache(db):
 
 def test_connection_pool_is_released_between_requests(client):
     """§45/§52: a request must not leave a checked-out connection behind."""
-    from database import engine
+    from db.session import engine
 
     for _ in range(3):
         assert client.get("/api/health").status_code == 200
@@ -443,7 +443,7 @@ def test_ready_endpoint_is_public_without_a_session(hosted_client):
 def test_ready_endpoint_reports_503_when_the_database_is_down(client, monkeypatch):
     from sqlalchemy.exc import SQLAlchemyError
 
-    import database
+    from db import session as database
 
     class _BrokenSession:
         def execute(self, *_args, **_kwargs):

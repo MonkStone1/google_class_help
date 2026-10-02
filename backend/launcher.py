@@ -532,7 +532,7 @@ def run() -> int:
     except KeyboardInterrupt:
         logger.info("Interrupt received; shutting down.")
     finally:
-        from background_sync import stop as stop_background_sync
+        from sync.background import stop as stop_background_sync
 
         stop_background_sync()  # stop the scheduler before executors die
         server.should_exit = True

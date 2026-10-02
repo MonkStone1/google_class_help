@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 import sync
 from api.deps import current_user_id
-from database import get_db
+from db.session import get_db
 
 router = APIRouter()
 
