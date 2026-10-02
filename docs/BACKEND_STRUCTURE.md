@@ -20,25 +20,56 @@
 ## Слои
 
 ```text
-core/  ←  db/  ←  google/  ←  sync/  ←  api/routes  ←  main.py
+core/  ←  db/  ←  gapi/  ←  sync/  ←  api/routes  ←  main.py
                      ↖  auth/  ↖  feedback/
 ```
 
 | Слой | Что в нём | Чего быть не должно |
 |---|---|---|
-| `core/` | config, пути, логирование, метрики, rate limit, crypto | FastAPI, SQLAlchemy-сессий, домена |
+| `core/` | config, пути, логирование, метрики, rate limit, crypto, `origins.py`, `http_config.py` | FastAPI, SQLAlchemy-сессий, домена |
 | `db/` | engine/сессии, модели | бизнес-логики, HTTP |
-| `google/` | `classroom.py`, `credentials.py`, `oauth_transport.py` | FastAPI-роутов |
-| `sync/` | `store.py` (запись кэша), `service.py` (оркестрация), `scheduler.py`, `worker.py`, `background.py` | HTTP-роутов |
-| `auth/` | `identity.py`, `ownership.py`, `roles.py`, `desktop.py`, `hosted.py` | SQL-запросов к кэшу |
+| `gapi/` | `classroom.py`, `credentials.py`, `oauth_transport.py`, `timeparse.py` | FastAPI-роутов |
+| `sync/` | `store/` (запись кэша), `service/` (оркестрация), `scheduler/`, `worker.py`, `background.py` | HTTP-роутов |
+| `auth/` | `identity.py`, `ownership.py`, `roles.py`, `desktop.py`, `hosted/` | SQL-запросов к кэшу |
 | `feedback/` | `service.py`, `attachments.py` | HTTP |
 | `schemas/` | Pydantic-модели ответа | SQL, Google |
-| `api/routes/` | тонкие хендлеры, `Depends`, `HTTPException` | SQL-агрегатов, `google*`, `sync_store` |
+| `api/routes/` | тонкие хендлеры, `Depends`, `HTTPException` | SQL-агрегатов, `gapi.*`, `sync.store` |
 | `api/queries/` | чтение кэша (SQLAlchemy) | `fastapi`, `HTTPException` |
 | `api/guards.py` | перевод доменных «нет такого курса / не учитель» в 404/403 | — |
 | `main.py` | сборка приложения: роутеры, middleware, lifespan | логики домена |
 
 `grading.py` — чистый домен: ноль импортов Google, FastAPI и SQLAlchemy.
+
+### Почему `gapi/`, а не `google/`
+
+`backend/` — корень `sys.path`, поэтому имя каталога в нём видно всему процессу
+вместе с `site-packages`. Каталог `google/` **затенил бы** установленные
+namespace-пакеты `google-api-python-client`, `google-auth`, `google-auth-httplib2`:
+`from google.oauth2.credentials import Credentials` перестал бы резолвиться, и
+приложение падало бы на старте. Для PEP 420-пакетов опаснее: `google/` не
+перекрывает их, а **сливается** с ними по порядку путей — и ломается в день,
+когда порядок меняется.
+
+`gapi/` (Google API) не совпадает ни с одним установленным распределением.
+Тест `test_no_layer_shadows_an_installed_distribution` в
+`tests/test_backend_structure.py` проверяет это настоящим импортом: `find_spec`
+для namespace-пакета вернул бы `None` и молча прошёл.
+
+### Внутренние пакеты: по чему делили
+
+Три слоя выросли в пакеты, и деление шло **по назначению**, а не по размеру:
+
+| Пакет | Модули | Почему вместе |
+|---|---|---|
+| `sync/store/` | `status.py`, `cache.py`, `writing.py` | переходы статуса, чтение двух таблиц и destructive-очистка, перевод payload → строки кэша |
+| `sync/service/` | `_fetch.py`, `_fetching.py`, `results.py`, `common.py` | получение (fan-out к Google) и запись (транзакция) падают по-разному; `common.py` — коды исходов и политика ошибок, общая для обеих половин |
+| `sync/scheduler/` | `due.py`, `_scan.py` | «кто due» — чистая арифметика времени; `SyncScheduler` отвечает на другой вопрос («сколько может идти сейчас») |
+| `auth/hosted/` | `__init__.py`, `sessions.py`, `turnstile.py` | сессия — отдельный механизм от OAuth-раундтрипа; Turnstile опционален и держит единственный секрет |
+
+Фасады (`sync/store/__init__.py`, `sync/service/__init__.py`,
+`sync/scheduler/__init__.py`, `auth/hosted/__init__.py`) существуют, чтобы
+вызывающий код продолжал импортировать прежние имена — и чтобы `monkeypatch`
+фасада доходил до вызывающего кода, а не оставался на копии.
 
 ### Слой `edge/`
 
@@ -74,39 +105,53 @@ core/  ←  db/  ←  google/  ←  sync/  ←  api/routes  ←  main.py
 Правила выше — для нового кода. Два места импортируют то, что правило запрещает,
 и это перенесено из старого `api.py` как есть, а не спрятано:
 
-1. `api/identity.py` импортирует `classroom_api` — кэш профиля desktop-сборки
-   ходит в Google userinfo. Убрать можно только вместе с переездом
-   `classroom_api.py` в `google/` (Этап 3); сегодня это всякий раз один
-   сетевой вызов за пять минут на пользователя.
-2. `api/routes/sync.py` делает локальный `from sync_store import sync_status`
-   внутри функции — наследие того же `api.py`. Исчезнет, когда `sync/` станет
-   пакетом и появится `sync.status()`; до тех пор правило для этого файла —
-   «не импортировать `sync_service`/`sync_store` на верхнем уровне».
+1. `auth/identity.py` импортирует `gapi.classroom` — кэш профиля desktop-сборки
+   ходит в Google userinfo. Сегодня это всякий раз один сетевой вызов за пять
+   минут на пользователя; убрать можно только вместе с переездом этого чтения в
+   `sync` (отдельная задача, не Этап 3).
+2. `api/routes/sync.py` делает локальный `from sync.store import sync_status`
+   внутри функции — наследие того же `api.py`. Исчезнет, когда у `sync.store`
+   появится аксессор статуса, отдельный от `sync_status(db, user_id)`.
 
-`tests/test_backend_structure.py` (Этап 4) должен проверять эти правила с этими
-двумя исключениями, иначе тест будет красным на честном коде и его придётся
+Оба исключения **проверяются тестом**, а не только комментарием:
+`test_the_sync_status_read_stays_a_local_import` в
+`tests/test_backend_structure.py` падает, если локальный импорт поднимется на
+уровень модуля. Когда аксессор появится, тест напомнит удалить исключение из
+этого документа в том же изменении.
+
+`tests/test_backend_structure.py` (Этап 4) проверяет эти правила с этими
+двумя исключениями — иначе тест был бы красным на честном коде, и его пришлось бы
 ослабить целиком.
 
-## Слои в процессе миграрации
+## Слои: миграция завершена
 
-Этапы 3–4 ещё не выполнены, поэтому часть доменных модулей пока лежит в корне
-`backend/` плоско (`sync_store.py`, `hosted_auth.py`, `config.py` и т.д.).
-Карта в `docs/plans/backend-restructure/PLAN.md` §3 — целевая.
-Выполнено: `api/` (Этап 1) и `edge/` (Этап 2).
+Все плоские модули разложены по пакетам (Этапы 3–4): `config.py` → `core/`,
+`sync_store.py` → `sync/store/`, `hosted_auth.py` → `auth/hosted/`,
+`classroom_api.py` → `gapi/`, `sync_service.py` → `sync/service/`,
+`sync_scheduler.py` → `sync/scheduler/`. Плоско осталось только то, что привязано
+сборкой: `main.py`, `launcher.py`, `path_config.py`, `maintenance.py`,
+`build_secrets.py`, `embedded_secrets.py` (ADR-0016).
+
+Карта в `docs/plans/backend-restructure/PLAN.md` §3 совпадает с фактической.
 
 ## Бюджеты строк
 
 | Что | Файл | Лимит |
 |---|---|---|
-| Роут | `api/routes/<ресурс>.py` | ≤ 250 |
+| Роут | `api/routes/<ресурс>.py` | ≤ 280 |
 | Запрос к кэшу | `api/queries/<ресурс>.py` | ≤ 350 |
-| Доменный модуль | `sync/store.py`, `auth/hosted.py` и т.п. | ≤ 400 |
+| Доменный модуль | `sync/store/status.py`, `auth/hosted/__init__.py` и т.п. | ≤ 400 |
 | Инфраструктура | `core/*` | ≤ 400 |
 | Production edge | `edge/*` | ≤ 400 |
 | Сборка приложения | `main.py` | ≤ 200 |
-| Фасад совместимости | `sync.py`, `sync/__init__.py` | ≤ 60 |
+| Фасад совместимости | `sync/__init__.py`, `sync/store/__init__.py` | ≤ 60 |
 
-Автоматическая проверка — `tests/test_backend_structure.py` (Этап 4).
+Роут получает 280, а не 200: хендлер плюс шов авторизации плюс маппинг в модель
+ответа — и фидбек действительно принимает на одном URL и JSON, и multipart.
+Модуль `api.py` в 300 строк, который эти роуты заменили, держал все
+четырнадцать; смысл дробления в том, что каждый роут теперь находится по имени.
+
+Автоматическая проверка — `tests/test_backend_structure.py` (18 тестов).
 
 ## Соглашения об именах
 
@@ -136,6 +181,11 @@ from api.identity import _build_auth_status   # ❌ связывается пр�
 импортирующего модуля, а звать продолжит оригинал — тест упадёт или, что
 хуже, пройдёт мимо проверки. В проекте этот приём уже используется:
 `import ownership` + `ownership.get_current_user`.
+Правило закреплено в `ruff.toml` (`lint.flake8-tidy-imports.banned-api`,
+коды `SIBLING_NAME_IMPORT` и `STAR_IMPORT`) — список намеренно узкий:
+только те модули, чьи функции патчит суита. Константа
+(`from core.config import HOSTED_MODE`) в список не входит: тесты
+патчат `core.config.X`, и локальная копия безвредна.
 
 ## Рецепт: добавить новый домен
 
@@ -151,7 +201,9 @@ from api.identity import _build_auth_status   # ❌ связывается пр�
    `db/session.py::_import_models` и `migrations/env.py`.
 
 Порядок важен: `api/queries` не должен знать про `fastapi`, а `api/routes` —
-про `google*`. Это проверяется в Этапе 4.
+про `gapi.*` и писатели кэша. Это проверяется
+`test_api_queries_do_not_import_fastapi` и
+`test_api_routes_do_not_reach_into_google_or_the_cache_writers`.
 
 ## Контракт, который нельзя ломать переездом
 
@@ -161,5 +213,5 @@ from api.identity import _build_auth_status   # ❌ связывается пр�
 * `response_model`, описания `Query(...)`, статус-коды 401/403/404/409/429/503.
 * Никаких новых `tags=` без изменения `frontend/openapi.json` и
   `npm run gen:api:file`.
-* Порядок подключения роутеров: `hosted_auth` включается раньше `api`, иначе
+* Порядок подключения роутеров: `auth.hosted` включается раньше `api`, иначе
   desktop-версии `/api/auth/*` затенят hosted-версии.

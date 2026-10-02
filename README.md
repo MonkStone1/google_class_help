@@ -128,6 +128,28 @@ uvicorn main:app --reload
 
 Бэкенд: <http://127.0.0.1:8000> (Swagger: `/docs`).
 
+### Структура `backend/`
+
+`backend/` — корень `sys.path`, поэтому всё, что лежит в нём **напрямую**,
+видно всему процессу вместе с `site-packages`. Домен разложен по слоям-пакетам
+(ADR-0039):
+
+```text
+core/  ←  db/  ←  gapi/  ←  sync/  ←  api/routes  ←  main.py
+                     ↖  auth/  ↖  feedback/
+```
+
+Плоско в корне осталось только то, что привязано сборкой: `main.py`,
+`launcher.py`, `path_config.py`, `maintenance.py`, `build_secrets.py`,
+`embedded_secrets.py` (ADR-0016).
+
+Каталог `google/` **нельзя** вернуть: он затенил бы установленные `google-auth`,
+`google-api-python-client` и `google-auth-httplib2`. Отсюда `gapi/`.
+
+Полная карта, правила импортов и бюджеты строк — в
+[`docs/BACKEND_STRUCTURE.md`](docs/BACKEND_STRUCTURE.md). Автоматически
+проверяются `tests/test_backend_structure.py` и `ruff.toml`.
+
 ### Frontend
 
 ```bat
@@ -305,7 +327,7 @@ docker compose --env-file .env.local -f compose.local.yml down --volumes
 - **Бюджет синка:** `SYNC_MAX_WORKERS` × `SYNC_MAX_CONCURRENT_USERS`;
   на целевом VPS 2 vCPU / 2 GB это `2 × 1 = 2` потока, интервал 30 мин,
   стартовый stagger 600 с — очередь вместо залпа. Арифметика в
-  `backend/capacity.py`; рост лимитов — только вместе со счётчиками
+  `backend/core/capacity.py`; рост лимитов — только вместе со счётчиками
   `quota_errors`/`server_errors` в логе синка.
 - **Ручной синк — queued:** `POST /api/sync` только ставит
   `sync_requested` и сразу отвечает `{"ok": true, "queued": true}`;

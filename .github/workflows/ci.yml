@@ -44,3 +44,27 @@ jobs:
       - run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt
       - run: ruff check backend
       - run: pytest
+
+  pyright:
+    # Stage 4 (ADR-0039 §8). Ruff cannot see that a re-export points at the wrong
+    # module: the mistake that costs the most during the restructure was a
+    # facade that looked fine and resolved to a different object. Pyright is
+    # what catches "this name exists, in the wrong place".
+    #
+    # ``extraPaths`` is ``backend`` because that directory is the ``sys.path``
+    # root at runtime: ``import core.config`` only works because of it, and a
+    # checker that does not know that reports every layered import as missing.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r backend/requirements.txt
+      # Pyright ships as a Node package, and the frontend job already pins Node,
+      # so the checker is invoked through npx rather than pip: two versions of
+      # one tool in one repo is how the editor and CI disagree about a file.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npx --yes pyright@1.1.414 --project pyrightconfig.json

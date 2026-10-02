@@ -36,3 +36,14 @@ assets/
 logs/
 data/
 skills/
+final.txt
+finalerr.txt
+
+# Test-run scratch files. They are the redirected stdout/stderr of a local
+# `pytest` invocation, and they were previously spelled out in .gitignore one by
+# one (final.txt, finalerr.txt). The pattern covers the general case: anything
+# starting with a dot and ending in .txt/.err in the repo root is scratch.
+.pt*.txt
+.pt*.err
+.pytest_baseline.txt
+.pytest_baseline.err

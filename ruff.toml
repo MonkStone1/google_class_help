@@ -7,45 +7,66 @@
 extend-select = ["F811"]
 
 [lint.isort]
+# The first-party list is the LAYER MAP, not a list of files (ADR-0039). Every
+# layer name here is a top-level package inside backend/, which is what keeps
+# backend/ on sys.path; dropping one silently reclassifies its imports as
+# third-party, and that is how a boundary starts eroding again.
 known-first-party = [
-    "access_log",
-    "admin_auth",
-    "admins_api",
-    "api",
-    "auth",
-    "background_sync",
-    "capacity",
-    "classroom_api",
-    "config",
-    "database",
-    "edge",
-    "feedback_admin_api",
-    "feedback_api",
-    "feedback_attachments",
-    "feedback_service",
-    "grading",
-    "hosted_auth",
-    "loadtest_report",
-    "loadtest_seed",
-    "loadtest_watch",
+    # stays flat in backend/ — ADR-0016 binds the first two to the Nuitka layout
+    "build_secrets",
+    "launcher",
     "main",
     "maintenance",
-    "metrics",
-    "models",
-    "models_admin",
-    "models_auth",
-    "models_feedback",
-    "ownership",
     "path_config",
-    "proxy",
-    "rate_limit",
+    # layers, in dependency order (core <- db <- gapi <- sync <- api/routes)
+    "api",
+    "auth",
+    "core",
+    "db",
+    "edge",
+    "feedback",
+    "gapi",
     "schemas",
-    "schemas_admins",
-    "schemas_feedback",
     "sync",
-    "sync_scheduler",
-    "sync_service",
-    "sync_store",
-    "sync_worker",
-    "token_crypto",
 ]
+
+[lint.flake8-tidy-imports.banned-api]
+# Stage 4 (ADR-0039 §8). Two shapes are banned, and both are the same bug seen
+# from opposite sides: a re-export that binds a name at import time.
+#
+# SIBLING_NAME_IMPORT — importing a NAME from a sibling module inside a package.
+#   `from api.routes.x import handler` binds `handler` in the importing module,
+#   so a `monkeypatch.setattr(x, "handler", ...)` lands there while the caller
+#   keeps calling the original: the test goes green asserting nothing. Reaching
+#   the sibling through its module object (`from api import routes`) is what keeps
+#   the patch effective; see docs/BACKEND_STRUCTURE.md.
+#
+#   The list is exactly the modules whose FUNCTIONS the suite patches. A
+#   CONSTANT (`from core.config import HOSTED_MODE`) is deliberately absent:
+#   every test that cares patches `core.config.X`, the local copy is harmless,
+#   and banning those would be noise that trains people to ignore the rule.
+#
+# STAR_IMPORT — re-exports whatever the module happens to contain today, so the
+#   next rename becomes a runtime AttributeError in a module nobody reads."from api import *" = { msg = "STAR_IMPORT" }
+"from auth import *" = { msg = "STAR_IMPORT" }
+"from core import *" = { msg = "STAR_IMPORT" }
+"from db import *" = { msg = "STAR_IMPORT" }
+"from feedback import *" = { msg = "STAR_IMPORT" }
+"from gapi import *" = { msg = "STAR_IMPORT" }
+"from schemas import *" = { msg = "STAR_IMPORT" }
+"from sync import *" = { msg = "STAR_IMPORT" }
+"from api.routes.auth" = { msg = "SIBLING_NAME_IMPORT" }
+"from api.routes.sync" = { msg = "SIBLING_NAME_IMPORT" }
+"from api.routes.cache" = { msg = "SIBLING_NAME_IMPORT" }
+"from api.routes.grades" = { msg = "SIBLING_NAME_IMPORT" }
+"from api.queries.teacher" = { msg = "SIBLING_NAME_IMPORT" }
+"from auth.roles" = { msg = "SIBLING_NAME_IMPORT" }
+"from auth.identity" = { msg = "SIBLING_NAME_IMPORT" }
+"from auth.ownership" = { msg = "SIBLING_NAME_IMPORT" }
+"from feedback.service" = { msg = "SIBLING_NAME_IMPORT" }
+"from feedback.attachments" = { msg = "SIBLING_NAME_IMPORT" }
+"from sync.store" = { msg = "SIBLING_NAME_IMPORT" }
+"from sync.service" = { msg = "SIBLING_NAME_IMPORT" }
+"from sync.scheduler" = { msg = "SIBLING_NAME_IMPORT" }
+"from gapi.credentials" = { msg = "SIBLING_NAME_IMPORT" }
+"from db.session" = { msg = "SIBLING_NAME_IMPORT" }
