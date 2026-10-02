@@ -297,7 +297,7 @@ def test_auth_status_carries_a_nested_user_and_no_oauth_material(
 
     monkeypatch.setattr(auth, "get_valid_credentials", lambda: object())
     monkeypatch.setattr(
-        "api._cached_profile",
+        "api.identity._cached_profile",
         lambda user, creds: ("Desk Owner", "owner@example.com"),
     )
     body = client.get("/api/auth/status").json()

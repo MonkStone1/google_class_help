@@ -391,7 +391,7 @@ def test_hosted_data_endpoints_reject_anonymous_calls(hosted_client, path):
 
 def test_profile_cache_is_keyed_by_user(db: Session, monkeypatch):
     """§17: user_id -> profile; one user's lookup never answers another's."""
-    import api
+    from api import identity
 
     calls: list[str] = []
 
@@ -406,44 +406,44 @@ def test_profile_cache_is_keyed_by_user(db: Session, monkeypatch):
                 "emailAddress": f"user{len(calls)}@example.com",
             }
 
-    monkeypatch.setattr(api, "ClassroomClient", FakeClassroomClient)
-    monkeypatch.setattr(api, "build_service", lambda creds: object())
-    api._reset_profile_cache()
+    monkeypatch.setattr(identity, "ClassroomClient", FakeClassroomClient)
+    monkeypatch.setattr(identity, "build_service", lambda creds: object())
+    identity._reset_profile_cache()
 
     alice = _make_local_user(db, "local-a")
     bob = _make_local_user(db, "local-b")
 
-    name_a, mail_a = api._cached_profile(alice, object())
-    name_b, mail_b = api._cached_profile(bob, object())
+    name_a, mail_a = identity._cached_profile(alice, object())
+    name_b, mail_b = identity._cached_profile(bob, object())
     assert (name_a, mail_a) == ("User 1", "user1@example.com")
     assert (name_b, mail_b) == ("User 2", "user2@example.com")
 
     # Cached per id: a repeat lookup for Alice does not call Google again.
-    assert api._cached_profile(alice, object()) == (name_a, mail_a)
+    assert identity._cached_profile(alice, object()) == (name_a, mail_a)
     assert len(calls) == 2
 
     # Resetting one user drops only that user's entry.
-    api._reset_profile_cache(alice.id)
-    name_a2, _ = api._cached_profile(alice, object())
+    identity._reset_profile_cache(alice.id)
+    name_a2, _ = identity._cached_profile(alice, object())
     assert name_a2 == "User 3"
-    assert api._cached_profile(bob, object()) == (name_b, mail_b)
-    api._reset_profile_cache()
+    assert identity._cached_profile(bob, object()) == (name_b, mail_b)
+    identity._reset_profile_cache()
 
 
 def test_auth_status_never_reads_a_global_profile_cache(db: Session):
     """§17: a hosted profile comes from the users row, not a shared cache."""
-    import api
+    from api import identity
 
-    api._reset_profile_cache()
+    identity._reset_profile_cache()
     alice = _make_user(db, "sub-alice", "Alice")
-    state = api._build_auth_status(alice, db)
+    state = identity._build_auth_status(alice, db)
     assert state.user is not None
     assert (state.user.name, state.user.email) == (
         "Alice",
         "sub-alice@example.com",
     )
     # The per-user Google lookup cache was not touched at all.
-    assert api._profile_cache == {}
+    assert identity._profile_cache == {}
 
 
 # ------------------------------------------------- §67 response ownership

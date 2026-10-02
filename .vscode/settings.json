@@ -1,0 +1,34 @@
+{
+  // Pylance does NOT read `venv`/`venvPath`/`extraPaths` from
+  // pyrightconfig.json the way the pyright CLI does: it takes the interpreter
+  // from the status bar and the import paths from ITS OWN settings below. Those
+  // two are mirrored here so the editor and the CLI diagnose the same code with
+  // the same interpreter.
+  //
+  // defaultInterpreterPath matters: the system Python 3.13 on this machine has
+  // fastapi but NOT sqlalchemy/alembic, so picking it makes Pylance report an
+  // unresolved `sqlalchemy` import in 32 files. The project's .venv has all of
+  // them.
+  "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+
+  // NOTE: `python.analysis.typeCheckingMode` is deliberately NOT set here.
+  // Pylance reports "'python.analysis.typeCheckingMode' cannot be set when a
+  // pyrightconfig.json or pyproject.toml is being used" — the mode is owned by
+  // pyrightconfig.json, which already pins "standard". Setting it in both places
+  // only produces that warning and no effect. ("standard" is also what `npx
+  // pyright` uses on the CLI; "strict" would additionally flag `cls` in the
+  // Pydantic validators and `**fields: Any`.)
+
+  // The backend modules are flat top-level imports (`from config import ...`),
+  // which is why `pytest.ini` sets `pythonpath = backend` and ruff.toml has a
+  // known-first-party list. Without this, Pylance cannot resolve them either.
+  "python.analysis.extraPaths": ["${workspaceFolder}/backend"],
+
+  // Report diagnostics for the whole workspace, not only for open files — a
+  // type error in a module nobody happens to have open is still a type error.
+  "python.analysis.diagnosticMode": "workspace",
+
+  "files.associations": {
+    "*.py": "python"
+  }
+}

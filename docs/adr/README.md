@@ -45,3 +45,4 @@
 | [ADR-0036](adr-0036-super-admin-and-admin-registry.md) | Super Admin через `SUPER_ADMIN_EMAIL`, реестр администраторов в PostgreSQL, отдельная консоль `/admin` | Accepted |
 | [ADR-0037](adr-0037-donation-qr-codes.md) | Поддержка проекта: QR-коды банков в `frontend/public/donate/`, один компонент `DonateCards` на лендинге и в настройках (карточка свёрнута), текст про деньги в i18n | Accepted (часть «две точки входа» заменена [ADR-0038](adr-0038-donation-settings-only.md)) |
 | [ADR-0038](adr-0038-donation-settings-only.md) | Поддержка проекта спрашивается в настройках, а не на публичном лендинге | Accepted |
+| [ADR-0039](adr-0039-layered-backend-packages.md) | Слоистые пакеты внутри `backend/`: `api/`, `core/`, `db/`, `google/`, `sync/`, `auth/`, `edge/`; `backend/` остаётся корнем `sys.path` ради Nuitka-сборки | Accepted |

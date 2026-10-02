@@ -620,14 +620,16 @@ def hosted_status(
     UI renders, in the canonical ``user`` shape (§24). The flat
     ``user_name``/``user_email`` mirrors were removed in stage 7 (§26).
 
-    The ``user`` object is built by ``api._user_out`` — the SAME helper the
-    desktop status and ``/api/me`` use — so the role flags (ADR-0036) are
-    computed by one function and cannot drift between the two surfaces.
+    The ``user`` object is built by ``api.identity._user_out`` — the SAME
+    helper the desktop status and ``/api/me`` use — so the role flags
+    (ADR-0036) are computed by one function and cannot drift between the two
+    surfaces.
     """
-    # Imported here, not at module level: api.py imports ownership, which is
-    # the module hosted_auth itself builds on (§32 desktop/hosted separation is
-    # about the desktop modules; the shared projection is the point here).
-    from api import _user_out
+    # Imported here, not at module level: api.identity imports ownership,
+    # which is the module hosted_auth itself builds on (§32 desktop/hosted
+    # separation is about the desktop modules; the shared projection is the
+    # point here).
+    from api.identity import _user_out
 
     return {
         "authenticated": True,

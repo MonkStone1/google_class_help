@@ -765,7 +765,7 @@ def test_failed_sync_keeps_the_cache_and_reports_its_age(db, monkeypatch):
 
 def test_profile_cache_is_keyed_by_local_user_id(db, monkeypatch):
     """§62: in-memory caches are keyed by the LOCAL user, not by a Google id."""
-    import api
+    from api import identity
 
     alice = _make_user(db, "sub-alice")
     bob = _make_user(db, "sub-bob")
@@ -774,7 +774,7 @@ def test_profile_cache_is_keyed_by_local_user_id(db, monkeypatch):
     bob.display_name = None
     bob.email = None
     db.commit()
-    api._reset_profile_cache()
+    identity._reset_profile_cache()
     counter = {"n": 0}
 
     class _FakeClient:
@@ -785,17 +785,17 @@ def test_profile_cache_is_keyed_by_local_user_id(db, monkeypatch):
             counter["n"] += 1
             return {"name": {"fullName": f"User {counter['n']}"}, "emailAddress": None}
 
-    monkeypatch.setattr(api, "ClassroomClient", _FakeClient)
-    monkeypatch.setattr(api, "build_service", lambda _creds: object())
+    monkeypatch.setattr(identity, "ClassroomClient", _FakeClient)
+    monkeypatch.setattr(identity, "build_service", lambda _creds: object())
 
-    first = api._cached_profile(db.get(User, alice.id), object())
-    second = api._cached_profile(db.get(User, bob.id), object())
+    first = identity._cached_profile(db.get(User, alice.id), object())
+    second = identity._cached_profile(db.get(User, bob.id), object())
     assert first != second
-    assert set(api._profile_cache) == {alice.id, bob.id}
-    assert all(isinstance(key, int) for key in api._profile_cache)
+    assert set(identity._profile_cache) == {alice.id, bob.id}
+    assert all(isinstance(key, int) for key in identity._profile_cache)
     # A repeat lookup for the same user is served from the cache (per user).
-    assert api._cached_profile(db.get(User, alice.id), object()) == first
-    api._reset_profile_cache()
+    assert identity._cached_profile(db.get(User, alice.id), object()) == first
+    identity._reset_profile_cache()
 
 
 # ------------------------------------------------------ §68 index review
