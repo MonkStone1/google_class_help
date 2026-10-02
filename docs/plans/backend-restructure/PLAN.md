@@ -1,6 +1,6 @@
 # План реструктуризации бекенда (ADR-0039)
 
-Статус: Этапы 0–1 выполнены, Этапы 2–4 запланированы
+Статус: Этапы 0–2 выполнены, Этапы 3–4 запланированы
 Дата: 2026-02-10
 Источник проблемы: `backend/api.py` — 1692 строки, 23 эндпоинта и ~20 приватных
 хелперов в одном файле; 39 плоских модулей в одной папке; ни одного
@@ -199,16 +199,69 @@ from api import identity                      # ✅ identity._cached_profile(...
 `backend/main.py` **не менялся**: `from api import router` (строка 49) одинаково
 ---
 
-## 6. Этап 2 — `main.py` (517 → ~60) и `edge/` (запланирован)
+## 6. Этап 2 — `main.py` (517 → 161) и `edge/` ✅ выполнен
 
-Вынести `lifespan`, 4 middleware-замыкания, origin-guard, CSP,
-`SPAStaticFiles`. Побочный эффект: middleware становятся тестируемыми по
-отдельности — сейчас их нельзя вызвать иначе как через `create_app`.
+`main.py` разделён на 6 модулей пакета `backend/edge/`. Карта переноса:
 
-Побочная правка тестов: `tests/test_stage7_frontend_config.py` и
-`tests/test_stage9_limits_capacity.py` патчат `main.ALLOWED_HOSTS` /
-`main.RATE_LIMIT_*`; после выноса чтение идёт из `edge/*`, значит патчи
-переводятся на новый модуль (около 8 строк в 2 файлах).
+| Строки `main.py` | Куда | Что внутри |
+|---|---|---|
+| 119–159 | `edge/lifespan.py` | `lifespan` — `init_db`, `install_secret_redaction`, старт/стот `background_sync` / `sync_scheduler` |
+| 162–201 | `edge/origin_guard.py` | `_host_allowed`, `_request_host_allowed`, `_origin_allowed` |
+| 79–116 | `edge/security.py` | `_build_content_security_policy`, `CONTENT_SECURITY_POLICY` |
+| 236–303 | `edge/middleware.py` | `install_throttle` |
+| 305–359 | `edge/middleware.py` | `install_session_gate` |
+| 363–373 | `edge/middleware.py` | `install_cors` |
+| 375–408 | `edge/middleware.py` | `install_host_guard` |
+| 448–482 | `edge/static.py` | `SPAStaticFiles`, `mount_frontend` |
+| 491–512 | `edge/middleware.py` | `install_security_headers` |
+| 204–517 | `main.py` | `create_app` + `app` |
+
+`main.py` — 161 строка, из них 60 в `create_app`. Остальное — docstring,
+импорты и два health-эндпоинта, которые обязаны остаться в `main`:
+`tests/test_api_contract.py` требует, чтобы у каждого хендлера был
+собственный `operationId`, а `/api/health` и `/api/ready` регистрируются
+прямо на `app`, минуя роутеры.
+
+### Побочный эффект, ради которого этап и делался
+
+Middleware стали доступны по отдельности: `install_session_gate(app)` можно
+вызвать на голом `FastAPI()`, а `inspect.getsource` читает конкретную
+фабрику, а не 310-строчное тело `create_app`. Регрессия-тест дедлока
+connection pool (`test_session_gate_dispatches_its_database_lookup_to_a_thread`)
+переписан на `edge.middleware.install_session_gate` — проверяет тот же
+инвариант, но по коду, который теперь owns this middleware.
+
+### Правило, без которого тихо ломаются 17 тестов
+
+`edge/*` читает конфигурацию **через объект модуля** (`config.RATE_LIMIT_*`),
+а не импортом по значению. Причина: `monkeypatch.setattr(main, "ALLOWED_HOSTS", ...)`
+патчил атрибут `main`, потому что `main` импортировал имя из `config` на
+уровне модуля. Патч на `config` работает для всех потребителей сразу и
+заодно чинит рассинхрон между `main` и `config`, который существовал и до
+переезда.
+
+| Тест | Было | Стало |
+|---|---|---|
+| `test_stage7_frontend_config.py` | `main.ALLOWED_HOSTS`, `main._origin_allowed` | `config.ALLOWED_HOSTS`, `origin_guard._origin_allowed` |
+| `test_stage8_coexistence.py` | `main.HSTS_MAX_AGE`, `main.FRONTEND_DIST_DIR`, `main.lifespan` | `config.HSTS_MAX_AGE`, `path_config.FRONTEND_DIST_DIR`, `edge.lifespan.lifespan` |
+| `test_stage9_limits_capacity.py` | `main.RATE_LIMIT_*` | `config.RATE_LIMIT_*` |
+| `test_stage10_turnstile.py` | `main._build_content_security_policy` | `security._build_content_security_policy` |
+
+### Инварианты, проверенные после переезда
+
+1. **Порядок middleware сохранён.** Starlette выполняет последний
+   зарегистрированный внешним, поэтому порядок вызовов в `create_app`
+   (throttle → session gate → CORS → Host/Origin guard → security headers)
+   и есть порядок выполнения. Он зафиксирован в docstring `edge/middleware.py`
+   с явным «не переставлять».
+2. **Ленивые импорты не подняты наверх.** `background_sync` (в `lifespan`),
+   `hosted_auth` (в `main.create_app` и в `install_session_gate`), `proxy`
+   грузятся внутри функций — иначе `test_hosted_startup_imports_no_desktop_module`
+   в подпроцессе падает.
+3. **OpenAPI не сдвинулся.** `tests/test_api_contract.py` зелёный: те же 41
+   desktop-операция + 4 hosted-only, те же `operationId`.
+4. `edge/` добавлен в `known-first-party` в `ruff.toml` (иначе isort роняет
+   `from edge import …` в группу third-party).
 
 ---
 

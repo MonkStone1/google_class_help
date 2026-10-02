@@ -8,6 +8,7 @@ extend-select = ["F811"]
 
 [lint.isort]
 known-first-party = [
+    "access_log",
     "admin_auth",
     "admins_api",
     "api",
@@ -17,6 +18,7 @@ known-first-party = [
     "classroom_api",
     "config",
     "database",
+    "edge",
     "feedback_admin_api",
     "feedback_api",
     "feedback_attachments",

@@ -12,7 +12,7 @@ for scripts and frames only.
 from __future__ import annotations
 
 import hosted_auth
-import main
+from edge import security
 from models_auth import OAuthLoginState
 
 
@@ -119,14 +119,14 @@ def test_verify_turnstile_fails_closed_when_siteverify_is_unreachable(
 
 
 def test_csp_is_same_origin_without_turnstile():
-    csp = main._build_content_security_policy("")
+    csp = security._build_content_security_policy("")
     assert "script-src 'self';" in csp
     assert "challenges.cloudflare.com" not in csp
     assert "frame-src" not in csp
 
 
 def test_csp_adds_only_the_turnstile_origin_when_configured():
-    csp = main._build_content_security_policy("test-site-key")
+    csp = security._build_content_security_policy("test-site-key")
     assert "script-src 'self' https://challenges.cloudflare.com;" in csp
     assert "frame-src 'self' https://challenges.cloudflare.com;" in csp
     # No accidental loosening of the other directives.

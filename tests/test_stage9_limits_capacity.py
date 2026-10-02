@@ -166,9 +166,9 @@ def test_rate_limiter_capacity_change_replaces_the_bucket():
 
 def test_hosted_sync_endpoint_is_throttled_per_ip(hosted_client, db, monkeypatch):
     """§39: repeated manual syncs from one client hit 429 with Retry-After."""
-    import main
+    import config
 
-    monkeypatch.setattr(main, "RATE_LIMIT_SYNC_PER_MINUTE", 2)
+    monkeypatch.setattr(config, "RATE_LIMIT_SYNC_PER_MINUTE", 2)
     user = _make_user(db, "sub-alice")
     _add_session(db, user, "raw-alice")
     hosted_client.cookies.set("gch_session", "raw-alice")
@@ -182,10 +182,10 @@ def test_hosted_sync_endpoint_is_throttled_per_ip(hosted_client, db, monkeypatch
 
 def test_desktop_sync_endpoint_is_not_throttled(client, monkeypatch):
     """§39/§74: the desktop build keeps its unrestricted local endpoint."""
-    import main
+    import config
     import sync
 
-    monkeypatch.setattr(main, "RATE_LIMIT_SYNC_PER_MINUTE", 1)
+    monkeypatch.setattr(config, "RATE_LIMIT_SYNC_PER_MINUTE", 1)
     monkeypatch.setattr(
         sync, "sync_now", lambda user=None, **kwargs: {"ok": True, "courses": 0}
     )
@@ -197,9 +197,9 @@ def test_desktop_sync_endpoint_is_not_throttled(client, monkeypatch):
 
 
 def test_hosted_login_redirect_is_throttled(hosted_client, monkeypatch):
-    import main
+    import config
 
-    monkeypatch.setattr(main, "RATE_LIMIT_LOGIN_PER_MINUTE", 1)
+    monkeypatch.setattr(config, "RATE_LIMIT_LOGIN_PER_MINUTE", 1)
     first = hosted_client.get("/api/auth/login", follow_redirects=False)
     second = hosted_client.get("/api/auth/login", follow_redirects=False)
     assert first.status_code == 302

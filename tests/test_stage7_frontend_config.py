@@ -23,6 +23,7 @@ import hosted_auth
 import main
 import path_config
 import proxy
+from edge import origin_guard
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 BACKEND_DIR = PROJECT_DIR / "backend"
@@ -168,44 +169,44 @@ class TestEnvironmentLayer:
 
 class TestHostAndOriginGuard:
     def test_host_allowed_ignores_port_and_case(self, monkeypatch):
-        monkeypatch.setattr(main, "ALLOWED_HOSTS", ("gch.test", "127.0.0.1"))
-        assert main._host_allowed("GCH.test:443") is True
-        assert main._host_allowed("127.0.0.1:8000") is True
-        assert main._host_allowed("evil.test") is False
-        assert main._host_allowed("gch.test:not-a-port") is False
-        assert main._host_allowed("gch.test, evil.test") is False
-        assert main._host_allowed("") is False
+        monkeypatch.setattr(config, "ALLOWED_HOSTS", ("gch.test", "127.0.0.1"))
+        assert origin_guard._host_allowed("GCH.test:443") is True
+        assert origin_guard._host_allowed("127.0.0.1:8000") is True
+        assert origin_guard._host_allowed("evil.test") is False
+        assert origin_guard._host_allowed("gch.test:not-a-port") is False
+        assert origin_guard._host_allowed("gch.test, evil.test") is False
+        assert origin_guard._host_allowed("") is False
 
     def test_origin_requires_exact_scheme_and_port(self, monkeypatch):
-        monkeypatch.setattr(main, "CORS_ORIGINS", ())
-        monkeypatch.setattr(main, "APP_ORIGIN", "https://gch.test")
-        monkeypatch.setattr(main, "IS_PRODUCTION", True)
+        monkeypatch.setattr(config, "CORS_ORIGINS", ())
+        monkeypatch.setattr(config, "APP_ORIGIN", "https://gch.test")
+        monkeypatch.setattr(config, "IS_PRODUCTION", True)
         request = _request()
-        assert main._origin_allowed("https://gch.test", request) is True
-        assert main._origin_allowed("https://gch.test:443", request) is True
-        assert main._origin_allowed("http://gch.test", request) is False
-        assert main._origin_allowed("https://gch.test:8443", request) is False
-        assert main._origin_allowed("https://gch.test.evil", request) is False
-        assert main._origin_allowed("null", request) is False
-        assert main._origin_allowed("https://gch.test/path", request) is False
+        assert origin_guard._origin_allowed("https://gch.test", request) is True
+        assert origin_guard._origin_allowed("https://gch.test:443", request) is True
+        assert origin_guard._origin_allowed("http://gch.test", request) is False
+        assert origin_guard._origin_allowed("https://gch.test:8443", request) is False
+        assert origin_guard._origin_allowed("https://gch.test.evil", request) is False
+        assert origin_guard._origin_allowed("null", request) is False
+        assert origin_guard._origin_allowed("https://gch.test/path", request) is False
 
     def test_production_rejects_localhost_without_explicit_cors(self, monkeypatch):
-        monkeypatch.setattr(main, "APP_ORIGIN", "https://gch.test")
-        monkeypatch.setattr(main, "IS_PRODUCTION", True)
-        monkeypatch.setattr(main, "CORS_ORIGINS", ())
-        assert main._origin_allowed("http://localhost:5173", _request()) is False
-        monkeypatch.setattr(main, "CORS_ORIGINS", ("http://localhost:5173",))
-        assert main._origin_allowed("http://localhost:5173", _request()) is True
+        monkeypatch.setattr(config, "APP_ORIGIN", "https://gch.test")
+        monkeypatch.setattr(config, "IS_PRODUCTION", True)
+        monkeypatch.setattr(config, "CORS_ORIGINS", ())
+        assert origin_guard._origin_allowed("http://localhost:5173", _request()) is False
+        monkeypatch.setattr(config, "CORS_ORIGINS", ("http://localhost:5173",))
+        assert origin_guard._origin_allowed("http://localhost:5173", _request()) is True
 
     def test_development_keeps_the_vite_origins(self, monkeypatch):
-        monkeypatch.setattr(main, "IS_PRODUCTION", False)
-        monkeypatch.setattr(main, "CORS_ORIGINS", ())
-        monkeypatch.setattr(main, "FRONTEND_ORIGINS", ("http://localhost:5173",))
-        assert main._origin_allowed("http://localhost:5173", _request()) is True
+        monkeypatch.setattr(config, "IS_PRODUCTION", False)
+        monkeypatch.setattr(config, "CORS_ORIGINS", ())
+        monkeypatch.setattr(config, "FRONTEND_ORIGINS", ("http://localhost:5173",))
+        assert origin_guard._origin_allowed("http://localhost:5173", _request()) is True
 
     def test_cross_origin_preflight_uses_the_exact_configured_origin(self, monkeypatch):
-        monkeypatch.setattr(main, "ALLOWED_HOSTS", ("api.example",))
-        monkeypatch.setattr(main, "CORS_ORIGINS", ("https://frontend.example",))
+        monkeypatch.setattr(config, "ALLOWED_HOSTS", ("api.example",))
+        monkeypatch.setattr(config, "CORS_ORIGINS", ("https://frontend.example",))
         client = _new_client()
         try:
             response = client.options(
@@ -226,8 +227,8 @@ class TestHostAndOriginGuard:
         assert response.headers["access-control-allow-credentials"] == "true"
 
     def test_foreign_host_preflight_is_rejected_before_cors(self, monkeypatch):
-        monkeypatch.setattr(main, "ALLOWED_HOSTS", ("api.example",))
-        monkeypatch.setattr(main, "CORS_ORIGINS", ("https://frontend.example",))
+        monkeypatch.setattr(config, "ALLOWED_HOSTS", ("api.example",))
+        monkeypatch.setattr(config, "CORS_ORIGINS", ("https://frontend.example",))
         client = _new_client()
         try:
             response = client.options(
@@ -243,8 +244,8 @@ class TestHostAndOriginGuard:
         assert response.status_code == 403
 
     def test_foreign_origin_is_rejected_before_cors(self, monkeypatch):
-        monkeypatch.setattr(main, "ALLOWED_HOSTS", ("api.example",))
-        monkeypatch.setattr(main, "CORS_ORIGINS", ("https://frontend.example",))
+        monkeypatch.setattr(config, "ALLOWED_HOSTS", ("api.example",))
+        monkeypatch.setattr(config, "CORS_ORIGINS", ("https://frontend.example",))
         client = _new_client()
         try:
             response = client.options(
@@ -260,10 +261,10 @@ class TestHostAndOriginGuard:
         assert response.status_code == 403
 
     def test_same_origin_request_needs_no_cors_entry(self, monkeypatch):
-        monkeypatch.setattr(main, "ALLOWED_HOSTS", ("api.example",))
-        monkeypatch.setattr(main, "CORS_ORIGINS", ())
-        monkeypatch.setattr(main, "APP_ORIGIN", "https://api.example")
-        monkeypatch.setattr(main, "IS_PRODUCTION", True)
+        monkeypatch.setattr(config, "ALLOWED_HOSTS", ("api.example",))
+        monkeypatch.setattr(config, "CORS_ORIGINS", ())
+        monkeypatch.setattr(config, "APP_ORIGIN", "https://api.example")
+        monkeypatch.setattr(config, "IS_PRODUCTION", True)
         client = _new_client()
         try:
             response = client.get(

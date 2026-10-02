@@ -32,8 +32,10 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
+import config
 import hosted_auth
 import main
+import path_config
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 BACKEND_DIR = PROJECT_DIR / "backend"
@@ -100,7 +102,10 @@ def test_desktop_startup_still_loads_background_sync(tmp_path):
         "import main\n"
         "assert main.app.state.hosted is False\n"
         "import inspect\n"
-        "source = inspect.getsource(main.lifespan)\n"
+        # ADR-0039 stage 2: the lifespan moved to edge/lifespan.py; main.py
+        # only passes it to FastAPI. The check follows the code.
+        "from edge import lifespan as edge_lifespan\n"
+        "source = inspect.getsource(edge_lifespan.lifespan)\n"
         "assert 'background_sync' in source\n"
         "print('ok')\n",
         env,
@@ -240,7 +245,12 @@ def test_session_gate_dispatches_its_database_lookup_to_a_thread():
     load run in docs/LOAD_TEST_LOCAL.md §3; this test only keeps the mistake
     from being reintroduced silently.
     """
-    source = inspect.getsource(main.create_app)
+    # ADR-0039 stage 2: the gate is a module-level factory in
+    # edge/middleware.py now, so the source under test is that function
+    # rather than main.create_app. The invariant is unchanged.
+    from edge import middleware as edge_middleware
+
+    source = inspect.getsource(edge_middleware.install_session_gate)
     gate = source.split("async def require_session", 1)[1].split("@app.middleware", 1)[
         0
     ]
@@ -266,7 +276,7 @@ def test_foreign_origin_unsafe_request_is_rejected(hosted_client):
 
 
 def test_hosted_api_carries_security_headers(hosted_client, monkeypatch):
-    monkeypatch.setattr(main, "HSTS_MAX_AGE", 0)
+    monkeypatch.setattr(config, "HSTS_MAX_AGE", 0)
     response = hosted_client.get("/api/health")
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert response.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
@@ -289,19 +299,19 @@ def test_401_responses_carry_security_headers_too(hosted_client):
 
 
 def test_hsts_sent_only_when_enabled_over_https(hosted_client, monkeypatch):
-    monkeypatch.setattr(main, "HSTS_MAX_AGE", 31536000)
+    monkeypatch.setattr(config, "HSTS_MAX_AGE", 31536000)
     response = hosted_client.get("/api/health")
     assert response.headers["Strict-Transport-Security"] == (
         "max-age=31536000; includeSubDomains"
     )
-    monkeypatch.setattr(main, "HSTS_MAX_AGE", 0)
+    monkeypatch.setattr(config, "HSTS_MAX_AGE", 0)
     response = hosted_client.get("/api/health")
     assert "Strict-Transport-Security" not in response.headers
 
 
 def test_hsts_not_sent_on_plain_http(monkeypatch):
     """§48: HSTS is an https-only header even when the env enables it."""
-    monkeypatch.setattr(main, "HSTS_MAX_AGE", 31536000)
+    monkeypatch.setattr(config, "HSTS_MAX_AGE", 31536000)
     client = TestClient(main.create_app(hosted=True), base_url="http://gch.test")
     try:
         response = client.get("/api/health")
@@ -551,7 +561,7 @@ def test_static_strategy_option_a_serves_legal_pages_and_spa(tmp_path, monkeypat
     (dist / "privacy" / "index.html").write_text(
         "<html>PRIVACY-PAGE</html>", encoding="utf-8"
     )
-    monkeypatch.setattr(main, "FRONTEND_DIST_DIR", dist)
+    monkeypatch.setattr(path_config, "FRONTEND_DIST_DIR", dist)
     client = TestClient(main.create_app(hosted=True), base_url="https://gch.test")
     try:
         # §50: reachable without any session (the gate only covers /api).

@@ -39,7 +39,7 @@
 
 ```text
 backend/
-├── main.py          # сборка приложения (цель ≤60 строк)
+├── main.py          # сборка приложения: роутеры, порядок middleware, lifespan
 ├── edge/            # production edge: lifespan, middleware, origin guard, CSP, SPA
 ├── core/            # инфраструктура: config, paths, metrics, rate limit, crypto
 ├── db/              # engine/сессии + models/
@@ -55,6 +55,12 @@ backend/
 хендлеры), `api/queries/<ресурс>.py` (чтение кэша, без `fastapi`),
 `api/guards.py` (перевод в 404/403), `api/identity.py` (кэш профиля и проекция
 `UserOut`/`AuthStatus`), `api/deps.py`, `api/__init__.py` (сборка роутера).
+
+`main.py` (517 строк) разделён на `edge/`: `lifespan.py`, `middleware.py`
+(пять фабрик вместо четырёх вложенных замыканий), `origin_guard.py` (решения
+по Host/Origin), `security.py` (CSP), `static.py` (`SPAStaticFiles`).
+`main.py` остался точкой сборки — роутеры и порядок регистрации middleware,
+161 строка вместо 517.
 
 Разрешено единственное направление зависимостей:
 

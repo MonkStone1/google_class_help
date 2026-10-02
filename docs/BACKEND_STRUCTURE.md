@@ -40,6 +40,35 @@ core/  ←  db/  ←  google/  ←  sync/  ←  api/routes  ←  main.py
 
 `grading.py` — чистый домен: ноль импортов Google, FastAPI и SQLAlchemy.
 
+### Слой `edge/`
+
+`edge/` — «production edge» (ADR-0026, §36/§38/§48): то, что стоит **перед**
+приложением. Единственный слой, который знает и про HTTP, и про конфигурацию,
+и про развёртывание, поэтому он же — единственное место, где middleware
+регистрируются.
+
+| Модуль | Что внутри | Чего быть не должно |
+|---|---|---|
+| `edge/lifespan.py` | `init_db`, старт/стот планировщиков | логики домена |
+| `edge/middleware.py` | фабрики `install_throttle` / `install_session_gate` / `install_cors` / `install_host_guard` / `install_security_headers` | SQL, Google, бизнес-правил |
+| `edge/origin_guard.py` | `_host_allowed`, `_request_host_allowed`, `_origin_allowed` | `fastapi`-приложения (только решения) |
+| `edge/security.py` | CSP | состояния запроса |
+| `edge/static.py` | `SPAStaticFiles`, `mount_frontend` | домена |
+
+Три правила, которые этот слой держит:
+
+1. **Конфигурация читается через объект модуля** (`config.RATE_LIMIT_*`),
+   а не импортом по значению. Импорт по значению создаёт вторую копию
+   константы, и `monkeypatch` на `config` перестаёт её видеть.
+2. **Порядок регистрации — часть контракта.** Starlette выполняет последний
+   зарегистрированный middleware внешним, поэтому порядок вызовов в
+   `main.create_app` и есть порядок выполнения. Он описан в docstring
+   `edge/middleware.py`.
+3. **Ленивые импорты остаются ленивыми.** `background_sync`,
+   `hosted_auth`, `sync_scheduler` грузятся внутри функций, иначе hosted-путь
+   начнёт импортировать desktop-модули (§32/§74) — это проверяется тестом
+   в подпроцессе.
+
 ### Два исключения, зафиксированные честно
 
 Правила выше — для нового кода. Два места импортируют то, что правило запрещает,
@@ -63,6 +92,7 @@ core/  ←  db/  ←  google/  ←  sync/  ←  api/routes  ←  main.py
 Этапы 3–4 ещё не выполнены, поэтому часть доменных модулей пока лежит в корне
 `backend/` плоско (`sync_store.py`, `hosted_auth.py`, `config.py` и т.д.).
 Карта в `docs/plans/backend-restructure/PLAN.md` §3 — целевая.
+Выполнено: `api/` (Этап 1) и `edge/` (Этап 2).
 
 ## Бюджеты строк
 
@@ -72,6 +102,8 @@ core/  ←  db/  ←  google/  ←  sync/  ←  api/routes  ←  main.py
 | Запрос к кэшу | `api/queries/<ресурс>.py` | ≤ 350 |
 | Доменный модуль | `sync/store.py`, `auth/hosted.py` и т.п. | ≤ 400 |
 | Инфраструктура | `core/*` | ≤ 400 |
+| Production edge | `edge/*` | ≤ 400 |
+| Сборка приложения | `main.py` | ≤ 200 |
 | Фасад совместимости | `sync.py`, `sync/__init__.py` | ≤ 60 |
 
 Автоматическая проверка — `tests/test_backend_structure.py` (Этап 4).
