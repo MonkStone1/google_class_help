@@ -2,6 +2,7 @@ import MDEditor from "@uiw/react-md-editor";
 import {
     bold,
     code,
+    codeEdit,
     codePreview,
     fullscreen,
     italic,
@@ -39,6 +40,16 @@ import rehypeSanitize from "rehype-sanitize";
  *    preview renders, and `img-src 'self' data:` would block it anyway.
  *
  * Theme follows the app's own `data-theme` attribute, so light/dark is free.
+ *
+ * **Edit / Preview is a plain toggle, not an overlay.** `preview="edit"` gives a
+ * full-width source field; the library's own `codePreview` button in TOOLBAR
+ * (Ctrl/Cmd+9) swaps it for the rendered view, and `codeEdit` (Ctrl/Cmd+7)
+ * brings the source back. An earlier attempt overlaid the rendered markdown on
+ * a transparent textarea so both were visible at once; it was reverted because
+ * the two layers cannot agree on where the caret sits — the caret is laid out by
+ * the SOURCE, the visible glyphs by the RENDER, and `**bold**` is eight columns
+ * of source over four of text. Two honest states beat one field that lies about
+ * where the cursor is.
  */
 type Props = {
     value: string;
@@ -63,6 +74,12 @@ type Props = {
  * third party the moment the preview renders, and the CSP's `img-src 'self'
  * data:` would block it anyway — so offering the button would only produce a
  * broken preview.
+ *
+ * `codePreview` and `codeEdit` are BOTH present on purpose (п.3). Each is the
+ * library's own command, so each is one click: Preview (Ctrl/Cmd+9) renders the
+ * draft, Edit (Ctrl/Cmd+7) brings the source back. With only `codePreview` the
+ * toggle would be one-way — the button would re-dispatch `preview: 'preview'`
+ * and the field could never be edited again.
  */
 const TOOLBAR: ICommand[] = [
     title,
@@ -74,6 +91,7 @@ const TOOLBAR: ICommand[] = [
     orderedListCommand,
     code,
     codePreview,
+    codeEdit,
     fullscreen,
 ];
 
@@ -104,12 +122,14 @@ export function MarkdownField({
                 // The preview inside the editor is sanitized with the SAME plugin the
                 // read-only renderer uses — a user must not be able to execute anything
                 // in their own preview either.
+                //
+                // `preview="edit"`: the field opens on the source, full width, and
+                // the toolbar's Preview/Edit buttons swap the two states. The
+                // rendered view is `.wmde-markdown` inside `.w-md-editor-preview`;
+                // pages.css themes that class in the app's own tokens.
+                preview="edit"
                 previewOptions={{
                     rehypePlugins: PREVIEW_PLUGINS,
-                    style: {
-                        backgroundColor: "var(--bg-elevated)",
-                        color: "var(--text)",
-                    },
                 }}
                 visibleDragbar={false}
                 enableScroll={false}

@@ -1,5 +1,5 @@
-import { Send } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { ChevronDown, Send } from "lucide-react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -28,6 +28,12 @@ const STATUS_LABEL: Record<string, I18nKey> = {
  *
  * 404 is rendered as "does not exist or is not yours" — the API answers the
  * same for a ticket that never existed, so the UI must not invent a difference.
+ *
+ * The reply form sits ABOVE the conversation and starts COLLAPSED (п.5). A
+ * reader opens a ticket to read the answer, not to type one, and a full-height
+ * Markdown editor pushed every message below the fold. It unfolds on a click
+ * and folds itself again once the reply is sent — the state is local, because
+ * it is a momentary UI affordance and not something to persist or sync.
  */
 export function FeedbackTicket() {
     const { t } = useI18n();
@@ -35,10 +41,14 @@ export function FeedbackTicket() {
     const ticketId = Number(id);
     const [ticket, setTicket] = useState<FeedbackTicketDetail | null>(null);
     const [reply, setReply] = useState("");
+    const [formOpen, setFormOpen] = useState(false);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [missing, setMissing] = useState(false);
     const [reopened, setReopened] = useState(false);
+    // Ties the toggle to the panel it controls, so the collapsed/expanded state
+    // is announced rather than only drawn.
+    const formId = useId();
 
     useEffect(() => {
         const controller = new AbortController();
@@ -78,6 +88,10 @@ export function FeedbackTicket() {
             const updated = await api.replyToTicket(ticketId, reply);
             setTicket(updated);
             setReply("");
+            // Fold the form away again: the reply is in the conversation, and
+            // leaving an empty editor open under it would invite a second,
+            // accidental one.
+            setFormOpen(false);
             if (wasResolved) {
                 setReopened(true);
             }
@@ -142,31 +156,62 @@ export function FeedbackTicket() {
                 </div>
             ) : null}
 
-            <TicketConversation messages={ticket.messages} />
+            {/*
+              The reply affordance, above the conversation. A real button with
+              `aria-expanded`/`aria-controls` rather than `<details>`: the header
+              has to be a full-width row with a chevron on the right, and the
+              panel it owns is a form, not a list — the same shape
+              `CollapsibleCard` uses, kept local because that component is
+              scoped to the settings surface.
+            */}
+            <section className="card feedback-reply">
+                <button
+                    type="button"
+                    className="feedback-reply-toggle"
+                    aria-expanded={formOpen}
+                    aria-controls={formId}
+                    onClick={() => setFormOpen((open) => !open)}
+                >
+                    <span className="feedback-reply-title">
+                        {t("feedback.reply")}
+                    </span>
+                    <ChevronDown
+                        size={17}
+                        className="feedback-reply-chevron"
+                    />
+                </button>
 
-            <form className="card feedback-form" onSubmit={send}>
-                <label className="settings-label" htmlFor="feedback-reply">
-                    {t("feedback.reply")}
-                </label>
-                <MarkdownField
-                    id="feedback-reply"
-                    value={reply}
-                    onChange={setReply}
-                    placeholder={t("feedback.replyPlaceholder")}
-                    minHeight={160}
-                    disabled={busy}
-                />
-                <div className="feedback-form-actions">
-                    <button
-                        type="submit"
-                        className="button button-primary"
-                        disabled={busy || reply.trim().length === 0}
+                {formOpen ? (
+                    <form
+                        id={formId}
+                        className="feedback-reply-form"
+                        onSubmit={send}
                     >
-                        <Send size={15} />{" "}
-                        {busy ? t("feedback.sending") : t("feedback.sendReply")}
-                    </button>
-                </div>
-            </form>
+                        <MarkdownField
+                            id="feedback-reply"
+                            value={reply}
+                            onChange={setReply}
+                            placeholder={t("feedback.replyPlaceholder")}
+                            minHeight={160}
+                            disabled={busy}
+                        />
+                        <div className="feedback-form-actions">
+                            <button
+                                type="submit"
+                                className="button button-primary"
+                                disabled={busy || reply.trim().length === 0}
+                            >
+                                <Send size={15} />{" "}
+                                {busy
+                                    ? t("feedback.sending")
+                                    : t("feedback.sendReply")}
+                            </button>
+                        </div>
+                    </form>
+                ) : null}
+            </section>
+
+            <TicketConversation messages={ticket.messages} />
         </div>
     );
 }

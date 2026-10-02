@@ -16,7 +16,7 @@ export const uk = {
   "nav.grades": "Оцінки",
   "nav.calendar": "Календар",
   "nav.settings": "Налаштування",
-  "nav.feedback": "Зворотний зв'язок",
+  "nav.feedback": "Підтримка",
   "nav.admin": "Адміністрування",
   "nav.adminTickets": "Тикети",
   "nav.admins": "Адміністратори",

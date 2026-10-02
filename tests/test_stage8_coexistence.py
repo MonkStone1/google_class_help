@@ -425,6 +425,64 @@ def test_donation_qr_codes_are_shipped_and_referenced():
     assert "http://" not in component and "https://" not in component
 
 
+def test_support_answer_has_no_white_background_in_css():
+    """п.4: a support answer must not render as a white block inside its card.
+
+    The regression this pins is a class-name mismatch, not a missing rule. The
+    read-only renderer (``MDEditor.Markdown``) emits ``.wmde-markdown``, which
+    the library styles with ``background-color: var(--color-canvas-default)``
+    (i.e. ``#ffffff`` in the light theme). An override aimed at
+    ``.markdown-body .w-md-editor`` — the EDITING surface's class — matched
+    nothing, so the answer kept its white block while the text turned blue: the
+    exact "синий текст на белом фоне" that was reported.
+
+    Reading the stylesheet is the only honest place for this: Vitest does not
+    load the app's CSS, so a jsdom ``getComputedStyle`` assertion would pass
+    without ever looking at the rule.
+    """
+    css = (FRONTEND_DIR / "src" / "styles" / "pages.css").read_text(
+        encoding="utf-8"
+    )
+    # Comments are stripped before any selector check: the paragraph above the
+    # rule NAMES the wrong selector on purpose, to explain why it is wrong, and a
+    # naive substring search would match that prose and fail forever.
+    rules = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+
+    # The override must name the class that actually carries the background.
+    assert (
+        ".ticket-message-admin .markdown-body .wmde-markdown" in css
+    ), "the support answer must override .wmde-markdown, not .w-md-editor"
+    match = re.search(
+        r"\.ticket-message-admin \.markdown-body \.wmde-markdown\s*\{([^}]*)\}",
+        rules,
+    )
+    assert match is not None
+    assert "background: transparent" in match.group(1), (
+        "the answer must let the card's accent surface show through, otherwise "
+        "the library's white .wmde-markdown background wins"
+    )
+    assert "color: var(--accent)" in match.group(1), (
+        "the answer's own text must take the accent colour"
+    )
+
+    # Code must be STRONGER than that text (п.4), so it gets the filled chip.
+    code_rule = re.search(
+        r"\.ticket-message-admin \.markdown-body pre,\s*"
+        r"\.ticket-message-admin \.markdown-body code\s*\{([^}]*)\}",
+        rules,
+    )
+    assert code_rule is not None
+    assert "background: var(--accent)" in code_rule.group(1)
+    assert "color: #fff" in code_rule.group(1)
+
+    # The dead selector must be gone, or someone will "fix" the background
+    # against it a second time.
+    assert ".markdown-body .w-md-editor" not in rules, (
+        ".w-md-editor is the editing surface; the read-only renderer emits "
+        ".wmde-markdown, so this selector matches nothing"
+    )
+
+
 def test_donation_codes_are_not_recolored_by_css():
     """ADR-0037: the artwork must render exactly as the bank ships it.
 

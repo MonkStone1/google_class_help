@@ -16,7 +16,7 @@ export const ru = {
   "nav.grades": "Оценки",
   "nav.calendar": "Календарь",
   "nav.settings": "Настройки",
-  "nav.feedback": "Обратная связь",
+  "nav.feedback": "Помощь",
   "nav.admin": "Администрирование",
   "nav.adminTickets": "Тикеты",
   "nav.admins": "Администраторы",

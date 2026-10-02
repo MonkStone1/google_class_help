@@ -260,20 +260,27 @@ function AddAdminModal({
                 </div>
 
                 <form className="modal-form" onSubmit={submit}>
-                    <label className="field">
-                        <span className="field-label">
-                            {t("admin.adminsEmail")}
-                        </span>
-                        <input
-                            className="input"
-                            type="email"
-                            required
-                            autoFocus
-                            value={email}
-                            disabled={busy}
-                            onChange={(event) => setEmail(event.target.value)}
-                        />
+                    {/*
+                      `field`/`field-label`/`input` were used here and exist in
+                      NO stylesheet, so the browser painted a raw control and
+                      the inline `<label>` left the caption glued to it. The
+                      classes below are the ones the search box on
+                      `/admin/feedback` already uses, so the same field looks
+                      the same in both places.
+                    */}
+                    <label className="settings-label" htmlFor="admin-email">
+                        {t("admin.adminsEmail")}
                     </label>
+                    <input
+                        id="admin-email"
+                        className="feedback-input"
+                        type="email"
+                        required
+                        autoFocus
+                        value={email}
+                        disabled={busy}
+                        onChange={(event) => setEmail(event.target.value)}
+                    />
                     <p className="admin-admins-hint">
                         {t("admin.adminsEmailHint")}
                     </p>

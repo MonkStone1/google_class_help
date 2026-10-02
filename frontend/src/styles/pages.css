@@ -142,6 +142,38 @@
   padding: 6px 10px;
   font-size: 13px;
 }
+/*
+ * A BARE `<select>` — one that is not wrapped in `.sort-select`.
+ *
+ * `.sort-select select` is a descendant rule, so it only styles a `<select>`
+ * INSIDE the wrapper (that is how `Settings.tsx` uses it, and it is the good
+ * example). The admin filters and the ticket-category picker put the class on
+ * the control ITSELF, which the descendant selector cannot match — those three
+ * controls therefore rendered as unstyled native dropdowns. This class is the
+ * same skin, reachable from either side.
+ *
+ * Deliberately NOT `width: 100%` and NOT `flex`: the wrapper in `.sort-select`
+ * is an inline flex row, and a full-width control inside a filter row would
+ * stretch away from its label.
+ */
+.select-input {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.select-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.select-input:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
 @media (prefers-reduced-motion: reduce) {
   .filter-drawer {
     animation: none;
@@ -1106,14 +1138,6 @@
   color: var(--text-muted);
   font-size: 13px;
 }
-.feedback-home-note {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
 .feedback-form {
   display: flex;
   flex-direction: column;
@@ -1141,6 +1165,58 @@
   gap: 10px;
   justify-content: flex-end;
   margin-top: 12px;
+}
+
+/* The collapsible reply form (п.5) — same interaction the settings page already
+   ships in `CollapsibleCard`, restated here for the ticket surface: a full-width
+   button header with a chevron that rotates through `[aria-expanded]`, and the
+   panel below it. The state lives only in `aria-expanded`, so nothing about the
+   open/closed phase is duplicated in the markup. */
+.feedback-reply {
+  padding: 0;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.feedback-reply-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius);
+  font: inherit;
+  cursor: pointer;
+}
+.feedback-reply-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--accent);
+}
+.feedback-reply-toggle:hover {
+  background: var(--bg-muted);
+}
+.feedback-reply-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.feedback-reply-chevron {
+  flex: none;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+.feedback-reply-toggle[aria-expanded="true"] .feedback-reply-chevron {
+  transform: rotate(180deg);
+}
+.feedback-reply-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 16px 16px;
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
 }
 .feedback-attachments-hint {
   color: var(--text-muted);
@@ -1172,8 +1248,7 @@
 
 /* The editor is repainted in the app's tokens; without this it stays white in
    the dark theme (the library ships its own light stylesheet). */
-.markdown-field .w-md-editor,
-.markdown-body .w-md-editor {
+.markdown-field .w-md-editor {
   background: var(--bg-elevated);
   color: var(--text);
   border-color: var(--border);
@@ -1181,9 +1256,49 @@
 .markdown-field[data-disabled] {
   opacity: 0.65;
 }
-.markdown-body .w-md-editor {
+
+/* --- Markdown editor: bigger toolbar controls (п.3) ----------------------
+   The library ships 12×12 icons in 20px-tall buttons, which is too small to
+   aim at comfortably. Sized here rather than by rebuilding the commands, so
+   the toolbar stays the library's own (ADR-0035: one editor, no hand-rolled
+   buttons). */
+.markdown-field .w-md-editor-toolbar li > button {
+  height: 28px;
+  padding: 5px 6px;
+}
+.markdown-field .w-md-editor-toolbar li > button > svg {
+  width: 16px;
+  height: 16px;
+}
+.markdown-field .w-md-editor-toolbar-divider {
+  height: 20px;
+}
+
+/*
+ * The RENDERED markdown, in both surfaces.
+ *
+ * `Markdown.tsx` renders `MDEditor.Markdown`, whose root element carries the
+ * library's `wmde-markdown` class — NOT `w-md-editor`, which belongs to the
+ * editing surface only. An earlier rule here targeted `.markdown-body
+ * .w-md-editor` and therefore matched nothing in the read-only renderer: the
+ * white block inside a support answer was the library's own
+ * `.wmde-markdown { background-color: var(--color-canvas-default) }`
+ * (`#ffffff` in the light theme), never our tokens.
+ *
+ * So the theming has to be applied to `.wmde-markdown` itself. This is the
+ * single source of truth for both `.markdown-body` (a stored ticket) and the
+ * preview column of the live editor, which the library renders with the same
+ * class — one rule, two surfaces, no drift.
+ */
+.markdown-body .wmde-markdown,
+.markdown-field .w-md-editor-preview .wmde-markdown {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+.markdown-body .wmde-markdown {
   border: none;
 }
+
 .markdown-body p,
 .markdown-body li {
   color: var(--text);
@@ -1256,6 +1371,57 @@
   background: var(--accent-soft);
   border-color: var(--accent);
   border-left-width: 3px;
+}
+/*
+ * The answer's BODY, not the whole card (п.4).
+ *
+ * The white block was NOT our `--bg-elevated`: it was the library's own
+ * `.wmde-markdown { background-color: var(--color-canvas-default) }`, which
+ * resolves to `#ffffff` in the light theme. An earlier attempt to override it
+ * targeted `.markdown-body .w-md-editor`, a class the read-only renderer never
+ * emits — so the rule matched nothing and the block stayed white while the text
+ * turned blue. These selectors name `.wmde-markdown`, the element that actually
+ * carries the background, and are specific enough to beat the library's
+ * single-class rule.
+ *
+ * The surface is transparent so the card's accent-soft shows through, and the
+ * text takes the accent colour. CODE is deliberately STRONGER than that text: a
+ * filled accent chip with white glyphs is the highest-contrast thing in the
+ * message, which is what a code sample in a support answer has to be.
+ */
+.ticket-message-admin .markdown-body .wmde-markdown {
+  background: transparent;
+  color: var(--accent);
+}
+.ticket-message-admin .markdown-body p,
+.ticket-message-admin .markdown-body li,
+.ticket-message-admin .markdown-body strong,
+.ticket-message-admin .markdown-body em,
+.ticket-message-admin .markdown-body blockquote,
+.ticket-message-admin .markdown-body h1,
+.ticket-message-admin .markdown-body h2,
+.ticket-message-admin .markdown-body h3 {
+  color: var(--accent);
+}
+.ticket-message-admin .markdown-body pre,
+.ticket-message-admin .markdown-body code {
+  background: var(--accent);
+  color: #fff;
+}
+/* Inline code sits inside a line of accent text: it needs its own padding and
+   radius to read as a chip instead of a solid bar across the paragraph. The
+   library sets `padding: 0.2em 0.4em` with `!important`-free specificity on
+   `.wmde-markdown code`, so a class-only rule here would be enough. */
+.ticket-message-admin .markdown-body p code,
+.ticket-message-admin .markdown-body li code,
+.ticket-message-admin .markdown-body td code {
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.ticket-message-admin .markdown-body pre {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
 }
 .ticket-message-header {
   display: flex;

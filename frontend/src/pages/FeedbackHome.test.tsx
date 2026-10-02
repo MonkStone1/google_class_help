@@ -34,10 +34,21 @@ describe("Feedback entry", () => {
         // The copy is what makes the difference obvious; without it the two cards
         // would be two equally vague buttons.
         expect(
-            screen.getByText(/answer will appear here/i),
+            screen.getByText(/read the answer here/i),
         ).toBeInTheDocument();
         expect(
             screen.getByText(/every reply in one place/i),
         ).toBeInTheDocument();
+    });
+
+    it("does not repeat the empty-list hint under the cards", () => {
+        // п.1: the note used to sit at the bottom of this page and repeated what
+        // the "Create a ticket" card already says, so one sentence appeared twice.
+        // The hint still belongs to the EMPTY state of the ticket list, which has
+        // its own test in `FeedbackTickets`-land — here it is simply gone.
+        renderHome();
+        expect(screen.queryByText(/report a problem/i)).toBeNull();
+        // And nothing is left hanging below the cards.
+        expect(document.querySelector(".feedback-home-note")).toBeNull();
     });
 });

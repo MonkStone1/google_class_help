@@ -113,7 +113,7 @@ export function FeedbackNew() {
                 </label>
                 <select
                     id="feedback-category"
-                    className="sort-select"
+                    className="select-input"
                     value={category}
                     onChange={(event) =>
                         setCategory(event.target.value as FeedbackCategory)

@@ -117,7 +117,7 @@ export function AdminFeedback() {
                     </label>
                     <select
                         id="admin-filter-status"
-                        className="sort-select"
+                        className="select-input"
                         value={status}
                         onChange={(event) =>
                             changeFilter(() =>
@@ -144,7 +144,7 @@ export function AdminFeedback() {
                     </label>
                     <select
                         id="admin-filter-category"
-                        className="sort-select"
+                        className="select-input"
                         value={category}
                         onChange={(event) =>
                             changeFilter(() =>
@@ -203,61 +203,6 @@ export function AdminFeedback() {
                 </div>
             </div>
 
-            {page !== null && page.items.length > 0 ? (
-                <>
-                    <ul className="ticket-list">
-                        {page.items.map((ticket) => (
-                            <li key={ticket.id}>
-                                <Link
-                                    to={`/admin/feedback/${ticket.id}`}
-                                    className="card ticket-list-item"
-                                >
-                                    <div className="ticket-list-top">
-                                        <span className="ticket-list-id">
-                                            {t("feedback.ticketNumber", {
-                                                id: ticket.id,
-                                            })}
-                                        </span>
-                                        <span
-                                            className={
-                                                STATUS_CLASS[ticket.status]
-                                            }
-                                        >
-                                            {t(
-                                                STATUS_LABEL[ticket.status] ??
-                                                    "feedback.status.new",
-                                            )}
-                                        </span>
-                                    </div>
-                                    <div className="ticket-list-subject">
-                                        {ticket.subject}
-                                    </div>
-                                    <div className="ticket-list-meta">
-                                        <span>
-                                            {t("admin.reporter")}:{" "}
-                                            {ticket.user_name ??
-                                                ticket.user_email ??
-                                                "—"}
-                                        </span>
-                                        <span>
-                                            {formatDateTimeShort(
-                                                toLocalDate(ticket.updated_at),
-                                            )}
-                                        </span>
-                                    </div>
-                                </Link>
-                            </li>
-                        ))}
-                    </ul>
-                    {page.total > PAGE_SIZE ? (
-                        <AdminPagination
-                            offset={offset}
-                            total={page.total}
-                            onChange={setOffset}
-                        />
-                    ) : null}
-                </>
-            ) : null}
             {error ? (
                 <div className="alert alert-error" role="alert">
                     {error}
@@ -273,6 +218,20 @@ export function AdminFeedback() {
                 />
             ) : null}
 
+            {/*
+              ONE list, rendered once.
+
+              This exact block used to appear TWICE in this file under the same
+              `page.items.length > 0` condition, so every ticket was painted as
+              two identical rows that both re-rendered together — which is what
+              an administrator saw as "two copies that update in parallel". It
+              happened only on this tab because `AdminDashboard.tsx` has one
+              such block, and the duplication was in the markup, not in the
+              request: the server paged once and both copies read the same page.
+
+              Do not add a second render of the list above the error banner —
+              `AdminFeedback.test.tsx` pins the row count per ticket.
+            */}
             {page !== null && page.items.length > 0 ? (
                 <>
                     <ul className="ticket-list">

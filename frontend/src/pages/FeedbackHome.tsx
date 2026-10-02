@@ -1,4 +1,4 @@
-import { LifeBuoy, ListChecks, MessageSquarePlus } from "lucide-react";
+import { LifeBuoy, MessageSquarePlus } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { useI18n } from "../i18n.ts";
@@ -47,12 +47,19 @@ export function FeedbackHome() {
                 </Link>
             </div>
 
-            {/* Nothing else is listed here: the list has its own route, so a
-                reload of /feedback never shows a stale conversation. */}
-            <div className="feedback-home-note">
-                <ListChecks size={16} />
-                <span>{t("feedback.emptyHint")}</span>
-            </div>
+            {/*
+              No "report a problem — the answer will appear here" note here
+              (п.1). It repeated what the "Create a ticket" card directly above
+              already says (`feedback.createText`: "…you will be able to read the
+              answer here"), so the same sentence appeared twice on one screen and
+              the second copy read as a stray caption under the cards.
+
+              The hint is NOT lost: `feedback.emptyHint` still renders as the
+              subtitle of the EMPTY state of "My tickets", which is the one place
+              where a user with no tickets has not been told what to do yet.
+              Nothing else is listed here either — the list has its own route, so a
+              reload of /feedback never shows a stale conversation.
+            */}
         </div>
     );
 }

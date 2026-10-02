@@ -208,20 +208,27 @@ describe("Landing", () => {
     await waitFor(() => expect(setLanguage).toHaveBeenCalledWith("ru"));
   });
 
-  it("offers the donation codes to a visitor with no session", () => {
-    // ADR-0037: an anonymous visitor is the audience this block exists for,
-    // and the codes must be on the page without a sign-in.
+  it("offers NO donation codes to a visitor with no session", () => {
+    // п.9 reverses half of ADR-0037. The landing's job is to explain the site
+    // and get the visitor through Google sign-in; a payment QR pair in the
+    // middle of that flow interrupts the one action the page exists to offer,
+    // and asks a stranger for money before they have seen the product work.
+    // Support is asked of signed-in users instead, in `/settings`.
     renderLanding("uk");
 
-    expect(screen.getByRole("heading", { name: "Підтримати проєкт" })).toBeInTheDocument();
     expect(
-      screen.getByText("Ці гроші підуть на підтримання та розвиток проєкту."),
-    ).toBeInTheDocument();
-    // The code is a labelled button, not a bare image: the bank name travels on
-    // the control, and clicking it opens the enlarged view.
+      screen.queryByRole("heading", { name: "Підтримати проєкт" }),
+    ).not.toBeInTheDocument();
+    // The component itself is untouched — only this entry point is gone, and
+    // the enlarged-code control is the tell-tale that the block is absent.
     expect(
-      screen.getByRole("button", { name: "Збільшити QR-код Monobank" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: "Збільшити QR-код Monobank" }),
+    ).not.toBeInTheDocument();
+    expect(document.querySelector(".donate")).toBeNull();
+    // The rest of the page is untouched: the sign-in CTA is still there.
+    expect(
+      screen.getAllByRole("button", { name: /Увійти через Google/ }).length,
+    ).toBeGreaterThan(0);
   });
 
   it("leaves the document language to the settings provider", () => {
