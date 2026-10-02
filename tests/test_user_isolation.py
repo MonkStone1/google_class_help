@@ -436,7 +436,7 @@ def test_auth_status_never_reads_a_global_profile_cache(db: Session):
 
     api._reset_profile_cache()
     alice = _make_user(db, "sub-alice", "Alice")
-    state = api._build_auth_status(alice)
+    state = api._build_auth_status(alice, db)
     assert state.user is not None
     assert (state.user.name, state.user.email) == (
         "Alice",
@@ -462,10 +462,19 @@ def test_every_cache_table_has_an_ownership_path():
     # author_user_id), an attachment through its message. It is asserted by
     # test_feedback_ownership_path below, with the same invariant.
     feedback_tables = {"feedback_tickets", "ticket_messages", "ticket_attachments"}
+    # The administrator registry (ADR-0036) is deliberately NOT user-scoped: a
+    # row means "this e-mail is an administrator", which must survive the
+    # account it belongs to (an admin can be appointed before ever signing in,
+    # and delete_user_data must not silently revoke a role). It therefore has
+    # no user_id and no FK to users by design — this exclusion is the assertion
+    # of D9, not a gap in it.
+    registry_tables = {"admins"}
     cache_tables = [
         t
         for t in Base.metadata.sorted_tables
-        if t.name not in auth_tables and t.name not in feedback_tables
+        if t.name not in auth_tables
+        and t.name not in feedback_tables
+        and t.name not in registry_tables
     ]
     assert {table.name for table in cache_tables} == {
         "courses",

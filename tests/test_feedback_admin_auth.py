@@ -1,26 +1,27 @@
 # pyright: reportMissingImports=false
 # Backend modules are put on sys.path at runtime by tests/conftest.py; the type
 # checker does not execute that, so the flat imports resolve only at runtime.
-"""Administrator authorization and the admin surface (ADR-0035).
+"""Administrator authorization and the admin surface (ADR-0035/ADR-0036).
 
-Two halves that must agree:
+This file is the ENFORCEMENT contract of the ticket admin API:
 
-- **Parsing** — ``config.ADMIN_EMAILS`` is comma-separated, trimmed,
-  lower-cased, empty items dropped, entries without "@" dropped, unset ⇒ empty.
-  A typo must never turn into a working credential, so the parsing is tested on
-  its own rather than only through the API.
-- **Enforcement** — a regular authenticated user gets 403 from EVERY admin
-  endpoint, an administrator gets 200, and the desktop local owner (no e-mail)
-  is never an administrator. Nothing here trusts the frontend: the admin flag
-  the UI reads is a UX convenience, the dependency is the control.
+- a regular authenticated user gets 403 from EVERY admin endpoint, an
+  administrator gets 200, and the desktop local owner (no e-mail) is never an
+  administrator;
+- nothing here trusts the frontend: the flags the UI reads are a UX convenience,
+  the dependency is the control.
+
+The role RULES (who is an administrator, what ``SUPER_ADMIN_EMAIL`` does when it
+is unset, how the name is derived) live in test_admin_roles.py, and the
+Super-Admin-only management surface in test_admins_management_api.py.
 """
 
 import pytest
 from feedback_helpers import (
     SAFE_HEADERS,
     add_session,
-    as_admin,
     create_ticket,
+    grant_admin,
     make_user,
     reply,
     sign_in,
@@ -41,67 +42,27 @@ def _seed(hosted_client, db: Session):
     return alice, boss, ticket_id
 
 
-# ------------------------------------------------------------ ADMIN_EMAILS
+# -------------------------------------------------------- the empty registry
+#
+# The ADR-0035 ``ADMIN_EMAILS`` parsing tests lived here and are GONE (D5): the
+# environment variable no longer grants administrator access anywhere, so there
+# is nothing to parse. What remains in this file is the enforcement contract;
+# the role/configuration rules themselves are covered by test_admin_roles.py and
+# the management surface by test_admins_management_api.py.
 
 
-def test_admin_emails_parsing(monkeypatch):
-    """Comma-separated, trimmed, lower-cased; empties and typos dropped.
+def test_an_empty_registry_admits_nobody(hosted_client, db):
+    """The default of the whole feature: no rows, no configuration, no admin.
 
-    Reloads ``config`` with a value in the environment (parsing is an import
-    time concern), then restores the module for the rest of the suite.
-    """
-    import importlib
-
-    import config
-
-    monkeypatch.setenv(
-        "ADMIN_EMAILS", " Boss@Example.com , ,second@example.com,not-an-email, "
-    )
-    importlib.reload(config)
-    assert config.ADMIN_EMAILS == frozenset({"boss@example.com", "second@example.com"})
-    monkeypatch.undo()
-    importlib.reload(config)
-    assert config.ADMIN_EMAILS == frozenset()
-
-
-@pytest.mark.parametrize(
-    "value",
-    ["", "   ", ",", "not-an-email", "@", "admin@", "@example.com"],
-)
-def test_malformed_or_empty_admin_emails_admit_nobody(monkeypatch, value):
-    """Fail closed: none of these admits anybody, notably not a real address.
-
-    Only entries without "@" are dropped by the parser, so ``admin@`` stays in
-    the set — it is simply an address no Google account can ever present, which
-    is why dropping it too would not make the configuration any safer.
+    Neither a row in ``admins`` nor a ``SUPER_ADMIN_EMAIL`` exists yet, so the
+    session that exists (a real Google user) is answered 403 — the API must not
+    treat "nobody was appointed yet" as "everybody is".
     """
     import config
+    from models_admin import Admin
 
-    as_admin(monkeypatch, *(e for e in value.split(",") if "@" in e))
-    assert config.is_admin_email("admin@example.com") is False
-    assert config.is_admin_email("boss@example.com") is False
-    assert config.is_admin_email("") is False
-    assert config.is_admin_email(None) is False
-
-
-@pytest.mark.parametrize(
-    "value",
-    ["", "   ", ",", "not-an-email", "not-an-email,x", "boss,,admin"],
-)
-def test_an_entry_without_an_at_sign_is_dropped_entirely(monkeypatch, value):
-    """A malformed entry is dropped instead of half-matching a real address."""
-    import config
-
-    as_admin(monkeypatch, *(e for e in value.split(",") if "@" in e))
-    assert config.ADMIN_EMAILS == frozenset()
-    assert config.is_admin_email("admin@example.com") is False
-
-
-def test_an_unset_admin_emails_means_nobody_is_an_admin(hosted_client, db):
-    """The default of the whole feature: no configuration, no administrator."""
-    import config
-
-    assert config.ADMIN_EMAILS == frozenset()
+    assert config.SUPER_ADMIN_EMAIL is None
+    assert db.query(Admin).count() == 0
     _alice, _boss, ticket_id = _seed(hosted_client, db)
     sign_in(hosted_client, "raw-boss")
     assert (
@@ -109,9 +70,20 @@ def test_an_unset_admin_emails_means_nobody_is_an_admin(hosted_client, db):
     )
 
 
-def test_the_admin_membership_test_is_case_insensitive(monkeypatch):
+def test_the_registry_membership_test_is_case_insensitive(hosted_client, db):
+    """A row stored in one spelling admits the session's other spelling.
 
-    as_admin(monkeypatch, "Admin@Example.com")
+    The registry stores the normalized address (``Admin@Example.com`` →
+    ``admin@example.com``) and the session address is normalized on the way in,
+    so a case difference must never split one account into an administrator and
+    a stranger.
+    """
+    grant_admin(db, "Boss@Example.com")
+    _alice, _boss, ticket_id = _seed(hosted_client, db)  # boss@example.com
+    sign_in(hosted_client, "raw-boss")
+    assert (
+        hosted_client.get(f"/api/admin/feedback/tickets/{ticket_id}").status_code == 200
+    )
 
 
 # ------------------------------------------------------------- 403 for users
@@ -132,7 +104,7 @@ def test_a_regular_user_is_403_on_every_admin_endpoint(
     hosted_client, db, monkeypatch, method, path, payload
 ):
     """403, not 404 and not 401: the user IS signed in, just not an admin."""
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     _alice, _boss, ticket_id = _seed(hosted_client, db)
     path = path.replace("/1", f"/{ticket_id}")
 
@@ -146,7 +118,7 @@ def test_a_regular_user_is_403_on_every_admin_endpoint(
 
 
 def test_a_regular_user_cannot_delete_anything(hosted_client, db, monkeypatch):
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     _alice, _boss, ticket_id = _seed(hosted_client, db)
     sign_in(hosted_client, "raw-alice")
 
@@ -162,7 +134,7 @@ def test_a_regular_user_never_becomes_an_admin_by_sending_an_email(
     hosted_client, db, monkeypatch
 ):
     """§2.6: no address in the request, in any field, grants anything."""
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     _seed(hosted_client, db)
     sign_in(hosted_client, "raw-alice")
     response = hosted_client.get(
@@ -175,7 +147,7 @@ def test_a_regular_user_never_becomes_an_admin_by_sending_an_email(
 
 
 def test_an_admin_lists_all_tickets_with_the_owner(hosted_client, db, monkeypatch):
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     alice, _boss, _first = _seed(hosted_client, db)
 
     bob = make_user(db, "sub-bob2", email="bob2@example.com")
@@ -201,7 +173,7 @@ def test_an_admin_lists_all_tickets_with_the_owner(hosted_client, db, monkeypatc
 def test_an_admin_filters_by_status_and_category_and_searches(
     hosted_client, db, monkeypatch
 ):
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     _alice, _boss, ticket_id = _seed(hosted_client, db)
 
     carol = make_user(db, "sub-carol")
@@ -253,7 +225,7 @@ def test_an_admin_filters_by_status_and_category_and_searches(
 
 
 def test_an_unknown_status_filter_is_422(hosted_client, db, monkeypatch):
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     _seed(hosted_client, db)
     sign_in(hosted_client, "raw-boss")
     assert (
@@ -263,7 +235,7 @@ def test_an_unknown_status_filter_is_422(hosted_client, db, monkeypatch):
 
 
 def test_the_admin_list_paginates(hosted_client, db, monkeypatch):
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     alice = make_user(db, "sub-alice")
     boss = make_user(db, "sub-boss", email="boss@example.com")
     add_session(db, alice, "raw-alice")
@@ -291,7 +263,7 @@ def test_an_admin_reads_any_ticket_with_the_author_email(
     hosted_client, db, monkeypatch
 ):
     """The admin projection carries the real identities a support answer needs."""
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     _alice, _boss, ticket_id = _seed(hosted_client, db)
 
     sign_in(hosted_client, "raw-boss")
@@ -311,7 +283,7 @@ def test_an_admin_reply_records_the_authenticated_author_and_the_chosen_name(
     hosted_client, db, monkeypatch
 ):
     """Two identities: the INTERNAL author is the session, the byline is chosen."""
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     _alice, boss, ticket_id = _seed(hosted_client, db)
 
     sign_in(hosted_client, "raw-boss")
@@ -331,7 +303,7 @@ def test_an_admin_reply_records_the_authenticated_author_and_the_chosen_name(
 def test_two_admins_post_under_different_names_and_stay_correct_internally(
     hosted_client, db, monkeypatch
 ):
-    as_admin(monkeypatch, "boss@example.com", "second@example.com")
+    grant_admin(db, "boss@example.com", "second@example.com")
     _alice, _boss, ticket_id = _seed(hosted_client, db)
     other = make_user(db, "sub-second", email="second@example.com")
     add_session(db, other, "raw-second")
@@ -369,7 +341,7 @@ def test_two_admins_post_under_different_names_and_stay_correct_internally(
 def test_an_admin_reply_defaults_to_the_support_name(hosted_client, db, monkeypatch):
     from config import FEEDBACK_DEFAULT_ADMIN_NAME
 
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     _alice, _boss, ticket_id = _seed(hosted_client, db)
     sign_in(hosted_client, "raw-boss")
 
@@ -393,7 +365,7 @@ def test_an_admin_reply_defaults_to_the_support_name(hosted_client, db, monkeypa
     ],
 )
 def test_an_invalid_admin_reply_is_422(hosted_client, db, monkeypatch, payload):
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     _alice, _boss, ticket_id = _seed(hosted_client, db)
     sign_in(hosted_client, "raw-boss")
     response = hosted_client.post(
@@ -407,7 +379,7 @@ def test_an_invalid_admin_reply_is_422(hosted_client, db, monkeypatch, payload):
 def test_an_admin_reply_never_takes_the_author_id_from_the_body(
     hosted_client, db, monkeypatch
 ):
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     _alice, boss, ticket_id = _seed(hosted_client, db)
     sign_in(hosted_client, "raw-boss")
 
@@ -439,7 +411,7 @@ def test_an_admin_reply_never_takes_the_author_id_from_the_body(
 
 
 def test_the_admin_stats_endpoint_counts_per_status(hosted_client, db, monkeypatch):
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     _alice, _boss, ticket_id = _seed(hosted_client, db)
     carol = make_user(db, "sub-carol")
     add_session(db, carol, "raw-carol")
@@ -461,7 +433,7 @@ def test_the_admin_stats_endpoint_counts_per_status(hosted_client, db, monkeypat
 
 
 def test_an_admin_reply_reopens_a_resolved_ticket(hosted_client, db, monkeypatch):
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     _alice, _boss, ticket_id = _seed(hosted_client, db)
     sign_in(hosted_client, "raw-boss")
     hosted_client.patch(
@@ -481,7 +453,7 @@ def test_an_admin_reply_reopens_a_resolved_ticket(hosted_client, db, monkeypatch
 
 @pytest.mark.parametrize("status", ["new", "in_progress", "resolved"])
 def test_an_admin_changes_the_status(hosted_client, db, monkeypatch, status):
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     _alice, _boss, ticket_id = _seed(hosted_client, db)
     sign_in(hosted_client, "raw-boss")
 
@@ -499,7 +471,7 @@ def test_an_admin_changes_the_status(hosted_client, db, monkeypatch, status):
     [{"status": "closed"}, {"status": ""}, {}, {"status": None}, {"status": 5}],
 )
 def test_an_invalid_status_is_422(hosted_client, db, monkeypatch, payload):
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     _alice, _boss, ticket_id = _seed(hosted_client, db)
     sign_in(hosted_client, "raw-boss")
     body = hosted_client.patch(
@@ -512,7 +484,7 @@ def test_an_invalid_status_is_422(hosted_client, db, monkeypatch, payload):
 
 def test_a_status_patch_changes_nothing_but_the_status(hosted_client, db, monkeypatch):
     """The endpoint accepts the status ONLY: no author, no subject, no owner."""
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     _alice, boss, ticket_id = _seed(hosted_client, db)
     sign_in(hosted_client, "raw-boss")
     before = hosted_client.get(f"/api/admin/feedback/tickets/{ticket_id}").json()
@@ -537,7 +509,7 @@ def test_an_admin_deletes_a_ticket_permanently(hosted_client, db, monkeypatch):
     """Real delete: the row, its messages and its attachment rows are gone."""
     from models_feedback import FeedbackTicket, TicketMessage
 
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     _alice, _boss, ticket_id = _seed(hosted_client, db)
     reply(hosted_client, ticket_id, "One more question")
     sign_in(hosted_client, "raw-boss")
@@ -557,7 +529,7 @@ def test_after_deletion_the_ticket_is_unreachable_for_everyone(
     hosted_client, db, monkeypatch
 ):
     """404 for the owner and for the administrator; gone from a fresh list."""
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     _alice, _boss, ticket_id = _seed(hosted_client, db)
     sign_in(hosted_client, "raw-boss")
     assert (
@@ -576,7 +548,7 @@ def test_after_deletion_the_ticket_is_unreachable_for_everyone(
 
 
 def test_deleting_a_missing_ticket_is_404(hosted_client, db, monkeypatch):
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     _seed(hosted_client, db)
     sign_in(hosted_client, "raw-boss")
     assert (

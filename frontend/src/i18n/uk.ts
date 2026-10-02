@@ -18,6 +18,8 @@ export const uk = {
   "nav.settings": "Налаштування",
   "nav.feedback": "Зворотний зв'язок",
   "nav.admin": "Адміністрування",
+  "nav.adminTickets": "Тикети",
+  "nav.admins": "Адміністратори",
   "nav.overdue.one": "1 прострочене завдання",
   "nav.overdue.many": "{count} прострочених завдань",
 
@@ -456,4 +458,26 @@ export const uk = {
   "admin.notAvailableHint":
     "У вашого облікового запису немає прав адміністратора. Якщо це неочікувано — напишіть у підтримку.",
   "admin.by": "від {name}",
+  "admin.adminsTitle": "Адміністратори",
+  "admin.adminsAdd": "Додати адміністратора",
+  "admin.adminsEmail": "E-mail",
+  "admin.adminsEmailHint":
+    "Ім'я в списку генерується з цієї адреси. Доступ зберігатиметься, доки ви його не заберете.",
+  "admin.adminsName": "Ім'я",
+  "admin.adminsAddedAt": "Дата додання",
+  "admin.adminsActions": "Дії",
+  "admin.adminsDelete": "Видалити",
+  "admin.adminsEmpty": "Адміністраторів ще немає.",
+  "admin.adminsEmptyHint":
+    "Додайте за e-mail. Вони зможуть відповідати на тикети та видаляти їх, але не керувати іншими адміністраторами.",
+  "admin.adminsLoadFailed": "Не вдалося завантажити список адміністраторів.",
+  "admin.adminsAdded": "Адміністратора додано.",
+  "admin.adminsAddFailed": "Не вдалося додати адміністратора.",
+  "admin.adminsRemoved": "Адміністратора видалено.",
+  "admin.adminsDeleteFailed": "Не вдалося видалити адміністратора.",
+  "admin.adminsDeleteTitle": "Видалити адміністратора?",
+  "admin.adminsDeleteBody":
+    "{email} втратить доступ адміністратора до GoogleClassHelp. Цю дію не можна скасувати.",
+  "admin.adminsDeleteConfirm": "Видалити адміністратора",
+  "admin.adminsDeleteCancel": "Скасувати",
 } satisfies Record<I18nKey, string>;

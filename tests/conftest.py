@@ -64,11 +64,11 @@ for _stage9_knob in (
 ):
     os.environ.pop(_stage9_knob, None)
 
-# Feature knobs that must not vary under the suite (ADR-0035): a stray value
-# from the developer's shell must not change who is an administrator, nor the
-# ticket/upload budgets the tests pin. Popped, not defaulted.
+# Feature knobs that must not vary under the suite (ADR-0035/ADR-0036): a stray
+# value from the developer's shell must not change who is an administrator, nor
+# the ticket/upload budgets the tests pin. Popped, not defaulted.
 for _feedback_knob in (
-    "ADMIN_EMAILS",
+    "SUPER_ADMIN_EMAIL",
     "GC_DASHBOARD_RATE_LIMIT_FEEDBACK_PER_MINUTE",
     "GC_DASHBOARD_FEEDBACK_TICKETS_PER_HOUR",
     "GC_DASHBOARD_FEEDBACK_REPLIES_PER_HOUR",

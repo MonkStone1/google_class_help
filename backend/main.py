@@ -413,11 +413,18 @@ def create_app(hosted: bool = False) -> FastAPI:
     # middleware stack, so the session gate, the Host/Origin guard, the CSRF
     # check and Cache-Control: no-store already apply to every feedback
     # endpoint — no state-changing endpoint gets a weaker protection of its own.
+    # Administrator management (ADR-0036), Super-Admin-only. Included from here,
+    # inside the hosted middleware stack, so the session gate, the Host/Origin
+    # guard, the CSRF check and Cache-Control: no-store apply to it exactly as
+    # they do to every other /api endpoint — the registry is not a weaker
+    # surface than the tickets.
+    from admins_api import router as admins_router
     from feedback_admin_api import router as feedback_admin_router
     from feedback_api import router as feedback_router
 
     app.include_router(feedback_router)
     app.include_router(feedback_admin_router)
+    app.include_router(admins_router)
 
     @app.get("/api/health")
     def health() -> dict:

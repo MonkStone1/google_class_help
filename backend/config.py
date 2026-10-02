@@ -66,29 +66,39 @@ def _csv_env(name: str) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
-# ------------------------------------------------- administrators (ADR-0035)
-# Comma-separated allow-list of administrator accounts (lower-cased e-mails).
-# Empty or missing means NOBODY is an administrator — fail closed, never open.
-# Unprefixed on purpose (like COOKIE_SECURE / APP_BASE_URL /
-# TURNSTILE_SITE_KEY): this is an authorization value, not a tuning knob, and
-# it must never be reachable from the frontend (no VITE_ variable, no /api/config
-# field). Entries without "@" are dropped so a typo cannot accidentally match
-# a real address.
-ADMIN_EMAILS: frozenset[str] = frozenset(
-    email.strip().lower() for email in _csv_env("ADMIN_EMAILS") if "@" in email
-)
+def normalize_email(value: str | None) -> str:
+    """Trim and lower-case an address; ``""`` for None/blank.
 
-
-def is_admin_email(email: str | None) -> bool:
-    """Whether an e-mail is in the configured administrator allow-list.
-
-    The single membership test of the whole feature: ``admin_auth.require_admin``
-    enforces it on the API side and ``UserOut.is_admin`` reports the SAME verdict
-    to the UI (a boolean, never the list). An empty address — the desktop local
-    owner has ``email is None`` — is never an administrator.
+    The ONE normalization of the whole feature (ADR-0036): the environment
+    value, a row of the ``admins`` table and the address of the signed-in
+    session all pass through it, so a case or a stray space can never make two
+    spellings of one account look like two different people. It is deliberately
+    not a validation — a syntactically broken value stays a string here and is
+    rejected (or ignored) by the caller that needs it to be an address.
     """
-    normalized = (email or "").strip().lower()
-    return bool(normalized) and normalized in ADMIN_EMAILS
+    return (value or "").strip().lower()
+
+
+# ------------------------------------------------------ super admin (ADR-0036)
+# The ONE account that may manage the administrator registry. Unlike the
+# ordinary administrators it is NOT a database row: it lives in the process
+# environment, unprefixed (like COOKIE_SECURE / APP_BASE_URL /
+# TURNSTILE_SITE_KEY) because it is an authorization value, not a tuning knob.
+#
+# Fail CLOSED (D6): unset, empty, whitespace-only or a value without "@" means
+# NOBODY is a Super Admin. A typo must never widen access, so a malformed value
+# is treated exactly like a missing one instead of half-matching an address.
+#
+# The value never reaches React, never becomes a /api/config field, never
+# appears in the OpenAPI document and is never written to a log line: the
+# frontend learns the single boolean ``UserOut.is_super_admin`` and nothing
+# else. Changing it takes effect after a restart of `web`, with no code change.
+# The previous ADR-0035 allow-list (``ADMIN_EMAILS``) is GONE (D5): the normal
+# administrators live in the ``admins`` table and nowhere else.
+_normalized_super_admin = normalize_email(os.environ.get("SUPER_ADMIN_EMAIL"))
+SUPER_ADMIN_EMAIL: str | None = (
+    _normalized_super_admin if "@" in _normalized_super_admin else None
+)
 
 
 def canonical_origin(scheme: str, hostname: str, port: int | None) -> str | None:

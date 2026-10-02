@@ -379,9 +379,9 @@ def test_untrusted_markdown_is_stored_verbatim(hosted_client, db, body):
 
 def test_no_response_ever_carries_the_admin_addresses(hosted_client, db, monkeypatch):
     """§6: the allow-list is server-side; the browser only ever sees a boolean."""
-    from feedback_helpers import as_admin
+    from feedback_helpers import grant_admin
 
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     _alice_bob(db)
     sign_in(hosted_client, "raw-alice")
     create_ticket(hosted_client)

@@ -6,7 +6,7 @@
 Дата первого выпуска: 2026-09-21 (этап 6 миграции).
 
 **Последний полностью зелёный прогон: 2026-10-01** — `python -m pytest`
-(432 passed), `cd frontend && npm run lint`, `npm run test` (25 файлов,
+**Last fully green run: 2026-10-02** (ADR-0036) - `python -m pytest` (476 passed), `cd frontend && npm run lint`, `npx vitest run` (177 passed, 28 files), `npm run build`, `ruff check` and `pyright` - 0 errors.
 тестов), `npm run build`. `ruff check` и `pyright` — 0 ошибок.
 
 ---
@@ -19,15 +19,15 @@
 | `tests/test_feedback_tickets.py` | пользовательская поверхность: 401 анонимно, изоляция 404, неподделка личности, «ответ открывает решённый тикет», валидация, 429 |
 | `tests/test_feedback_admin_auth.py` | админ-поверхность и разбор `ADMIN_EMAILS`: 403 всем, фильтры/поиск, два админа под разными именами, смена статуса, удаление |
 | `tests/test_feedback_attachments.py` | вложения: снайфинг типа, active content, 413/422, обход каталога, авторизованная раздача, снятие файлов |
+| `tests/test_admin_roles.py` | roles and configuration (ADR-0036): the three roles, case and whitespace, fail-closed `SUPER_ADMIN_EMAIL`, the desktop local owner is never an admin, `ADMIN_EMAILS` grants nothing any more, the derived name, one Session per request, the Super Admin address never reaches a response, the registry never answers with the SPA shell |
+| `tests/test_admins_management_api.py` | `GET/POST/DELETE /api/admin/admins`: 401 anonymous, 403 for a user and for a plain administrator, 409 duplicate/Super Admin, 422 malformed address, 404 missing row, access revoked immediately, no escalation from a request field |
 
 ### Грабли, на которые уже наступали
 
-- **`ADMIN_EMAILS` читается один раз при импорте `config`.** Тест, которому
-  нужен администратор, патчит **уже разобранное множество**
-  (`monkeypatch.setattr(config, "ADMIN_EMAILS", frozenset(...))`), а не
-  окружение: `importlib.reload` работает, но оставляет модуль в изменённом
-  состоянии для остальных тестов — обязательно делайте `monkeypatch.undo()`
-  и повторный `reload`.
+- **A role is granted by a ROW or by a patched config value, never by an env re-read.** Ordinary administrators are `admins` rows: use `feedback_helpers.grant_admin(db, ...)`, which NORMALIZES the address and **COMMITS**. The commit is not optional - the API under test opens its own SQLite connection, and an uncommitted row leaves it blocked or failing with `database is locked` (the same lesson as the `owner_id` fixture). The Super Admin is `config.SUPER_ADMIN_EMAIL`, parsed once at import time, so a test patches that already-parsed value with `as_super_admin(monkeypatch, email)` and never `importlib.reload`s `config` - reloading leaves the module mutated for every later test unless you also `monkeypatch.undo()` and reload again.
+- **`admin_auth` must read `config.SUPER_ADMIN_EMAIL` through the MODULE** (`config.SUPER_ADMIN_EMAIL`), never via `from config import ...`. A `from` binding is captured at import time, so `monkeypatch.setattr(config, ...)` in a test would silently not affect the guard - and the Super Admin would stop being one for the whole request.
+- **An `/api/...` path with no trailing slash that matches no route falls through to the SPA static mount** and answers 200 with `index.html`, skipping every guard. Both `/api/admin/admins` and `/api/admin/admins/` are registered for that reason; the regression test asserts the refusal is a 403 and not a page.
+
 - **`request.form()` отдаёт `starlette.datastructures.UploadFile`, а не
   `fastapi.UploadFile`** (последний — подкласс). Проверка `isinstance` против
   fastapi-имени не сойдётся **никогда**, и загрузка молча пропадёт. Импортируйте

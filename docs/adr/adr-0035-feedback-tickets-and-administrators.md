@@ -45,6 +45,13 @@ users ─┬─ feedback_tickets ─┬─ ticket_messages ── ticket_attachm
 
 ### 2. Администраторы — allow-list из окружения
 
+> **Superseded (ADR-0036).** Этот раздел описывает `ADMIN_EMAILS` — источник
+> авторизации обычных администраторов. Переменная **удалена** и больше ничего не
+> разрешает: обычные администраторы теперь хранятся в таблице `admins` и
+> управляются через `/admin/admins`, а `SUPER_ADMIN_EMAIL` задаёт единственного
+> Super Admin. Раздел оставлен как часть истории решения; ниже — то, что
+> заменило его.
+
 ```python
 ADMIN_EMAILS: frozenset[str] = frozenset(
     email.strip().lower() for email in _csv_env("ADMIN_EMAILS") if "@" in email

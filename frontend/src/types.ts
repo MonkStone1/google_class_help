@@ -172,9 +172,30 @@ export type AdminTicketDetail = Omit<
 
 export type FeedbackStats = Wire<"FeedbackStatsOut">;
 
+/**
+ * One row of the administrator registry (ADR-0036).
+ *
+ * `name` is derived server-side from `email` — there is no editable name, and no
+ * field here identifies the Super Admin, because the Super Admin has no row at
+ * all: they are the `SUPER_ADMIN_EMAIL` environment value.
+ */
+export type Administrator = Wire<"AdminOut">;
+
 /** Whether the backend reports the signed-in user as an administrator. */
 export function isAdminUser(auth: AuthStatus | null): boolean {
     return auth?.user?.is_admin === true;
+}
+
+/**
+ * Whether the backend reports the signed-in user as the SUPER administrator.
+ *
+ * The one place the console decides to show the Admins screen. Like
+ * `isAdminUser` it reads a server-derived boolean and nothing else: the Super
+ * Admin's address lives in the process environment and never reaches the
+ * browser (ADR-0036).
+ */
+export function isSuperAdminUser(auth: AuthStatus | null): boolean {
+    return auth?.user?.is_super_admin === true;
 }
 
 export type AuthStatus = Wire<"AuthStatus">;

@@ -302,13 +302,14 @@ def test_auth_status_carries_a_nested_user_and_no_oauth_material(
     )
     body = client.get("/api/auth/status").json()
     assert body["authenticated"] is True
-    # ``is_admin`` (ADR-0035) is the single admin BOOLEAN the backend derives;
-    # the desktop owner is never an administrator.
+    # ``is_admin``/``is_super_admin`` (ADR-0036) are the role BOOLEANS the backend
+    # derives; the desktop owner is never an administrator of any kind.
     assert body["user"] == {
         "id": owner_id,
         "name": "Desk Owner",
         "email": "owner@example.com",
         "is_admin": False,
+        "is_super_admin": False,
     }
     assert "user_name" not in body and "user_email" not in body
     _assert_no_oauth_material(body)
@@ -321,14 +322,15 @@ def test_hosted_me_and_auth_status_describe_the_session_user(hosted_client, db):
 
     me = hosted_client.get("/api/me")
     assert me.status_code == 200
-    # The admin flag is a BOOLEAN derived by the backend (ADR-0035) — this
-    # session is not in ADMIN_EMAILS, and the addresses themselves are never
-    # part of the response.
+    # The role flags are BOOLEANS derived by the backend (ADR-0036) — this
+    # session is in neither the registry nor SUPER_ADMIN_EMAIL, and neither the
+    # addresses nor the configuration are ever part of the response.
     assert me.json() == {
         "id": alice.id,
         "name": "Alice",
         "email": "sub-alice@example.com",
         "is_admin": False,
+        "is_super_admin": False,
     }
 
     status = hosted_client.get("/api/auth/status")

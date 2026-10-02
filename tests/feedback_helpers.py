@@ -11,10 +11,12 @@ Two things every feedback test needs and none should re-invent:
   ``Sec-Fetch-Site: same-origin`` because the CSRF check judges a request
   without an ``Origin`` by Fetch Metadata (test_stage8_coexistence.py).
 
-``admin`` is a factory, not a constant: ``ADMIN_EMAILS`` is read at IMPORT time
-(config.py), so a test that wants an administrator monkeypatches the SET that
-was already parsed — the same membership test the API uses
-(``config.is_admin_email``), not a re-read of the environment.
+``admin`` is a pair of factories, not constants (ADR-0036). The ordinary
+administrators are ROWS of the ``admins`` table, so ``grant_admin`` inserts them;
+the Super Admin is an environment value parsed once at import time, so
+``as_super_admin`` monkeypatches the already-parsed ``config.SUPER_ADMIN_EMAIL``
+(the same membership test the API uses) rather than re-reading or reloading the
+environment.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -87,15 +89,44 @@ def sign_in(client, token: str) -> None:
 SAFE_HEADERS = {"Sec-Fetch-Site": "same-origin"}
 
 
-def as_admin(monkeypatch, *emails: str) -> None:
-    """Point the administrator allow-list at ``emails`` for this test.
+def grant_admin(db: Session, *emails: str) -> None:
+    """Make ``emails`` ordinary administrators by inserting registry rows.
 
-    Patches the already-parsed frozenset, because config.py reads the
-    environment once at import time and conftest deliberately pops the knob.
+    Addresses are normalized exactly as the API does (``config.normalize_email``),
+    so a test that writes ``"Boss@Example.com"`` exercises the same spelling the
+    real insert would store — otherwise the fixture would create a row no
+    session could ever match.
+
+    COMMITS, and that is not optional: the API under test opens its OWN SQLite
+    connection, so an uncommitted write in this session either blocks it or fails
+    it with "database is locked". This is the same lesson as the ``owner_id``
+    fixture in conftest.py.
     """
-    monkeypatch.setattr(
-        config, "ADMIN_EMAILS", frozenset(email.strip().lower() for email in emails)
-    )
+    from config import normalize_email
+    from models_admin import Admin
+
+    for email in emails:
+        db.add(
+            Admin(
+                email=normalize_email(email),
+                created_at=_now(),
+            )
+        )
+    db.commit()
+
+
+def as_super_admin(monkeypatch, email: str) -> None:
+    """Point the Super Admin configuration at ``email`` for this test.
+
+    Patches the already-parsed value, because config.py reads the environment
+    once at import time and conftest deliberately pops the knob. ``monkeypatch``
+    restores it afterwards, so one test cannot demote the Super Admin for the
+    next one. Normalized here as well: ``resolve_role`` compares normalized
+    values, so the fixture must store the same spelling.
+    """
+    from config import normalize_email
+
+    monkeypatch.setattr(config, "SUPER_ADMIN_EMAIL", normalize_email(email))
 
 
 def create_ticket(client, **overrides):

@@ -157,26 +157,28 @@ def _reset_profile_cache(user_id: int | None = None) -> None:
             _profile_cache.pop(user_id, None)
 
 
-def _user_out(user: User) -> UserOut:
-    """The identity fields of the caller (§24) plus the admin flag (ADR-0035).
+def _user_out(user: User, db: Session) -> UserOut:
+    """The identity fields of the caller (§24) plus the role flags (ADR-0036).
 
-    Built from the local ``users`` row only — never from a Google
-    credential, token or OAuth object, none of which may appear in any
-    response. ``is_admin`` is a BOOLEAN derived by the backend from
-    ``config.is_admin_email``; the administrator address list itself never
-    appears in a response.
+    Built from the local ``users`` row only — never from a Google credential,
+    token or OAuth object, none of which may appear in any response. Both
+    ``is_admin`` and ``is_super_admin`` come from the SAME
+    ``admin_auth.resolve_role`` call the API guards use, so the flag the UI reads
+    can never disagree with the verdict the API enforces.
     """
-    from config import is_admin_email
+    from admin_auth import ROLE_SUPER_ADMIN, ROLE_USER, resolve_role
 
+    role = resolve_role(db, user.email)
     return UserOut(
         id=user.id,
         name=user.display_name,
         email=user.email,
-        is_admin=is_admin_email(user.email),
+        is_admin=role != ROLE_USER,
+        is_super_admin=role == ROLE_SUPER_ADMIN,
     )
 
 
-def _build_auth_status(user: User) -> AuthStatus:
+def _build_auth_status(user: User, db: Session) -> AuthStatus:
     """AuthStatus of ONE user (§16) with their own profile (§17).
 
     Hosted: the ``users`` row is the authoritative profile (refreshed from
@@ -187,6 +189,9 @@ def _build_auth_status(user: User) -> AuthStatus:
     §24/§26: the payload describes THIS browser's application session,
     carries no OAuth internals (no access/refresh token, no client secret,
     no authorization code), and exposes identity only through ``user``.
+
+    The role flags come from ``_user_out`` (ADR-0036), i.e. from
+    ``admin_auth.resolve_role`` — the same resolver the API guards use.
     """
     if user.provider == "google":
         return AuthStatus(
@@ -194,7 +199,7 @@ def _build_auth_status(user: User) -> AuthStatus:
             login_in_progress=False,
             error=None,
             auth_url=None,
-            user=_user_out(user),
+            user=_user_out(user, db),
         )
     # Desktop-only branch: auth (the loopback flow) is imported here so the
     # hosted service never loads the desktop module (migration stage 8, §32).
@@ -206,15 +211,19 @@ def _build_auth_status(user: User) -> AuthStatus:
         creds = auth.get_valid_credentials()
         if creds is not None:
             user_name, user_email = _cached_profile(user, creds)
-            from config import is_admin_email
+            # The desktop local owner has no address of their own (``email is
+            # None``), so both role flags are False by construction there — the
+            # desktop build cannot reach the admin surface at all. The flags
+            # themselves come from the shared resolver, not from a second test.
+            from admin_auth import ROLE_SUPER_ADMIN, ROLE_USER, resolve_role
 
-            # The desktop local owner has no address, so this is always False
-            # there — the flag is computed by the same test as the API gate.
+            role = resolve_role(db, user.email or user_email)
             identity = UserOut(
                 id=user.id,
                 name=user_name,
                 email=user_email,
-                is_admin=is_admin_email(user.email or user_email),
+                is_admin=role != ROLE_USER,
+                is_super_admin=role == ROLE_SUPER_ADMIN,
             )
     return AuthStatus(**status, user=identity)
 
@@ -233,12 +242,18 @@ def _is_authenticated(user: User) -> bool:
 
 
 @router.get("/auth/status", response_model=AuthStatus)
-def auth_status(user: User = Depends(ownership.get_current_user)) -> AuthStatus:
-    return _build_auth_status(user)
+def auth_status(
+    user: User = Depends(ownership.get_current_user),
+    db: Session = Depends(get_db),
+) -> AuthStatus:
+    return _build_auth_status(user, db)
 
 
 @router.get("/me", response_model=UserOut)
-def me(user: User = Depends(ownership.get_current_user)) -> UserOut:
+def me(
+    user: User = Depends(ownership.get_current_user),
+    db: Session = Depends(get_db),
+) -> UserOut:
     """Identity of the signed-in user (§23/§24).
 
     Same identity source as ``/api/auth/status``: the validated session
@@ -247,14 +262,17 @@ def me(user: User = Depends(ownership.get_current_user)) -> UserOut:
     valid application session is rejected earlier with 401 (hosted session
     gate / dependency); this handler never sees an anonymous caller.
     """
-    status = _build_auth_status(user)
+    status = _build_auth_status(user, db)
     # ``user`` is always populated by _build_auth_status; the fallback keeps
     # the type honest without inventing a second identity source.
-    return status.user or _user_out(user)
+    return status.user or _user_out(user, db)
 
 
 @router.post("/auth/login", response_model=AuthStatus)
-def login(user: User = Depends(ownership.get_current_user)) -> AuthStatus:
+def login(
+    user: User = Depends(ownership.get_current_user),
+    db: Session = Depends(get_db),
+) -> AuthStatus:
     import auth
 
     result = auth.start_login()
@@ -262,18 +280,21 @@ def login(user: User = Depends(ownership.get_current_user)) -> AuthStatus:
         raise HTTPException(
             status_code=500, detail=result.get("error", "Login failed.")
         )
-    return _build_auth_status(user)
+    return _build_auth_status(user, db)
 
 
 @router.post("/auth/logout", response_model=AuthStatus)
-def logout(user: User = Depends(ownership.get_current_user)) -> AuthStatus:
+def logout(
+    user: User = Depends(ownership.get_current_user),
+    db: Session = Depends(get_db),
+) -> AuthStatus:
     import auth
 
     auth.logout()
     # Only the caller's cached profile is dropped (§17); the next sign-in on
     # this browser may be another account, but other users' entries stay.
     _reset_profile_cache(user.id)
-    return _build_auth_status(user)
+    return _build_auth_status(user, db)
 
 
 # ------------------------------------------------------- current user (§13)

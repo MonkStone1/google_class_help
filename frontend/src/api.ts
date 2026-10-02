@@ -1,6 +1,7 @@
 import type {
     AdminTicketDetail,
     AdminTicketPage,
+    Administrator,
     AppStatus,
     Assignment,
     AssignmentDetail,
@@ -84,6 +85,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
             // Non-JSON error body; keep statusText.
         }
         throw makeApiError(response.status, detail);
+    }
+    // A 204 carries NO body: `response.json()` would throw on the empty text.
+    // Answer `undefined` so the DELETE endpoints can share this helper instead
+    // of growing a second fetch convention.
+    if (response.status === 204) {
+        return undefined as T;
     }
     return (await response.json()) as T;
 }
@@ -323,4 +330,17 @@ export const api = {
         request<{ ok: boolean }>(`/admin/feedback/tickets/${ticketId}`, {
             method: "DELETE",
         }),
+
+    // Administrator registry (ADR-0036). Every one of these is Super-Admin-only
+    // and answers 403 to a plain administrator — the console hides the screen,
+    // the backend refuses the call.
+    getAdmins: (signal?: AbortSignal) =>
+        request<Administrator[]>("/admin/admins", { signal }),
+    createAdmin: (email: string) =>
+        request<Administrator>("/admin/admins/", {
+            method: "POST",
+            body: JSON.stringify({ email }),
+        }),
+    deleteAdmin: (adminId: number) =>
+        request<void>(`/admin/admins/${adminId}`, { method: "DELETE" }),
 };

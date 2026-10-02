@@ -1106,6 +1106,141 @@
         }
       }
     },
+    "/api/admin/admins/": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "List Admins",
+        "description": "Every normal administrator, newest first.\n\nThe Super Admin is absent by construction (their identity lives only in\n``SUPER_ADMIN_EMAIL``), so the list can never contain the one account that\nmanages it. ``admin`` is the guard's return value, not an input.\n\nRegistered under BOTH ``\"\"`` and ``\"/\"`` on purpose: with only ``\"/\"`` the\nun-slashed ``/api/admin/admins`` matches no route, misses the 403 below and\nfalls through to the SPA fallback — which answers an unauthorized probe with\n200 and an HTML shell instead of the contract's 403.",
+        "operationId": "list_admins_api_admin_admins__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/AdminOut" },
+                  "type": "array",
+                  "title": "Response List Admins Api Admin Admins  Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["admin"],
+        "summary": "Create Admin",
+        "description": "Add one administrator by e-mail; 409 on a duplicate or on the Super Admin.\n\n``payload.email`` is already normalized by the model's validator, so the\nduplicate comparison and the stored value are the same spelling.\n\nThe duplicate is checked twice on purpose: the SELECT answers the normal\ncase with a clean 409, and the unique index answers the race (two requests\npassing the SELECT at the same moment) that a SELECT alone cannot. Failures\nnever widen access — both paths refuse.",
+        "operationId": "create_admin_api_admin_admins__post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AdminCreateIn" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AdminOut" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/admins": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "List Admins",
+        "description": "Every normal administrator, newest first.\n\nThe Super Admin is absent by construction (their identity lives only in\n``SUPER_ADMIN_EMAIL``), so the list can never contain the one account that\nmanages it. ``admin`` is the guard's return value, not an input.\n\nRegistered under BOTH ``\"\"`` and ``\"/\"`` on purpose: with only ``\"/\"`` the\nun-slashed ``/api/admin/admins`` matches no route, misses the 403 below and\nfalls through to the SPA fallback — which answers an unauthorized probe with\n200 and an HTML shell instead of the contract's 403.",
+        "operationId": "list_admins_api_admin_admins_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/AdminOut" },
+                  "type": "array",
+                  "title": "Response List Admins Api Admin Admins Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["admin"],
+        "summary": "Create Admin",
+        "description": "Add one administrator by e-mail; 409 on a duplicate or on the Super Admin.\n\n``payload.email`` is already normalized by the model's validator, so the\nduplicate comparison and the stored value are the same spelling.\n\nThe duplicate is checked twice on purpose: the SELECT answers the normal\ncase with a clean 409, and the unique index answers the race (two requests\npassing the SELECT at the same moment) that a SELECT alone cannot. Failures\nnever widen access — both paths refuse.",
+        "operationId": "create_admin_api_admin_admins_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AdminCreateIn" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AdminOut" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/admins/{admin_id}": {
+      "delete": {
+        "tags": ["admin"],
+        "summary": "Delete Admin",
+        "description": "Remove one administrator; 404 when the row is gone, 409 for the Super Admin.\n\nThe 409 branch is reachable only if ``SUPER_ADMIN_EMAIL`` was changed AFTER\nthe row was inserted — the POST endpoint refuses to create such a row in the\nfirst place. It is kept because deleting the one account that manages the\nregistry would be unrecoverable through the UI.",
+        "operationId": "delete_admin_api_admin_admins__admin_id__delete",
+        "parameters": [
+          {
+            "name": "admin_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "title": "Admin Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/health": {
       "get": {
         "summary": "Health",
@@ -1142,6 +1277,20 @@
   },
   "components": {
     "schemas": {
+      "AdminCreateIn": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": ["email"],
+        "title": "AdminCreateIn",
+        "description": "The add-administrator form: an e-mail and nothing else.\n\nIdentity is not a request field — this model creates a ROW, it does not\nauthenticate anybody. Pydantic's default ``extra=\"ignore\"`` stays, so a\nforged ``name`` / ``id`` / ``is_super_admin`` field is silently dropped\nrather than honoured."
+      },
       "AdminMessageOut": {
         "properties": {
           "id": { "type": "integer", "title": "Id" },
@@ -1175,6 +1324,22 @@
         ],
         "title": "AdminMessageOut",
         "description": "A message with the internal identity an administrator may read."
+      },
+      "AdminOut": {
+        "properties": {
+          "id": { "type": "integer", "title": "Id" },
+          "email": { "type": "string", "title": "Email" },
+          "name": { "type": "string", "title": "Name" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": ["id", "email", "name", "created_at"],
+        "title": "AdminOut",
+        "description": "One row of the administrator registry, as the Super Admin sees it.\n\n``name`` is DERIVED from ``email`` by the backend\n(``admin_auth.display_name_from_email``): the database stores the address\nonly, so the label can never drift from the identity it describes."
       },
       "AdminTicketDetailOut": {
         "properties": {
@@ -2240,12 +2405,17 @@
             "type": "boolean",
             "title": "Is Admin",
             "default": false
+          },
+          "is_super_admin": {
+            "type": "boolean",
+            "title": "Is Super Admin",
+            "default": false
           }
         },
         "type": "object",
         "required": ["id"],
         "title": "UserOut",
-        "description": "Identity of the authenticated user (migration stage 6, §24).\n\nExactly the fields the frontend needs to render \"signed in as\", plus the\nsingle ``is_admin`` boolean of ADR-0035. That flag is computed by the\nbackend from the same membership test ``admin_auth.require_admin`` enforces,\nso the UI can hide the admin surface — while the API answers 403 regardless\nof what the UI decided. The administrator ADDRESSES are never part of this\nmodel, so they cannot reach the browser bundle."
+        "description": "Identity of the authenticated user (migration stage 6, §24).\n\nExactly the fields the frontend needs to render \"signed in as\", plus the two\nrole BOOLEANS of ADR-0035/ADR-0036. Those flags are computed by the backend\nfrom the same ``admin_auth.resolve_role`` call ``require_admin`` and\n``require_super_admin`` enforce, so the UI can hide the admin surfaces —\nwhile the API answers 403/409 regardless of what the UI decided.\n\nNeither the Super Admin ADDRESS nor the administrator list is part of this\nmodel: the frontend learns two booleans and nothing else, so the\nconfiguration cannot reach the browser bundle."
       },
       "ValidationError": {
         "properties": {

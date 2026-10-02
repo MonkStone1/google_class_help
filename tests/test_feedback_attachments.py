@@ -24,8 +24,8 @@ import pytest
 from feedback_helpers import (
     SAFE_HEADERS,
     add_session,
-    as_admin,
     create_ticket,
+    grant_admin,
     make_user,
     sign_in,
 )
@@ -244,7 +244,7 @@ def test_another_user_cannot_download_the_attachment(hosted_client, db):
 
 
 def test_an_admin_can_download_any_attachment(hosted_client, db, monkeypatch):
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     _alice(hosted_client, db)
     _upload(hosted_client, "notes.txt", b"support needs this")
     attachment_id = db.query(TicketAttachment).one().id
@@ -292,7 +292,7 @@ def test_the_traversal_filename_never_writes_outside_the_feedback_root(
 def test_deleting_a_ticket_unlinks_its_files(hosted_client, db, monkeypatch):
     from models_feedback import TicketMessage
 
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     _alice(hosted_client, db)
     ticket_id = _upload(hosted_client, "notes.txt", b"to be removed").json()["id"]
     path = attachments.attachment_path(db.query(TicketAttachment).one())
@@ -353,7 +353,7 @@ def test_account_deletion_removes_tickets_messages_and_files(hosted_client, db):
 
 def test_a_missing_file_does_not_break_the_deletion(hosted_client, db, monkeypatch):
     """Best-effort cleanup: a vanished file must not fail the delete."""
-    as_admin(monkeypatch, "boss@example.com")
+    grant_admin(db, "boss@example.com")
     _alice(hosted_client, db)
     ticket_id = _upload(hosted_client, "notes.txt", b"vanishing").json()["id"]
     attachments.attachment_path(db.query(TicketAttachment).one()).unlink()

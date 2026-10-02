@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SettingsProvider } from "../context/SettingsContext.tsx";
@@ -30,7 +30,7 @@ vi.mock("../context/DataContext.tsx", async () => {
     };
 });
 
-function signedIn(isAdmin: boolean): AuthStatus {
+function signedIn(isAdmin: boolean, isSuperAdmin = false): AuthStatus {
     return {
         authenticated: true,
         login_in_progress: false,
@@ -41,27 +41,16 @@ function signedIn(isAdmin: boolean): AuthStatus {
             name: "Test",
             email: "test@example.com",
             is_admin: isAdmin,
+            is_super_admin: isSuperAdmin,
         },
     };
 }
 
-function renderGate() {
-    return render(
-        <MemoryRouter>
-            <SettingsProvider>
-                <RequireAdmin>
-                    <div>admin dashboard</div>
-                </RequireAdmin>
-            </SettingsProvider>
-        </MemoryRouter>,
-    );
-}
-
 /**
- * The admin gate is UX, not security (ADR-0035): the backend's require_admin
- * answers 403 regardless. What the frontend owes the user is an honest screen
- * instead of a broken page — and it must read the flag from the SERVER's
- * answer, never from anything a browser can set.
+ * The admin gate is UX, not security (ADR-0036): the backend's require_admin
+ * answers 403 regardless. What the frontend owes the user now is a REDIRECT to
+ * `/` (D10) instead of the old "not available" dead end — and the flag must come
+ * from the SERVER's answer, never from anything a browser can set.
  */
 describe("RequireAdmin", () => {
     beforeEach(() => {
@@ -70,24 +59,70 @@ describe("RequireAdmin", () => {
 
     it("renders the children for a session the backend flagged as admin", () => {
         useAuth.mockReturnValue({ auth: signedIn(true) });
-        renderGate();
+        render(
+            <MemoryRouter>
+                <SettingsProvider>
+                    <RequireAdmin>
+                        <div>admin dashboard</div>
+                    </RequireAdmin>
+                </SettingsProvider>
+            </MemoryRouter>,
+        );
         expect(screen.getByText("admin dashboard")).toBeInTheDocument();
     });
 
-    it("shows the 'not available' state for a regular user", () => {
+    it("sends a regular user to / instead of rendering a dead end", () => {
         useAuth.mockReturnValue({ auth: signedIn(false) });
-        renderGate();
+        render(
+            <MemoryRouter initialEntries={["/admin"]}>
+                <SettingsProvider>
+                    <Routes>
+                        <Route
+                            path="/admin"
+                            element={
+                                <RequireAdmin>
+                                    <div>admin dashboard</div>
+                                </RequireAdmin>
+                            }
+                        />
+                        <Route path="/" element={<div>public home</div>} />
+                        <Route
+                            path="*"
+                            element={<div>public home (catch-all)</div>}
+                        />
+                      </Routes>
+                </SettingsProvider>
+            </MemoryRouter>,
+        );
         expect(screen.queryByText("admin dashboard")).toBeNull();
-        expect(
-            screen.getByText(/only available to administrators/i),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/public home/i)).toBeInTheDocument();
     });
 
-    it("shows the same state while the session is still unknown", () => {
+    it("redirects while the session is still unknown", () => {
         // Rendering the admin page before /auth/status answered would flash
         // privileged-looking UI at whoever is loading it.
         useAuth.mockReturnValue({ auth: null });
-        renderGate();
+        render(
+            <MemoryRouter initialEntries={["/admin"]}>
+                <SettingsProvider>
+                    <Routes>
+                        <Route
+                            path="/admin"
+                            element={
+                                <RequireAdmin>
+                                    <div>admin dashboard</div>
+                                </RequireAdmin>
+                            }
+                        />
+                        <Route
+                            path="*"
+                            element={<div>public home (catch-all)</div>}
+                        />
+                      </Routes>
+                </SettingsProvider>
+            </MemoryRouter>,
+        );
         expect(screen.queryByText("admin dashboard")).toBeNull();
+        expect(screen.getByText(/public home/i)).toBeInTheDocument();
     });
 });

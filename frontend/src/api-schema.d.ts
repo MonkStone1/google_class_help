@@ -680,6 +680,113 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/admins/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Admins
+         * @description Every normal administrator, newest first.
+         *
+         *     The Super Admin is absent by construction (their identity lives only in
+         *     ``SUPER_ADMIN_EMAIL``), so the list can never contain the one account that
+         *     manages it. ``admin`` is the guard's return value, not an input.
+         *
+         *     Registered under BOTH ``""`` and ``"/"`` on purpose: with only ``"/"`` the
+         *     un-slashed ``/api/admin/admins`` matches no route, misses the 403 below and
+         *     falls through to the SPA fallback — which answers an unauthorized probe with
+         *     200 and an HTML shell instead of the contract's 403.
+         */
+        get: operations["list_admins_api_admin_admins__get"];
+        put?: never;
+        /**
+         * Create Admin
+         * @description Add one administrator by e-mail; 409 on a duplicate or on the Super Admin.
+         *
+         *     ``payload.email`` is already normalized by the model's validator, so the
+         *     duplicate comparison and the stored value are the same spelling.
+         *
+         *     The duplicate is checked twice on purpose: the SELECT answers the normal
+         *     case with a clean 409, and the unique index answers the race (two requests
+         *     passing the SELECT at the same moment) that a SELECT alone cannot. Failures
+         *     never widen access — both paths refuse.
+         */
+        post: operations["create_admin_api_admin_admins__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/admins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Admins
+         * @description Every normal administrator, newest first.
+         *
+         *     The Super Admin is absent by construction (their identity lives only in
+         *     ``SUPER_ADMIN_EMAIL``), so the list can never contain the one account that
+         *     manages it. ``admin`` is the guard's return value, not an input.
+         *
+         *     Registered under BOTH ``""`` and ``"/"`` on purpose: with only ``"/"`` the
+         *     un-slashed ``/api/admin/admins`` matches no route, misses the 403 below and
+         *     falls through to the SPA fallback — which answers an unauthorized probe with
+         *     200 and an HTML shell instead of the contract's 403.
+         */
+        get: operations["list_admins_api_admin_admins_get"];
+        put?: never;
+        /**
+         * Create Admin
+         * @description Add one administrator by e-mail; 409 on a duplicate or on the Super Admin.
+         *
+         *     ``payload.email`` is already normalized by the model's validator, so the
+         *     duplicate comparison and the stored value are the same spelling.
+         *
+         *     The duplicate is checked twice on purpose: the SELECT answers the normal
+         *     case with a clean 409, and the unique index answers the race (two requests
+         *     passing the SELECT at the same moment) that a SELECT alone cannot. Failures
+         *     never widen access — both paths refuse.
+         */
+        post: operations["create_admin_api_admin_admins_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/admins/{admin_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Admin
+         * @description Remove one administrator; 404 when the row is gone, 409 for the Super Admin.
+         *
+         *     The 409 branch is reachable only if ``SUPER_ADMIN_EMAIL`` was changed AFTER
+         *     the row was inserted — the POST endpoint refuses to create such a row in the
+         *     first place. It is kept because deleting the one account that manages the
+         *     registry would be unrecoverable through the UI.
+         */
+        delete: operations["delete_admin_api_admin_admins__admin_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -726,6 +833,19 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * AdminCreateIn
+         * @description The add-administrator form: an e-mail and nothing else.
+         *
+         *     Identity is not a request field — this model creates a ROW, it does not
+         *     authenticate anybody. Pydantic's default ``extra="ignore"`` stays, so a
+         *     forged ``name`` / ``id`` / ``is_super_admin`` field is silently dropped
+         *     rather than honoured.
+         */
+        AdminCreateIn: {
+            /** Email */
+            email: string;
+        };
+        /**
          * AdminMessageOut
          * @description A message with the internal identity an administrator may read.
          */
@@ -749,6 +869,27 @@ export interface components {
             author_user_id: number;
             /** Author Email */
             author_email?: string | null;
+        };
+        /**
+         * AdminOut
+         * @description One row of the administrator registry, as the Super Admin sees it.
+         *
+         *     ``name`` is DERIVED from ``email`` by the backend
+         *     (``admin_auth.display_name_from_email``): the database stores the address
+         *     only, so the label can never drift from the identity it describes.
+         */
+        AdminOut: {
+            /** Id */
+            id: number;
+            /** Email */
+            email: string;
+            /** Name */
+            name: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /**
          * AdminTicketDetailOut
@@ -1541,12 +1682,15 @@ export interface components {
          * UserOut
          * @description Identity of the authenticated user (migration stage 6, §24).
          *
-         *     Exactly the fields the frontend needs to render "signed in as", plus the
-         *     single ``is_admin`` boolean of ADR-0035. That flag is computed by the
-         *     backend from the same membership test ``admin_auth.require_admin`` enforces,
-         *     so the UI can hide the admin surface — while the API answers 403 regardless
-         *     of what the UI decided. The administrator ADDRESSES are never part of this
-         *     model, so they cannot reach the browser bundle.
+         *     Exactly the fields the frontend needs to render "signed in as", plus the two
+         *     role BOOLEANS of ADR-0035/ADR-0036. Those flags are computed by the backend
+         *     from the same ``admin_auth.resolve_role`` call ``require_admin`` and
+         *     ``require_super_admin`` enforce, so the UI can hide the admin surfaces —
+         *     while the API answers 403/409 regardless of what the UI decided.
+         *
+         *     Neither the Super Admin ADDRESS nor the administrator list is part of this
+         *     model: the frontend learns two booleans and nothing else, so the
+         *     configuration cannot reach the browser bundle.
          */
         UserOut: {
             /** Id */
@@ -1560,6 +1704,11 @@ export interface components {
              * @default false
              */
             is_admin: boolean;
+            /**
+             * Is Super Admin
+             * @default false
+             */
+            is_super_admin: boolean;
         };
         /** ValidationError */
         ValidationError: {
@@ -2521,6 +2670,141 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AdminTicketDetailOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_admins_api_admin_admins__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOut"][];
+                };
+            };
+        };
+    };
+    create_admin_api_admin_admins__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_admins_api_admin_admins_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOut"][];
+                };
+            };
+        };
+    };
+    create_admin_api_admin_admins_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_admin_api_admin_admins__admin_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                admin_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

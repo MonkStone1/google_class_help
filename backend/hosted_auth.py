@@ -610,7 +610,10 @@ def callback(request: Request, db: Session = Depends(get_db)) -> RedirectRespons
 
 
 @router.get("/status")
-def hosted_status(user: User = Depends(get_current_user)) -> dict:
+def hosted_status(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
     """AuthStatus for the hosted UI (§24): this browser's session only.
 
     Never any token material: only the local user id and the profile the
@@ -618,7 +621,7 @@ def hosted_status(user: User = Depends(get_current_user)) -> dict:
     ``user_name``/``user_email`` mirrors were removed in stage 7 (§26).
 
     The ``user`` object is built by ``api._user_out`` — the SAME helper the
-    desktop status and ``/api/me`` use — so the admin flag (ADR-0035) is
+    desktop status and ``/api/me`` use — so the role flags (ADR-0036) are
     computed by one function and cannot drift between the two surfaces.
     """
     # Imported here, not at module level: api.py imports ownership, which is
@@ -631,7 +634,7 @@ def hosted_status(user: User = Depends(get_current_user)) -> dict:
         "login_in_progress": False,
         "error": None,
         "auth_url": None,
-        "user": _user_out(user).model_dump(),
+        "user": _user_out(user, db).model_dump(),
     }
 
 

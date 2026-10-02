@@ -18,6 +18,8 @@ export const ru = {
   "nav.settings": "Настройки",
   "nav.feedback": "Обратная связь",
   "nav.admin": "Администрирование",
+  "nav.adminTickets": "Тикеты",
+  "nav.admins": "Администраторы",
   "nav.overdue.one": "1 просроченное задание",
   "nav.overdue.many": "{count} просроченных заданий",
 
@@ -457,4 +459,26 @@ export const ru = {
   "admin.notAvailableHint":
     "У вашего аккаунта нет прав администратора. Если это неожиданно — напишите в поддержку.",
   "admin.by": "от {name}",
+  "admin.adminsTitle": "Администраторы",
+  "admin.adminsAdd": "Добавить администратора",
+  "admin.adminsEmail": "E-mail",
+  "admin.adminsEmailHint":
+    "Имя в списке генерируется из этого адреса. Доступ сохранится, пока вы его не отозвали.",
+  "admin.adminsName": "Имя",
+  "admin.adminsAddedAt": "Дата добавления",
+  "admin.adminsActions": "Действия",
+  "admin.adminsDelete": "Удалить",
+  "admin.adminsEmpty": "Администраторов пока нет.",
+  "admin.adminsEmptyHint":
+    "Добавьте по e-mail. Они смогут отвечать на тикеты и удалять их, но не управлять другими администраторами.",
+  "admin.adminsLoadFailed": "Не удалось загрузить список администраторов.",
+  "admin.adminsAdded": "Администратор добавлен.",
+  "admin.adminsAddFailed": "Не удалось добавить администратора.",
+  "admin.adminsRemoved": "Администратор удалён.",
+  "admin.adminsDeleteFailed": "Не удалось удалить администратора.",
+  "admin.adminsDeleteTitle": "Удалить администратора?",
+  "admin.adminsDeleteBody":
+    "{email} потеряет доступ администратора к GoogleClassHelp. Это действие необратимо.",
+  "admin.adminsDeleteConfirm": "Удалить администратора",
+  "admin.adminsDeleteCancel": "Отмена",
 } satisfies Record<I18nKey, string>;

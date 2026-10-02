@@ -1358,6 +1358,26 @@
 .confirm-dialog {
   max-width: 460px;
 }
+
+/* --------------------------------------- administrator registry (ADR-0036)
+   Three rules only, all built from the existing tokens: the table itself is the
+   shared `.table-wrap`/`.data-table`, the modal is the shared `.modal`, and the
+   destructive button is the shared `.button-danger`. Nothing here introduces a
+   second style for a surface that already has one. */
+.admin-admins-table {
+  margin-top: 4px;
+}
+/* Keep the destructive action from stretching: the row decides its height. */
+.admin-admins-actions {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
+.admin-admins-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
 .confirm-dialog-icon {
   color: var(--danger);
   margin-bottom: 8px;

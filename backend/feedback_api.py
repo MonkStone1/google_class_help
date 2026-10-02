@@ -40,7 +40,7 @@ from starlette.datastructures import UploadFile
 import feedback_attachments as attachments
 import feedback_service as service
 import ownership
-from config import is_admin_email
+from admin_auth import is_admin_email
 from database import get_db
 from models_auth import User
 from models_feedback import (
@@ -346,7 +346,7 @@ def download_attachment(
             FeedbackTicket.user_id == user.id,
         ),
     ).scalar_one_or_none()
-    if row is None and is_admin_email(user.email):
+    if row is None and is_admin_email(db, user.email):
         row = attachments.load_attachment(db, attachment_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Attachment not found.")
