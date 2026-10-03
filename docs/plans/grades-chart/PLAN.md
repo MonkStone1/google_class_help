@@ -1,0 +1,819 @@
+# План: график динамики оценок во всплывающем окне (своя отрисовка, ноль зависимостей)
+
+Статус: **не начат**
+Дата: 2026-10-03
+Источник задачи: запрос пользователя — «график во вкладке оценки сделать кнопкой,
+которая открывает всплывающее окно с нормальным графиком: обозначения, две оси»
+Принятое решение: `docs/adr/adr-0042-grades-chart-dialog.md` (этап 0)
+Правила слоёв фронтенда: [`docs/FRONTEND_STRUCTURE.md`](../../FRONTEND_STRUCTURE.md)
+
+Одно изменение поверх ADR-0040: **ноль строк бэкенда**. Ни эндпоинта, ни изменения
+`response_model`, ни одного нового HTTP-запроса — все точки графика уже лежат
+в памяти страницы «Оценки».
+
+Решение, принятое пользователем применительно к §3.1: **спарклайн
+`GradeHistorySparkline` удаляется**, а в шапке каждой группы курса появляется
+иконка-кнопка `ChartNoAxesCombined` рядом со средним баллом. Никакого
+«спарклайн как превью»: один способ открыть график, одна точка правды.
+
+---
+
+## 0. Как читать этот план
+
+| § | Что это | Состояние |
+|---|---|---|
+| 1 | Диагностика: что стоит на месте сегодня | факт, снят с кода |
+| 2 | Ограничения и решение по библиотеке графиков | проектное решение |
+| 3 | Целевая архитектура: поток, слои, контракты, спорные места | проектное решение |
+| 4 | Карта файлов «создать / изменить / не трогать» | проектное решение |
+| 5 | Этапы 0–6, порядок, что правится в том же коммите | не начат |
+| 6 | Тестовая матрица | проектное решение |
+| 7 | Ограждения и baselines, которые придётся обновить | не начат |
+| 8 | Проверка на каждом этапе | — |
+| 9 | Риски и откат | — |
+| 10 | Альтернативы (почему не они) | — |
+| 11 | Чек-лист требований пользователя → где реализовано | — |
+| 12 | Итог | — |
+
+Все пути в §4 — от `frontend/src/`, если не указано иного. Цифры §1 сняты с
+рабочей копии на коммите `34f64f6`.
+
+---
+
+## 1. Диагностика (факты, снятые с кода)
+
+### 1.1 Где живёт вкладка «Оценки»
+
+| Факт | Где именно |
+|---|---|
+| Маршрут | `/grades` → `app/router/routes.tsx`, `pages/grades/index.ts` |
+| Экран | `pages/grades/ui/Grades.tsx` (162 строки, бюджет `pages` ≤ 300) |
+| Тесты экрана | `pages/grades/ui/Grades.test.tsx` (5 `it`, мокает `useCourses`/`useSync`/`useSettings`) |
+| Стили экрана | `app/styles/pages/grades.css` (133 строки, бюджет `app/styles` ≤ 400) |
+| Данные | `useCourses()` → `CoursesState` (`entities/course/model/coursesContext.ts`) |
+
+Страница **не делает запроса за оценками**. Она строит `CourseGrades[]` из уже
+загруженного кэша курсов и заданий (`Grades.tsx:45-76`): берёт `courses` для
+среднего, перебирает `assignments`, пропускает невыставленные и без баллов, и
+кладёт в каждую группу `{ points, max_points, percent, due_at }`.
+
+Ключевой вывод: **данные для графика уже в памяти страницы**. График — чистое
+представление того же массива, поэтому новый `useResource`, новый эндпоинт и
+новый запрос не нужны (то же свойство, на котором стоял ADR-0041).
+
+### 1.2 Что стоит на месте сегодня
+
+| Факт | Где именно |
+|---|---|
+| Компонент | `GradeHistorySparkline`, `entities/course/ui/SubjectCards.tsx:83-123` |
+| Отрисовка | `<polyline>` по 4 точкам `viewBox="0 0 320 60"`, `stroke="currentColor"` |
+| Подписи | ровно две: `percents[0].label` и `percents[last].label` |
+| Оси | **нет ни одной** — ни делений, ни сетки, ни подписей значений |
+| Точка данных | `{ label, percent }` — только процент, без `points`/`max_points` |
+| Ранний выход | `if (percents.length < 2) return null` — на одной работе графика нет |
+| Позиция | `Grades.tsx:147`, первым элементом раскрытой группы |
+| CSS | `.grade-history`, `.grade-sparkline`, `.grade-history-labels` (`grades.css:65-81`) |
+| Вспомогательное | `historyPoints()` (`Grades.tsx:13-25`) — сортировка копии по `parseDue(due_at)` |
+
+Почему это «не график», а намёк на график: без осей нельзя прочитать значение,
+нет второй величины (баллов), нет сетки, нет подписи, что именно нарисовано, и
+нет доступного текста (единственный `aria-label="Grade history"` — на английском,
+при трёх языках интерфейса, ADR-0011).
+
+### 1.3 Данные точки графика
+
+`CourseGrades` / `GradeItem`, `shared/types/grades.ts` → `schema.d.ts:1196-1297`
+(схема сгенерирована из `backend/schemas/dashboard.py:107-121`):
+
+| Поле | Тип | Роль в графике | Оговорка |
+|---|---|---|---|
+| `assignment_id` | `string` | ключ React и цель фокуса | — |
+| `title` | `string` | подпись в тултипе и в таблице `.sr-only` | обрезается CSS |
+| `points` | `number \| null` | **столбцы, правая ось** | `null` → точка не рисуется вовсе |
+| `max_points` | `number \| null` | верхняя граница правой оси | нули уже отсечены бэкендом (`grades.py:71-78`) |
+| `percent` | `number \| null` | **линия, левая ось** | считается на странице с точностью до 0.1 |
+| `graded_at` | `string \| null` | **не используется** | бэкенд всегда отдаёт `None` (`grades.py:93`) |
+| `due_at` | `string \| null` | ось X и подпись категории | через `parseDue`; без него — индекс |
+| `CourseGrades.average` | `number \| null` | пунктир «средний балл курса» | `null` → пунктир не рисуется |
+
+Вывод, который определяет дизайн: **вторая ось у нас есть из коробки** —
+`points` против `percent`, это и есть «две оси, всё как надо». Ничего досчитывать
+не нужно.
+
+### 1.4 Ограничения, которые навязывает уже сделанная реструктуризация
+
+| Правило | Где записано | Что значит для графика |
+|---|---|---|
+| `shared/ ← entities/ ← features/ ← widgets/ ← pages/ ← app/` | ADR-0040 §2, `eslint.config.js`, `structure.test.ts` #2–#9 | график — **фича** `features/grades-chart/`, её зовёт страница |
+| Публичный API слайса — только `index.ts` | guardrail #10 | наружу торчит один баррель фичи |
+| Соседние слайсы не импортируют друг друга | guardrail #9 | всё внутри одного слайса; второй «фичи графиков» не будет |
+| Бюджеты строк | `LINE_BUDGETS` | `features/**` ≤ 300, `pages/**` ≤ 300, `app/styles/**` ≤ 400, `locales/**` ≤ 120 |
+| Имена файлов | guardrail #11 | запрещены `utils.ts`, `helpers.ts`, `common.ts`, `misc.ts` |
+| CSS только через `app/styles/index.css` | guardrail #12 | новые классы — в существующий `pages/grades.css`, **не** новый файл |
+| Три словаря синхронны | ADR-0011, `satisfies Record<I18nKey, string>` | три файла одним коммитом, иначе `tsc` падает |
+| Baselines — эталоны | `baseline.test.ts` | `I18N_KEY_COUNT` и `cssSelectors().size` — **в том же коммите** |
+| Минимум 204 `it(` и 33 файла тестов | `structure.test.ts` #15, `baseline.test.ts` | факт на `34f64f6`: **321 `it(` в 45 файлах** — новые только добавляют |
+| CSP `script-src 'self'`, без CDN | ADR-0026 | график — собственный чанк приложения, не скрипт с чужого домена |
+| `shared/lib` — чистый слой | guardrail #2, ESLint | шкалы **не** едут в `shared/lib/` (§3.3) |
+
+### 1.5 Что в проекте уже доказало приём
+
+* **`features/excel-export/`** — фича с кнопкой и модалкой, где кнопка и
+  диалог **один компонент** (`ExcelExportButton.tsx` владеет флагом `open`).
+  Буквальный образец того, что нужно здесь.
+* **`features/excel-export/engine/`** — подсистема без React внутри фичи,
+  наружу торчит через `index.ts`. Образец того, как делить «рисование» и «разметку».
+* **`ExcelExportDialog.tsx`** — модалка по паттерну `AssignmentModal`:
+  `modal-backdrop` + `role="dialog"` + `aria-modal`, закрытие по Escape и по
+  фону, кнопка-крестик `.icon-button` в `.modal-header`.
+* **`GradeHistorySparkline`** — доказательство, что SVG в этом проекте умеют
+  рисовать руками и что он дешёвый.
+* **`shared/lib/dates.ts`** — готовые `parseDue`, `formatDateTimeShort`,
+  `formatDate`, `formatTime` для подписей осей.
+* **`lucide-react@0.469`** — нужная иконка `ChartNoAxesCombined` в дереве уже
+  есть (проверено в `node_modules/lucide-react/dist/lucide-react.d.ts`),
+  новая зависимость не требуется.
+
+### 1.6 Инвентарь на момент планирования
+
+| Проверка | Значение на `34f64f6` | Куда двинется |
+|---|---|---|
+| `it(` во всём `src` | 321 | растёт |
+| файлов тестов | 45 | +5 новых |
+| уникальных CSS-селекторов | **481** (эталон `baseline.test.ts:197`) | минус 3 удалённых, плюс новые `.grade-chart-*` |
+| ключей i18n | **414** (эталон `baseline.test.ts:156`) | плюс 19 `grades.chart.*` |
+| маршрутов | 20 | **не меняется** — это модалка, а не маршрут |
+| `LINE_BUDGETS` | 13 записей | **не меняется** — новые файлы в них укладываются |
+
+### 1.7 Побочная находка: мёртвый экспорт
+
+`formatGradeDate` (`entities/course/ui/SubjectCards.tsx:125-127`) **нигде не
+импортируется** — единственное упоминание вне самого файла это его же
+реэкспорт в `entities/course/index.ts:6`. Он пережил реструктуру как «доменное
+правило», которым никто не пользуется. План его удаляет (§4.2): оставить мёртвый
+экспорт в `entities/course/index.ts` после того, как из этого же файла уходит
+спарклайн, — значит оставить баррель, который врёт о содержимом слайса.
+
+---
+
+## 2. Ограничения и решение по библиотеке графиков
+
+### 2.1 Что нельзя
+
+1. **Нельзя менять бэкенд.** Данных достаточно (ADR-0041 уже поставил это правило
+   для экспорта; повторять его для графика — значит плодить эндпоинты без нужды).
+2. **Нельзя тащить код с CDN.** ADR-0026, CSP `script-src 'self'` — скрипт с
+   чужого домена просто не загрузится в продуктиве.
+3. **Нельзя ломать бюджеты.** `LINE_BUDGETS` — храповик, а не ориентир.
+4. **Нельзя ломать baselines молча.** `baseline.test.ts` требует точных чисел и
+   прямо запрещает менять их без причины в том же коммите.
+5. **Нельзя рисовать в `entities/`.** График — не доменное правило о курсе, а
+   отдельное действие страницы; это `features/` (§3.2).
+
+### 2.2 Сравнение вариантов
+
+| Вариант | Бандл | Тестируемость | Токены темы | Итог |
+|---|---|---|---|---|
+| **Свой SVG в `features/grades-chart/`** | **0 КБ** | jsdom рендерит как есть | `var(--accent)` и т.д. работают напрямую | ✅ выбран |
+| `recharts` | ~100 КБ gzip, тянет `d3-scale`/`d3-shape` | нужен `ResizeObserver` (в jsdom нет → мок) | своя тема поверх наших токенов | ❌ |
+| `chart.js` | ~70 КБ gzip + `react-chartjs-2` | canvas в jsdom не рисуется | цвета передаются вручную | ❌ |
+| `uplot` | ~40 КБ, очень быстрый | низкоуровневый API, много ручного кода | цвета вручную | ❌ |
+| `d3` целиком | ~90 КБ, подмодули | мощно, но 90% API не нужно | вручную | ❌ |
+| `<canvas>` своими руками | 0 КБ | в тестах пустой прямоугольник | вручную, без токенов | ❌ |
+
+### 2.3 Почему именно свой SVG
+
+* **Ноль новых зависимостей** — предыдущая фича добавила одну (`exceljs`) и
+  только потому, что писать `.xlsx` руками неразумно. График из шести примитивов
+  (`rect`, `line`, `polyline`, `circle`, `text`) — как раз тот случай, где
+  зависимость дороже кода.
+* **CSP и продакшен.** Своё — значит попадает в тот же чанк, что и страница.
+* **Тесты.** `structureHelpers.ts` объясняет, почему проверки читают файлы с
+  диска: Vitest не обрабатывает CSS. В jsdom SVG рендерится полностью —
+  атрибуты, текст и `role` доступны в `container.querySelectorAll`. Canvas не
+  даёт ничего.
+* **Дизайн-токены.** ADR-0005 требует, чтобы цвет приходил из `tokens.css`.
+  `stroke="var(--accent)"` в атрибуте не работает, но CSS-класс работает, и
+  тёмная тема переключается сама.
+* **Прецедент.** `GradeHistorySparkline` уже доказал, что такой код умещается в
+  40 строк. Ось и сетка — это ещё 80.
+
+### 2.4 Честная цена решения
+
+Свой SVG — это ~350 строк кода, который библиотека написала бы за 0. Цена
+оплачивается в трёх местах, и все три закрываются тестами (§6):
+
+1. масштабирование осей — чистые функции, тестируются без DOM;
+2. позиционирование тултипа — вычисляется из индексов, без измерений;
+3. адаптивность — через `viewBox` + `preserveAspectRatio`, без `ResizeObserver`.
+
+Обратный довод: если бы таких графиков понадобилось десять (сводка по всем
+курсам, сравнение двух курсов, тепловая карта по срокам), на десятый пришлось бы
+пересмотреть решение в пользу библиотеки. Это осознанная точка пересмотра —
+она записана в §9 как риск.
+
+---
+
+## 3. Целевая архитектура
+
+### 3.1 Что видит пользователь
+
+В шапке каждой группы курса — там же, где сейчас стоит средний балл, — появляется
+иконка-кнопка `ChartNoAxesCombined`:
+
+```text
+┌──────────────────────────────────────────────────────────┐
+│ ▾  Алгебра                                      [chart] │  ← новая кнопка
+│                                         Средний балл: 87% │
+└──────────────────────────────────────────────────────────┘
+```
+
+Нажатие открывает модалку:
+
+```text
+┌───────────────────────────────────────────────────────────────┐
+│ Динамика оценок — Алгебра                                  [×] │
+├───────────────────────────────────────────────────────────────┤
+│  100 ┤· · · · · · · · · · · · · · · · · · · · · · · · · · · · │
+│      │· · · · · · · · · · · · ╭─╮ · · · · · · · · · · · · · · · │  ← столбцы: баллы
+│   50 ┤· · · · · · · · · ·╭─╮···╭─╮· · ·╭─╮ · · · · · · · · · · · · │     (правая ось)
+│      │· · · · · · · · · · · ···╰─╯···╰─╯·····╰─╯· · · · · · · · · · │
+│    0 ┼──┬───────┬───────┬───────┬───────┬───────┬───────┬───────────│
+│       12.01   19.01   26.01   02.02   09.02   16.02   23.02       │
+│                                              ┊┊┊┊┊┊┊┊┊┊┊┊┊┊┊┊┊┊┊┊ │
+│              ┊ 25.01 · Домашняя работа 3 · 87% · 87 / 100    │
+│         100 ┤         ↑ левая ось, %          ↑ правая ось, баллы │
+└───────────────────────────────────────────────────────────────┘
+```
+
+Элементы, которые и есть «всё как надо»:
+
+| Элемент | Решение | Где рисуется |
+|---|---|---|
+| Левая ось Y | проценты, домен **жёстко `0…100`**, 5 делений с подписями | `0`, `25`, `50`, `75`, `100` |
+| Правая ось Y | баллы, домен `0…niceMax(max_points)`, те же 5 делений | `0`, `25`, `50`, `75`, `100` |
+| Ось X | категории = задания по возрастанию `due_at` | подпись: дата, иначе `#N` |
+| Сетка | горизонтальные линии по делениям обеих осей | `stroke="var(--border)"` |
+| Серия 1 | **столбцы `points`** — правая ось | `rect`, заливка `var(--accent-soft)`, обводка `var(--accent)` |
+| Серия 2 | **линия `percent`** с точками — левая ось | `polyline` + `circle`, `var(--success)` |
+| Серия 3 | пунктир среднего по курсу — левая ось | `line` `stroke-dasharray="4 4"`, `var(--warning)` |
+| Легенда | три подписи с цветными метками | `ChartLegend.tsx` |
+| Тултип | при наведении **и при фокусе с клавиатуры** | `ChartTooltip.tsx` |
+| Пусто | «Мало данных для графика» при `< 2` точках | `grades.chart.empty` |
+| Доступность | `role="img"` + `aria-label` + скрытая `<table>` с числами | §3.7 |
+
+**Легенда обязательна.** На двойной оси без неё график читается неверно: человек
+видит две шкалы и не знает, какая к какой серии относится. Это не украшение, а
+часть корректности, поэтому она вынесена в отдельный компонент, а не нарисована
+внутри SVG.
+
+### 3.2 Почему `features/grades-chart/`, а не `entities/` и не `pages/`
+
+| Слой | Подходит? | Почему |
+|---|---|---|
+| `shared/` | ❌ | shared не знает про домен; график — про оценки |
+| `entities/grades/` | ❌ | там **правила отображения домена**. График же имеет собственное состояние (`open`, `hover`), то есть это действие. Правило ADR-0040: `features/` — «если у страницы есть **собственное действие** (панель фильтров, форма, модалка)» |
+| `features/grades-chart/` | ✅ | ровно форма ADR-0041: действие с модалкой, кнопка и диалог в одном компоненте |
+| `pages/grades/` | ❌ | страница выросла бы до 500+ строк и смешала сбор данных с их отображением |
+
+Имя слайса — `grades-chart`, а не `chart`: `chart/` было бы слишком широким
+названием без домена, а `FRONTEND_STRUCTURE.md` требует, чтобы имя слайса
+обозначало **назначение**, а не вид («`feedback-ticket`, а не `misc`»).
+
+### 3.3 Почему шкалы живут внутри фичи, а не в `shared/lib/`
+
+Соблазн положить `linearScale`/`bandScale` в `shared/lib/` силён: это чистые
+функции без React, ровно то, чему эта папка посвящена. Отклонено по двум
+причинам:
+
+1. **Guardrail #9.** Второй потребитель не существует. По правилам проекта общий
+   код поднимается выше, когда его действительно делят; поднимать превентивно —
+   значит создать `shared/lib/scales.ts` файлом-сиротой, который больше никто
+   не прочитает. Тот же аргумент, по которому ADR-0041 не добавил `mitt` «про
+   запас».
+2. **Граница слоя.** `shared/lib/` запрещено знать про домен; шкалы, выраженные в
+   терминах «процент/балл», — это доменное знание в чистой одежде. Такое место
+   уже есть: `entities/*/model/`.
+
+Следовательно, `chart/scales.ts` и `chart/series.ts` лежат **внутри** фичи, то
+есть повторяют приём `features/excel-export/engine/`: подсистема внутри слайса,
+наружу торчит через `index.ts`.
+
+### 3.4 Поток данных
+
+```text
+Grades.tsx (grouped: CourseGrades[])
+   │  props: courseId, courseName, average, items
+   ▼
+GradeChartButton ──► useState(open)
+   │  open=false → рендерит только <button class="icon-button">
+   │               <ChartNoAxesCombined size={16}/> + aria-label={t("grades.chart.open")}
+   ▼  open=true
+GradeChartDialog
+   │  useMemo → buildSeries(items, average)      ← чистая, без React-состояния
+   │            → { points, leftTicks, rightTicks, xLabels, averageY }
+   ▼
+GradeChartSvg(points, scales)      ← чистая разметка SVG
+   ├── ChartLegend (три подписи)
+   └── ChartTooltip(points[hoveredIndex])   ← hoveredIndex — локальный useState SVG
+```
+
+Ключевые инварианты, которые проверяются тестами:
+
+* `buildSeries` **не мутирует** входной массив (копия через `slice()`, как сейчас
+  делает `historyPoints`);
+* точки сортируются по `parseDue(due_at)`, при `null` — в конец, порядок
+  стабилен по исходному индексу;
+* `points[i].percent === null` → точка рисуется **только** столбцом, если есть
+  `points`, и не рисуется вовсе, если нет и его (без выдуманных нулей);
+* правая ось всегда `0…niceMax`, где `niceMax ≥ max(max_points)` и кратно 25 —
+  иначе деления не совпадут с сеткой;
+* пустой массив и массив из одного элемента не роняют расчёт: возвращается
+  `null`, компонент показывает `grades.chart.empty`.
+
+### 3.5 Контракты (публичный API фичи)
+
+```ts
+// features/grades-chart/chart/types.ts
+export type ChartPoint = {
+  key: string;            // assignment_id — для React и фокуса
+  title: string;          // подпись в тултипе и таблице
+  label: string;          // подпись категории на оси X
+  due: Date | null;       // для тултипа и сортировки
+  points: number | null;  // столбец (правая ось)
+  percent: number | null; // точка линии (левая ось)
+};
+
+export type ChartSource = {
+  courseId: string;
+  courseName: string;
+  /** Средний по курсу; `null` → пунктир не рисуется. */
+  average: number | null;
+  items: readonly GradeItem[];
+};
+
+export type AxisTick = { value: number; y: number };  // y — координата viewBox
+
+export type ChartSeries = {
+  points: ChartPoint[];
+  leftTicks: AxisTick[];    // 0…100, проценты
+  rightTicks: AxisTick[];   // 0…niceMax, баллы
+  xLabels: Array<{ text: string; x: number }>;
+  /** Пунктир среднего; `null`, когда среднего нет. */
+  averageY: number | null;
+};
+```
+
+```ts
+// features/grades-chart/index.ts — единственное, что видит страница
+export { GradeChartButton } from "./ui/GradeChartButton.tsx";
+export { buildSeries } from "./chart/series.ts";
+export type { ChartPoint, ChartSeries, ChartSource } from "./chart/types.ts";
+```
+
+`buildSeries` реэкспортируется наружу сознательно: это единственное место, где
+решается, что вообще является точкой графика, и тест на странице может проверить
+его, не поднимая DOM.
+### 3.6 Геометрия и константы
+
+Один файл `chart/layout.ts` держит всё, что можно назвать числом:
+
+| Константа | Значение | Почему |
+|---|---|---|
+| `CHART_WIDTH` | 720 | единицы `viewBox`, не px |
+| `CHART_HEIGHT` | 320 | вместе с шириной даёт 2.25:1 |
+| `PAD_TOP` / `PAD_BOTTOM` | 16 / 56 | низ — под подписи оси X |
+| `PAD_LEFT` / `PAD_RIGHT` | 52 / 52 | симметрично, обе оси подписаны |
+| `TICK_COUNT` | 5 | 4 интервала; деления совпадают на обеих осях |
+| `TICK_STEP` | 25 | 100 / 4 |
+| `BAR_WIDTH_RATIO` | 0.55 | от ширины полосы категории |
+| `MIN_CHART_POINTS` | 2 | ниже график неинформативен |
+
+Правая ось нормируется на `niceMax = max(25, ceil(maxMaxPoints / 25) * 25)`.
+При `max_points = 100` получаем 0…100 и обе оси читаются одинаково; при 12 —
+0…25, и подписи становятся 0 / 6.25 / 12.5… — поэтому `niceMax` обязан быть
+кратен 25, иначе деления не попадут на сетку. Это отдельный тест (§6, №12).
+
+### 3.7 Доступность
+
+| Требование | Реализация |
+|---|---|
+| График не читается глазами | `<svg role="img" aria-label={t("grades.chart.ariaLabel", { course })}>` |
+| Точные числа доступны | `<table class="sr-only">` под SVG: задание, баллы, процент |
+| Клавиатура | тултип появляется и по `:focus-visible` на кружке линии, не только по `onMouseEnter`; каждая точка — `<circle tabIndex={0}>` с `<title>` |
+| Локализация подписей | `aria-label` и `<title>` идут через `t()`, а не литералами (ADR-0011) |
+| Не только цвет | столбцы и точки различаются формой; легенда дублирует смысл текстом |
+
+`<svg>` без `role="img"` и без `aria-label` читается скринридером как набор
+безымянных элементов — это ровно тот дефект, который был у спарклайна.
+
+Класс `.sr-only` сегодня живёт в `pages/markdown.css:253`. Он переносится в
+`ui.css` рядом с `.skeleton`/`.empty-state`: это общий примитив доступности, а не
+свойство markdown, и третий его потребитель — лучшее доказательство, что место
+общее. Перенос **не меняет** множество селекторов (`.sr-only` остаётся в том же
+множестве), поэтому эталон `baseline.test.ts` по этому поводу не трогается.
+
+### 3.8 Модалка: контракт поведения
+
+Повторяет `ExcelExportDialog` буквально, чтобы взаимодействие не отличалось от
+уже привычного:
+
+| Поведение | Реализация |
+|---|---|
+| Закрытие по Escape | `useEffect` + `document.addEventListener("keydown")`, снимается в `cleanup` |
+| Закрытие по фону | `onClick={onClose}` на `.modal-backdrop`, `stopPropagation` на `.modal` |
+| Крестик | `.icon-button` с `X size={18}` в `.modal-header`, `aria-label={t("grades.chart.close")}` |
+| `aria-modal` | `role="dialog" aria-modal="true" aria-labelledby` на id заголовка |
+| Открытие/закрытие | состояние внутри `GradeChartButton`, страница про флаг не знает |
+| Модалка при `< 2` точках | кнопка `disabled` — состояние недостижимо кликом (§6, №27) |
+
+### 3.9 Локализация: 19 ключей `grades.chart.*`
+
+| Ключ | en | Назначение |
+|---|---|---|
+| `grades.chart.open` | «Chart» | подпись иконки-кнопки |
+| `grades.chart.title` | «Grade trend» | заголовок модалки |
+| `grades.chart.close` | «Close» | крестик |
+| `grades.chart.ariaLabel` | «Grade trend for {course}» | `aria-label` графика |
+| `grades.chart.axis.percent` | «Score, %» | подпись левой оси |
+| `grades.chart.axis.points` | «Points» | подпись правой оси |
+| `grades.chart.axis.task` | «Assignment» | подпись оси X |
+| `grades.chart.legend.points` | «Points earned» | легенда |
+| `grades.chart.legend.percent` | «Score, %» | легенда |
+| `grades.chart.legend.average` | «Course average» | легенда |
+| `grades.chart.tooltip.grade` | «{points} / {max}» | тултип |
+| `grades.chart.tooltip.due` | «Due {date}» | тултип |
+| `grades.chart.tooltip.noDue` | «No deadline» | тултип |
+| `grades.chart.empty` | «Not enough graded work for a chart» | пустое состояние |
+| `grades.chart.table.caption` | «Grade trend data» | подпись скрытой таблицы |
+| `grades.chart.table.task` | «Assignment» | столбец таблицы |
+| `grades.chart.table.points` | «Points» | столбец таблицы |
+| `grades.chart.table.percent` | «Score, %» | столбец таблицы |
+| `grades.chart.noAxisTask` | «#{n}» | подпись без срока |
+
+Ключи идут в **существующий** домен `locales/<lang>/grades.ts`, а не в новый файл:
+в словарях девять доменных файлов, `grades.ts` содержит 7 ключей при бюджете
+120 строк, а новый домен ради 19 строк разорвал бы «один файл = один домен»
+(ADR-0011). Три файла — **один коммит**, иначе `tsc` падает на `satisfies`.
+
+---
+
+## 4. Карта файлов
+
+### 4.1 Создать
+
+| Файл | Строк (план) | Роль |
+|---|---|---|
+| `features/grades-chart/index.ts` | ~20 | публичный API слайса (guardrail #10) |
+| `features/grades-chart/chart/types.ts` | ~45 | `ChartPoint`, `ChartSource`, `ChartSeries`, `AxisTick` |
+| `features/grades-chart/chart/layout.ts` | ~45 | константы геометрии §3.6 |
+| `features/grades-chart/chart/scales.ts` | ~70 | `niceMax`, `yScale`, `xLabel`, `bandCenter` — чистые |
+| `features/grades-chart/chart/series.ts` | ~85 | `buildSeries` — сортировка, точки, деления, среднее |
+| `features/grades-chart/ui/GradeChartButton.tsx` | ~55 | иконка-кнопка + владение флагом `open` |
+| `features/grades-chart/ui/GradeChartDialog.tsx` | ~90 | каркас модалки, Escape/фон, заголовок |
+| `features/grades-chart/ui/GradeChartSvg.tsx` | ~180 | сетка, оси, столбцы, линия, точки, `.sr-only` таблица |
+| `features/grades-chart/ui/ChartLegend.tsx` | ~35 | три метки с подписями |
+| `features/grades-chart/ui/ChartTooltip.tsx` | ~55 | значения точки, позиция через `style` |
+| `features/grades-chart/chart/scales.test.ts` | ~90 | §6.1 |
+| `features/grades-chart/chart/series.test.ts` | ~120 | §6.1 |
+| `features/grades-chart/ui/GradeChartButton.test.tsx` | ~90 | §6.2 |
+| `features/grades-chart/ui/GradeChartDialog.test.tsx` | ~110 | §6.2 |
+| `features/grades-chart/ui/GradeChartSvg.test.tsx` | ~120 | §6.2 |
+| `docs/adr/adr-0042-grades-chart-dialog.md` | ~90 | решение этапа 0 |
+
+Бюджет `features/**` ≤ 300 на файл соблюдается с запасом: самый большой —
+`GradeChartSvg.tsx` (180). Тестовые файлы бюджетом не ограничены (`overBudget()`
+пропускает `*.test.ts(x)`), но приведены для оценки объёма.
+
+### 4.2 Изменить
+
+| Файл | Что именно | Зачем |
+|---|---|---|
+| `pages/grades/ui/Grades.tsx` | убрать `historyPoints()` и рендер спарклайна; добавить `<GradeChartButton …/>` в `.grade-group-header` | §3.1 |
+| `pages/grades/ui/Grades.test.tsx` | заменить проверки спарклайна на проверки кнопки | §6.2, №33–35 |
+| `entities/course/ui/SubjectCards.tsx` | удалить `GradeHistorySparkline` и мёртвый `formatGradeDate` | §1.2, §1.7 |
+| `entities/course/index.ts` | убрать из барреля оба экспорта | guardrail #10: баррель не врёт |
+| `app/styles/pages/grades.css` | удалить `.grade-history`, `.grade-sparkline`, `.grade-history-labels`; добавить блок `.grade-chart-*` и `.grade-chart-button` | §5, этапы 4–5 |
+| `app/styles/ui.css` | перенести `.sr-only` из `pages/markdown.css` | §3.7 |
+| `app/styles/pages/markdown.css` | убрать `.sr-only` | перенос без дубля |
+| `shared/i18n/locales/{en,uk,ru}/grades.ts` | +19 ключей `grades.chart.*` **одним коммитом** | §3.9 |
+| `test/baseline.test.ts` | `I18N_KEY_COUNT` 414 → 433; `cssSelectors().size` 481 → фактическое | §7 |
+| `docs/adr/README.md` | строка ADR-0042 | этап 0 |
+| `docs/FRONTEND_STRUCTURE.md` | фича в списке `features/` + рецепт «как добавить серию» | этап 6 |
+
+### 4.3 Не трогать
+
+| Файл | Почему |
+|---|---|
+| `backend/**` целиком | данных достаточно; §2.1 |
+| `shared/types/grades.ts`, `shared/api/schema.d.ts` | типы уже есть и подходят (§1.3) |
+| `app/router/routes.tsx` | модалка, а не маршрут; эталон из 20 маршрутов не трогаем |
+| `shared/lib/dates.ts` | `parseDue`/`formatDateTimeShort` используются как есть |
+| `package.json` | ноль новых зависимостей; `lucide-react` уже содержит нужную иконку |
+| `test/structure.test.ts`, `eslint.config.js` | `LINE_BUDGETS` и восемь правил не меняются |
+| `app/styles/index.css` | новый CSS-файл не создаётся (guardrail #12) |
+| `shared/settings/**`, `AppSettings` | состояние графика живёт одну открытую модалку; хранить его в localStorage незачем (та же логика, что у ADR-0041) |
+
+---
+
+## 5. Этапы работ
+
+Порядок снизу вверх: сначала чистые функции без React, потом разметка, потом
+модалка, и только на последнем этапе страница. Каждый этап — отдельный коммит,
+откат — `git revert <sha>`; фронтенд не имеет глобального реестра модулей, поэтому
+«разрегистрации» при откате не нужно.
+
+### Этап 0 — решение записано
+
+| Файл | Действие |
+|---|---|
+| `docs/adr/adr-0042-grades-chart-dialog.md` | контекст, решение (свой SVG, `features/grades-chart/`, спарклайн удалён), последствия, альтернативы |
+| `docs/adr/README.md` | одна строка в таблице, статус Accepted |
+
+Без этого этапа выбор «свой SVG вместо библиотеки» остаётся в переписке и
+следующий человек напишет `recharts`, не заметив причину.
+
+### Этап 1 — типы и геометрия, ноль React
+
+| Файл | Действие |
+|---|---|
+| `features/grades-chart/chart/types.ts` | контракты §3.5 |
+| `features/grades-chart/chart/layout.ts` | константы §3.6 |
+| `features/grades-chart/chart/scales.ts` | `niceMax`, `yScale`, `bandCenter`, `xLabel` |
+| `features/grades-chart/chart/scales.test.ts` | §6.1 №9–16 |
+
+### Этап 2 — сборка серии
+
+| Файл | Действие |
+|---|---|
+| `features/grades-chart/chart/series.ts` | `buildSeries` по §3.4 |
+| `features/grades-chart/chart/series.test.ts` | §6.1 №1–8 |
+| `features/grades-chart/index.ts` | баррель фичи, наружу `GradeChartButton` + `buildSeries` |
+
+`index.ts` объявляется здесь, а не на этапе 4: баррель без потребителей
+допустим, а вот отсутствие барреля при первом же импорте нарушит guardrail #10.
+
+### Этап 3 — ключи i18n
+
+| Файл | Действие |
+|---|---|
+| `shared/i18n/locales/en/grades.ts` | +19 ключей §3.9 |
+| `shared/i18n/locales/uk/grades.ts` | те же 19 ключей |
+| `shared/i18n/locales/ru/grades.ts` | те же 19 ключей |
+| `test/baseline.test.ts` | `I18N_KEY_COUNT` 414 → **433** |
+
+Три словаря и baseline — **один коммит**: `tsc` ловит паритет ключей, а тест
+ловит число.
+
+### Этап 4 — разметка графика
+
+| Файл | Действие |
+|---|---|
+| `features/grades-chart/ui/GradeChartSvg.tsx` | сетка, обе оси, столбцы, линия, точки, пунктир среднего, `.sr-only` таблица |
+| `features/grades-chart/ui/ChartLegend.tsx` | легенда |
+| `features/grades-chart/ui/ChartTooltip.tsx` | тултип по `hoveredIndex` |
+| `app/styles/ui.css` | перенос `.sr-only` сюда |
+| `app/styles/pages/markdown.css` | убрать `.sr-only` оттуда |
+| `app/styles/pages/grades.css` | блок `.grade-chart-*` (без кнопки — она на этапе 5) |
+| `features/grades-chart/ui/GradeChartSvg.test.tsx` | §6.2 №17–24 |
+| `test/baseline.test.ts` | `cssSelectors().size` 481 → 481 − 0 + **N** (пересчитать фактически) |
+
+Перенос `.sr-only` и добавление правил графика — один коммит: между ними
+`markdown.css` временно не содержит класса, который использует его страница.
+
+### Этап 5 — кнопка и модалка, снятие спарклайна
+
+| Файл | Действие |
+|---|---|
+| `features/grades-chart/ui/GradeChartButton.tsx` | иконка-кнопка + флаг `open` |
+| `features/grades-chart/ui/GradeChartDialog.tsx` | каркас по §3.8 |
+| `features/grades-chart/ui/GradeChartButton.test.tsx` | §6.2 №25–29 |
+| `features/grades-chart/ui/GradeChartDialog.test.tsx` | §6.2 №30–32 |
+| `app/styles/pages/grades.css` | `.grade-chart-button`; удалить `.grade-history*` (3 селектора) |
+| `pages/grades/ui/Grades.tsx` | кнопка в `.grade-group-header`, удалить `historyPoints()` и спарклайн |
+| `entities/course/ui/SubjectCards.tsx` | удалить `GradeHistorySparkline` и `formatGradeDate` |
+| `entities/course/index.ts` | убрать оба экспорта |
+| `pages/grades/ui/Grades.test.tsx` | §6.2 №33–35 |
+| `test/baseline.test.ts` | финальное число `cssSelectors().size` |
+
+Порядок внутри этапа важен: сначала новая кнопка, потом снятие спарклайна.
+Наоборот — страница на один коммит останется без единого способа открыть график.
+
+### Этап 6 — документация и финальная верификация
+
+| Файл | Действие |
+|---|---|
+| `docs/FRONTEND_STRUCTURE.md` | фича в списке `features/`, рецепт «как добавить серию» |
+| этот план | этапы отмечены выполненными, числа — фактические |
+
+**Финальная верификация (все команды обязательны):**
+
+```powershell
+cd frontend
+npm ci --no-audit --no-fund
+npm run lint      # eslint src && tsc --noEmit -p tsconfig.app.json
+npm test          # vitest run
+npm run build     # tsc -b && vite build
+cd ..
+pytest            # должно остаться зелёным: бэкенд не тронут
+python tools/check_text_encoding.py
+```
+
+**Ручная проверка в браузере** (её не заменяет ни один тест):
+
+1. Открыть «Оценки», найти курс с 5+ выставленными работами.
+2. В шапке группы рядом со средним баллом — иконка `ChartNoAxesCombined`;
+   спарклайна в раскрытой группе **нет**.
+3. Нажать: открывается модалка, сетка, **две** подписанные оси, столбцы,
+   линия с точками, пунктир среднего, легенда из трёх подписей.
+4. Навести на точку — тултип с названием, баллами и процентом.
+5. Проверить тёмную тему: цвета графика переключились (берутся из токенов).
+6. `Tab` до кружка линии — тултип появляется **по фокусу**, не по мыши.
+7. `Escape` и клик по фону закрывают модалку.
+8. Свернуть группу: кнопка в шапке остаётся (средний балл и название — тоже).
+9. Переключить язык на English / Українська: подписи осей, легенды и
+   `aria-label` следуют за языком.
+10. Открыть Network: **ни одного нового запроса** к `/api`.
+11. Сузкое окно (< 700 px): график сжимается по ширине, подписи оси X
+    прореживаются, ничего не наезжает.
+12. Курс с 0 или 1 выставленной работой: кнопка `disabled`, график недостижим.
+
+---
+
+## 6. Тестовая матрица
+
+Все тесты — `*.test.ts(x)` рядом с модулем (конвенция проекта), Vitest +
+Testing Library, без новой инфраструктуры. Инвариант сквозной: **35 проверок**,
+из них 16 — чистые функции без DOM.
+
+### 6.1 Чистые функции (`chart/*.test.ts`)
+
+| # | Проверка | Файл |
+|---|---|---|
+| 1 | `buildSeries` **не мутирует** исходный массив: снимок до равен после | `series.test.ts` |
+| 2 | Порядок точек — по возрастанию `parseDue(due_at)` | `series.test.ts` |
+| 3 | Точки без `due_at` уходят в конец, порядок между ними стабилен | `series.test.ts` |
+| 4 | `percent` переносится как есть, без пересчёта | `series.test.ts` |
+| 5 | `points: null` не превращается в 0: столбца нет, линия остаётся | `series.test.ts` |
+| 6 | `average: null` → `averageY === null`, пунктир не рисуется | `series.test.ts` |
+| 7 | `average: 87` → `averageY` на левой оси в точке 87 % | `series.test.ts` |
+| 8 | `items: []` и `items: [1]` → `buildSeries` возвращает `null`, не бросает | `series.test.ts` |
+| 9 | `niceMax(100) === 100`; кратно 25 при любом входе | `scales.test.ts` |
+| 10 | `niceMax(0)` и `niceMax(null)` → 25, минимум не ноль | `scales.test.ts` |
+| 11 | `niceMax(12) === 25`, `niceMax(26) === 50` | `scales.test.ts` |
+| 12 | Деления правой оси равны `niceMax / 4` и **кратны** 25 — иначе не сойдутся с сеткой | `scales.test.ts` |
+| 13 | `yScale`: нижняя граница → `CHART_HEIGHT - PAD_BOTTOM`, верхняя → `PAD_TOP` | `scales.test.ts` |
+| 14 | `yScale(0)` и `yScale(100)` дают ровно границы области построения | `scales.test.ts` |
+| 15 | `bandCenter(0, n)` и `bandCenter(n - 1, n)` симметричны относительно центра | `scales.test.ts` |
+| 16 | `bandCenter` при `n === 1` не делит на ноль | `scales.test.ts` |
+
+### 6.2 Компоненты (`ui/*.test.tsx`, `pages/grades/ui/Grades.test.tsx`)
+
+| # | Проверка | Файл |
+|---|---|---|
+| 17 | Рендерятся **две** оси с подписями значений (5 делений каждая) | `GradeChartSvg.test.tsx` |
+| 18 | Число `<rect>` столбцов равно числу точек с непустым `points` | `GradeChartSvg.test.tsx` |
+| 19 | `<polyline>` присутствует и содержит столько же точек, сколько `percent` | `GradeChartSvg.test.tsx` |
+| 20 | Пунктир среднего — `<line>` с `stroke-dasharray`, при `average: null` его нет | `GradeChartSvg.test.tsx` |
+| 21 | `<svg>` имеет `role="img"` и непустой `aria-label` | `GradeChartSvg.test.tsx` |
+| 22 | Подписи оси X — даты; без `due_at` подпись `#{n}` | `GradeChartSvg.test.tsx` |
+| 23 | Легенда содержит **три** подписи | `GradeChartSvg.test.tsx` |
+| 24 | Скрытая `<table>` содержит по строке на точку с числами `points` и `percent` | `GradeChartSvg.test.tsx` |
+| 25 | Кнопка рендерит `ChartNoAxesCombined` и имеет `aria-label` | `GradeChartButton.test.tsx` |
+| 26 | Нажатие открывает модалку с `role="dialog"`, `aria-modal="true"` | `GradeChartButton.test.tsx` |
+| 27 | При `< 2` точках кнопка `disabled` и `role="dialog"` не появляется | `GradeChartButton.test.tsx` |
+| 28 | Пока модалка открыта, на странице присутствует ровно один `role="dialog"` | `GradeChartButton.test.tsx` |
+| 29 | Повторное нажатие на кнопку не создаёт вторую модалку | `GradeChartButton.test.tsx` |
+| 30 | `Escape` закрывает модалку | `GradeChartDialog.test.tsx` |
+| 31 | Клик по `.modal-backdrop` закрывает, клик по `.modal` — **нет** | `GradeChartDialog.test.tsx` |
+| 32 | Крестик закрывает и имеет `aria-label` | `GradeChartDialog.test.tsx` |
+| 33 | Спарклайна на странице больше нет: нет `.grade-sparkline` | `Grades.test.tsx` |
+| 34 | В каждой группе курса есть кнопка графика, её `aria-label` не пуст | `Grades.test.tsx` |
+| 35 | Кнопка графика есть и у **свёрнутой** группы | `Grades.test.tsx` |
+
+Итого **35 проверок**. Дополнительно прогоном `npm test` проверяются без
+изменений: маршруты (20), минимум 204 `it(` (станет ~356), 33 файла тестов
+(станет 50), паритет трёх словарей, эталон числа селекторов.
+
+---
+
+## 7. Ограждения, которые придётся обновить
+
+| Файл | Что именно | Почему |
+|---|---|---|
+| `test/baseline.test.ts` | `I18N_KEY_COUNT` 414 → **433** | 19 ключей `grades.chart.*` (§3.9) |
+| `test/baseline.test.ts` | `expect(cssSelectors().size).toBe(481)` → **новое фактическое** | −3 удалённых (`.grade-history`, `.grade-sparkline`, `.grade-history-labels`), +N новых `.grade-chart-*` и `.grade-chart-button`; `.sr-only` **переезжает**, множество селекторов не меняет |
+| `test/baseline.test.ts` | маршруты, пол по `it()`, число файлов тестов, 100 000 символов CSS | **не меняются** (модалка ≠ маршрут), но проверяются на каждом прогоне |
+| `test/structure.test.ts` | `LINE_BUDGETS` — без изменений | новые файлы укладываются в `features` ≤ 300 и `app/styles` ≤ 400 |
+| `eslint.config.js` | без изменений | фича не нарушает ни одного из восьми правил `no-restricted-imports` |
+| `docs/FRONTEND_STRUCTURE.md` | список `features/` и рецепт | §5, этап 6 |
+
+Дополнительно проверяется самим прогоном тестов:
+
+* `pages/grades/ui/Grades.tsx` — 162 строки сейчас. Кнопка, заголовок с подписью
+  и удаление `historyPoints()` должны уложить его в бюджет 300 с запасом; если
+  нет — выносить `GradeCourseGroup` в соседний файл `pages/grades/ui/`, а **не**
+  поднимать бюджет (бюджет — храповик);
+* `app/styles/pages/grades.css` — 133 строки, −12 удалённых, +~130 новых
+  → ~250 при бюджете 400;
+* guardrail #11 — имена `chart/scales.ts`, `chart/series.ts`, `ui/ChartLegend.tsx`,
+  а не `utils.ts` / `helpers.ts`;
+* guardrail #10 — наружу из фичи торчит только `index.ts`;
+* guardrail #9 — фича не импортирует другие `features/*` (всё нужное — в
+  `shared/` и `entities/`);
+* `entities/course/ui/SubjectCards.tsx` — 123 строки, после удаления двух
+  функций ~60; бюджет `entities` ≤ 250.
+
+---
+
+## 8. Проверка на каждом этапе
+
+| Этап | Команды |
+|---|---|
+| 0 | `python tools/check_text_encoding.py` |
+| 1 | `npm run lint` · `npx vitest run scales` |
+| 2 | `npx vitest run series scales` · `npm run lint` |
+| 3 | `npx vitest run baseline` · `npm run lint` |
+| 4 | `npx vitest run GradeChartSvg` · `npm run lint` |
+| 5 | `npm test` · `npm run lint` · `npm run build` |
+| 6 | полный список из §5, этап 6, + ручная проверка из 12 пунктов |
+
+`npm test` в `frontend/` — это `vitest run` (job `frontend` в CI), поэтому
+каждый шаг совпадает с тем, что выполнит GitHub Actions. `npm run lint` —
+`eslint src && tsc --noEmit -p tsconfig.app.json`, то есть включает проверку
+паритета i18n-ключей, которая ловит забытую локализацию до прогона тестов.
+
+---
+
+## 9. Риски и откат
+
+| Риск | Как обнаружится | Откат |
+|---|---|---|
+| Двойная ось читается неверно | ручная проверка, п. 3 | усилить легенду; при отказе от второй оси — убрать `rightTicks` и столбцы, оставив один процентный ряд |
+| `niceMax` не кратен 25 → деления не ложатся на сетку | тест §6.1 №12 | `niceMax = Math.ceil(m / 25) * 25` |
+| jsdom не умеет `getBBox`/`ResizeObserver` | `npx vitest run GradeChartSvg` | не измерять DOM вовсе: фиксированный `viewBox`, ширина через CSS, тултип позиционируется вычисленными координатами |
+| Тултип вылезает за границы модалки | ручная проверка, п. 11 | `transform: translateX(-50%)` + `max-width` + обрезка по краям через `clamp()` |
+| Подписей оси X слишком много (курс с 60 работами) | ручная проверка, п. 11 | прореживать подписи через `stride = ceil(n / 12)`, остальные — без текста |
+| `Grades.tsx` переполнил бюджет 300 | `structure.test.ts` #1 | вынести `GradeCourseGroup` в соседний файл, не поднимать лимит |
+| `baseline.test.ts` забыт | `npm test` | — |
+| Спарклайн удалён, а график не работает | ручная проверка, п. 2–3 | `git revert` этапа 5 целиком вернёт и кнопку, и спарклайн |
+| Понадобится второй тип графика (сводка, сравнение курсов) | новая задача | это точка пересмотра §2.4: `recharts` поверх существующего `ChartSource`, а не своя вторая реализация |
+
+Откат в целом: удаление `features/grades-chart/**`, 19 ключей из трёх
+`locales/*/grades.ts`, строк в `Grades.tsx`, блока `.grade-chart-*`, переноса
+`.sr-only`, двух экспортов из `entities/course`, трёх правил `.grade-history*`,
+двух чисел в `baseline.test.ts` и ADR-0042. Бэкенд не затронут, поэтому откат
+ничего не ломает в смежных частях системы.
+
+---
+
+## 10. Альтернативы (почему не они)
+
+| Альтернатива | Почему отклонена |
+|---|---|
+| `recharts` | +~100 КБ gzip, `ResizeObserver` в тестах, своя тема поверх токенов; §2.2 |
+| `chart.js` | canvas в jsdom не рисуется — тесты превращаются в проверку моков; §2.2 |
+| График на отдельной странице `/grades/chart` | эталон маршрутов из 20 записей наполнился бы ради одной картинки; модалка = кнопка, как просил пользователь |
+| График как вкладка внутри `/grades` | вкладка без маршрута — это состояние в URL, которое придётся синхронизировать с `collapsedGradeCourses` в localStorage; кнопка этого не требует |
+| Оставить спарклайн и добавить кнопку рядом | два способа увидеть одно и то же и два места правды; пользователь выбрал один |
+| Спарклайн как превью внутри кнопки | тот же «два способа», только визуально они совмещены: пользователь кликает миниатюру, которую не просил |
+| Оси в пикселях, а не в единицах `viewBox` | требует измерений DOM, которых в jsdom нет; §9 |
+| Тултип только по наведению мыши | недоступно с клавиатуры; требование ADR-0005 к доступности |
+| Второй запрос `/api/grades` ради графика | страница уже имеет эти данные в памяти; лишняя нагрузка без выигрыша (ADR-0041) |
+| Рисовать график в `pages/grades/ui/` | страница смешала бы сбор данных и их отображение; против `FRONTEND_STRUCTURE.md` |
+| Положить шкалы в `shared/lib/` | потребитель один; §3.3 |
+| Новый доменный словарь `chart.ts` | 19 строк не оправдывают десятый доменный файл; §3.9 |
+
+---
+
+## 11. Чек-лист требований пользователя → где реализовано
+
+| Требование | Где в плане |
+|---|---|
+| Сделать график кнопкой | §3.1, §4.2 (`GradeChartButton` в `.grade-group-header`) |
+| Кнопка рядом со средним баллом | §3.1 (тот же `.grade-group-header`, рядом с `.grade-group-average`) |
+| Иконка, а не текст | §3.1, `ChartNoAxesCombined` уже в `lucide-react@0.469` |
+| Всплывающее окно | §3.8, `GradeChartDialog` по паттерну `AssignmentModal`/`ExcelExportDialog` |
+| Нормальный график вместо спарклайна | §1.2, §3.1; спарклайн и его CSS удаляются (§5, этап 5) |
+| Обозначения (оси X/Y, деления, сетка, легенда) | §3.1 (таблица элементов), §3.6 |
+| Две оси | §3.1 (левая — %, правая — баллы), §3.4 (инварианты) |
+| Всё как надо | §3.7 (доступность), §3.9 (три языка), §6 (35 проверок) |
+| Кнопка, которая ничего не сломает | §7 (baselines), §8 (проверка на этапе) |
+| Ноль новых зависимостей | §2.2, §4.3 |
+
+---
+
+## 12. Итог
+
+Семь коммитов поверх ADR-0040, **ни одной строки Python, ноль новых
+HTTP-запросов и ноль новых npm-зависимостей**. Спарклайн, который занимал 40
+строк и не умел ничего, кроме формы ломаной, заменён модалкой с двумя осями,
+подписями, легендой, тултипом и доступной таблицей — а кнопка стала единственным
+способом его открыть.
+
+Всё, что знает про «что такое точка графика», лежит в `chart/series.ts`; всё,
+что знает про масштаб, — в `chart/scales.ts` и `chart/layout.ts`; всё, что знает
+про цвета, — в `pages/grades.css` через токены. Ни один из этих файлов не знает
+про модалку, и ни один из них не придётся трогать, если завтра появится второй
+график: `ChartSource` уже описан как контракт, а ADR-0042 фиксирует точку
+пересмотра — библиотека, а не вторая своя реализация.
