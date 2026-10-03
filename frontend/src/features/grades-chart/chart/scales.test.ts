@@ -40,6 +40,29 @@ describe("the percentage-to-mark rule", () => {
     expect(percentToGrade(20)).toBe(2);
   });
 
+  it("never awards a mark the task could not give", () => {
+    // 11/11 is a full score, and 100 % would normally be a 12 — but the task was
+    // worth 11 points, so the 12 was never on offer and the line must not claim it.
+    expect(percentToGrade(100, 11)).toBe(11);
+    expect(percentToGrade(95, 11)).toBe(11);
+    expect(percentToGrade(100, 12)).toBe(12);
+    // A 5-point task caps at 5, and a 100-point task is not capped by its own
+    // maximum at all.
+    expect(percentToGrade(100, 5)).toBe(5);
+    expect(percentToGrade(100, 100)).toBe(12);
+  });
+
+  it("treats a missing or zero maximum as no ceiling", () => {
+    // `null` means the task declared no maximum. Zero is missing data, not a
+    // ceiling — treating it as one would collapse every mark to zero.
+    expect(percentToGrade(100, null)).toBe(12);
+    expect(percentToGrade(100, undefined)).toBe(12);
+    expect(percentToGrade(100, 0)).toBe(12);
+    expect(percentToGrade(100, -5)).toBe(12);
+    // One argument still works: no ceiling was passed at all.
+    expect(percentToGrade(100)).toBe(12);
+  });
+
   it("never returns zero, and never returns null for a number", () => {
     // On this scale there is no zero, and below 20 % the answer is still a mark:
     // the teacher gave a low mark, not "no mark".

@@ -47,22 +47,38 @@ const GRADE_THRESHOLDS: ReadonlyArray<readonly [number, number]> = [
 ];
 
 /**
- * The mark a percentage earns.
+ * The mark a percentage earns, never above what the task could award.
  *
- * `null` in, `null` out: an ungraded assignment has no mark, and inventing one
- * would draw a point the teacher never gave.
+ * `maxPoints` is the ceiling, not a detail: a task graded out of 11 points has
+ * no way to earn a 12, so 11/11 is an 11 — capping the answer at the task's own
+ * maximum is what keeps the line from claiming a mark that was unreachable.
+ * `null`/`undefined` means the task declared no maximum, and then the scale's own
+ * top applies.
+ *
+ * `null` percentage in, `null` out: an ungraded assignment has no mark, and
+ * inventing one would draw a point the teacher never gave.
  */
-export function percentToGrade(percent: number | null | undefined): number | null {
+export function percentToGrade(
+  percent: number | null | undefined,
+  maxPoints: number | null | undefined = null,
+): number | null {
   if (percent === null || percent === undefined) {
     return null;
   }
   const value = Math.min(100, Math.max(0, percent));
+  let mark = GRADE_MIN;
   for (const [threshold, grade] of GRADE_THRESHOLDS) {
     if (value >= threshold) {
-      return grade;
+      mark = grade;
+      break;
     }
   }
-  return GRADE_MIN;
+  // A zero or negative maximum is not a ceiling, it is missing data, so it must
+  // not collapse every mark to zero.
+  if (maxPoints === null || maxPoints === undefined || maxPoints <= 0) {
+    return mark;
+  }
+  return Math.min(mark, Math.floor(maxPoints));
 }
 
 /**

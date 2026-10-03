@@ -107,6 +107,33 @@ describe("what one render of the chart is built from", () => {
     expect(series.points.map((point) => point.percent)).toEqual([87, 100]);
   });
 
+  it("caps each mark at the maximum its own task was worth", () => {
+    // The end-to-end version of the rule: a task out of 11 points cannot be
+    // worth a 12, however well it was answered.
+    const series = buildSeries(
+      source([
+        item({
+          assignment_id: "out-of-11",
+          title: "Essay",
+          points: 11,
+          max_points: 11,
+          percent: 100,
+        }),
+        item({
+          assignment_id: "out-of-12",
+          title: "Exam",
+          points: 12,
+          max_points: 12,
+          percent: 100,
+        }),
+      ]),
+      t,
+    );
+    if (!series) throw new Error("two items must produce a series");
+
+    expect(series.points.map((point) => point.grade)).toEqual([11, 12]);
+  });
+
   it("keeps a missing score missing instead of drawing the lowest mark", () => {
     const series = buildSeries(
       source([

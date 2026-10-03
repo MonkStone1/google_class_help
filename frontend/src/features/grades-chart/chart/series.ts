@@ -77,7 +77,9 @@ export function buildSeries(
       due,
       // The percentage becomes a mark HERE and nowhere else: above this point
       // the chart works in marks, which is the scale the reader thinks in.
-      grade: percentToGrade(item.percent),
+      // The task's own maximum caps the answer — 11/11 out of 11 is an 11,
+      // because a 12 was never on offer.
+      grade: percentToGrade(item.percent, item.max_points),
       // `null` stays `null`: showing 0 would be showing a mark no teacher gives.
       points: item.points ?? null,
       maxPoints: item.max_points ?? null,
