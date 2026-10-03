@@ -3,24 +3,11 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, type ApiError } from "../shared/api/index.ts";
-import { EmptyState, SectionSkeleton } from "../components/Skeletons.tsx";
+import { EmptyState, SectionSkeleton } from "../shared/ui/Skeletons.tsx";
 import { formatDateTimeShort, toLocalDate } from "../shared/lib/dates.ts";
 import { useI18n } from "../shared/i18n/index.ts";
-import type { FeedbackStatus, FeedbackTicket } from "../shared/types/index.ts";
-import type { I18nKey } from "../shared/i18n/index.ts";
-
-const STATUS_LABEL: Record<FeedbackStatus, I18nKey> = {
-    new: "feedback.status.new",
-    in_progress: "feedback.status.in_progress",
-    resolved: "feedback.status.resolved",
-};
-
-/** The status pill reuses the app's badge tokens, no new palette. */
-export const STATUS_CLASS: Record<FeedbackStatus, string> = {
-    new: "badge badge-status-not",
-    in_progress: "badge badge-todo",
-    resolved: "badge badge-done",
-};
+import { STATUS_CLASS, STATUS_LABEL } from "../entities/feedback/index.ts";
+import type { FeedbackTicket } from "../shared/types/index.ts";
 
 /**
  * "My tickets" (ADR-0035).

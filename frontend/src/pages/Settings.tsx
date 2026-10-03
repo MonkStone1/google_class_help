@@ -10,7 +10,7 @@ import { toLocalDate } from "../shared/lib/dates.ts";
 import { useI18n, LANGUAGE_OPTIONS } from "../shared/i18n/index.ts";
 import type { I18nKey } from "../shared/i18n/index.ts";
 import type { AppSettings, ThemeMode } from "../shared/types/index.ts";
-import { CollapsibleCard } from "../components/CollapsibleCard.tsx";
+import { CollapsibleCard } from "../shared/ui/CollapsibleCard.tsx";
 import { DonateCards } from "../components/DonateCards.tsx";
 
 const THEME_OPTIONS: Array<{ mode: ThemeMode; labelKey: I18nKey }> = [

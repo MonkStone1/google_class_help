@@ -4,22 +4,15 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { api, type ApiError } from "../shared/api/index.ts";
-import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
+import { ConfirmDialog } from "../shared/ui/ConfirmDialog.tsx";
 import { MarkdownField } from "../components/MarkdownField.tsx";
-import { SectionSkeleton } from "../components/Skeletons.tsx";
-import { TicketConversation } from "../components/TicketMessage.tsx";
+import { SectionSkeleton } from "../shared/ui/Skeletons.tsx";
+import { TicketConversation } from "../entities/feedback/ui/TicketMessage.tsx";
 import { useI18n } from "../shared/i18n/index.ts";
 import type { AdminTicketDetail, FeedbackStatus } from "../shared/types/index.ts";
-import type { I18nKey } from "../shared/i18n/index.ts";
-import { STATUS_CLASS } from "./FeedbackTickets.tsx";
+import { STATUS_CLASS, STATUS_LABEL } from "../entities/feedback/index.ts";
 
 const STATUSES: FeedbackStatus[] = ["new", "in_progress", "resolved"];
-
-const STATUS_LABEL: Record<string, I18nKey> = {
-    new: "feedback.status.new",
-    in_progress: "feedback.status.in_progress",
-    resolved: "feedback.status.resolved",
-};
 
 /**
  * Any ticket, seen by an administrator (ADR-0035).

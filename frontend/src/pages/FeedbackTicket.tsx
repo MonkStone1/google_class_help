@@ -5,18 +5,11 @@ import { toast } from "sonner";
 
 import { api, type ApiError } from "../shared/api/index.ts";
 import { MarkdownField } from "../components/MarkdownField.tsx";
-import { SectionSkeleton } from "../components/Skeletons.tsx";
-import { TicketConversation } from "../components/TicketMessage.tsx";
+import { SectionSkeleton } from "../shared/ui/Skeletons.tsx";
+import { TicketConversation } from "../entities/feedback/ui/TicketMessage.tsx";
 import { useI18n } from "../shared/i18n/index.ts";
 import type { FeedbackTicketDetail } from "../shared/types/index.ts";
-import { STATUS_CLASS } from "./FeedbackTickets.tsx";
-import type { I18nKey } from "../shared/i18n/index.ts";
-
-const STATUS_LABEL: Record<string, I18nKey> = {
-    new: "feedback.status.new",
-    in_progress: "feedback.status.in_progress",
-    resolved: "feedback.status.resolved",
-};
+import { STATUS_CLASS, STATUS_LABEL } from "../entities/feedback/index.ts";
 
 /**
  * One own ticket with the conversation and a reply form (ADR-0035).

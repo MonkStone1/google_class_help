@@ -1,8 +1,8 @@
 import { ChevronDown, ChevronRight, GraduationCap } from "lucide-react";
 import { useMemo } from "react";
 
-import { EmptyState, SectionSkeleton } from "../components/Skeletons.tsx";
-import { GradeHistorySparkline } from "../components/SubjectCards.tsx";
+import { EmptyState, SectionSkeleton } from "../shared/ui/Skeletons.tsx";
+import { GradeHistorySparkline } from "../entities/course/ui/SubjectCards.tsx";
 import { useCourses } from "../entities/course/index.ts";
 import { useSync } from "../features/sync/index.ts";
 import { useSettings } from "../shared/settings/SettingsProvider.tsx";

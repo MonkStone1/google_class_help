@@ -74,6 +74,10 @@ export default tseslint.config(
   },
   {
     files: ["src/entities/**/*.ts", "src/entities/**/*.tsx"],
+    // Tests may mount a router: wrapping a component in `MemoryRouter` is how a
+    // domain test stays a DOM test. The rule is about production code deciding
+    // where a user goes, which is what the `paths` entry below forbids.
+    ignores: ["src/entities/**/*.test.ts", "src/entities/**/*.test.tsx"],
     rules: {
       "no-restricted-imports": [
         "error",

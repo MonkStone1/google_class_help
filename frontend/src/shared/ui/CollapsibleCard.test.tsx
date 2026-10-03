@@ -1,8 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SettingsProvider } from "../shared/settings/SettingsProvider.tsx";
-import { DEFAULT_SETTINGS } from "../shared/types/index.ts";
+import { SettingsProvider } from "../../shared/settings/SettingsProvider.tsx";
+import { DEFAULT_SETTINGS } from "../../shared/types/index.ts";
 import { CollapsibleCard } from "./CollapsibleCard.tsx";
 
 function renderCard(

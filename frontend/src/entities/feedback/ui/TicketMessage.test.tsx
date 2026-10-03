@@ -2,8 +2,8 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 
-import { SettingsProvider } from "../shared/settings/SettingsProvider.tsx";
-import type { TicketMessage } from "../shared/types/index.ts";
+import { SettingsProvider } from "../../../shared/settings/SettingsProvider.tsx";
+import type { TicketMessage } from "../../../shared/types/index.ts";
 import {
     TicketConversation,
     TicketMessage as TicketMessageView,

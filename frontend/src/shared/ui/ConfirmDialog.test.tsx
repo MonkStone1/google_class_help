@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SettingsProvider } from "../shared/settings/SettingsProvider.tsx";
+import { SettingsProvider } from "../../shared/settings/SettingsProvider.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 
 function renderDialog(

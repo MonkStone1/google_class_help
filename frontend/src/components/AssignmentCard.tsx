@@ -10,7 +10,7 @@ import {
   relativeDayLabel,
 } from "../shared/lib/dates.ts";
 import type { Assignment } from "../shared/types/index.ts";
-import { GradeBadge, PriorityBadge, StatusBadge } from "./Badges.tsx";
+import { GradeBadge, PriorityBadge, StatusBadge } from "../entities/assignment/ui/Badges.tsx";
 
 type Props = {
   assignment: Assignment;

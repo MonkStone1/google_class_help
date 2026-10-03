@@ -9,7 +9,7 @@ import { Link } from "react-router-dom";
 
 import { api } from "../shared/api/index.ts";
 import { AssignmentCard } from "./AssignmentCard.tsx";
-import { EmptyState, SectionSkeleton } from "./Skeletons.tsx";
+import { EmptyState, SectionSkeleton } from "../shared/ui/Skeletons.tsx";
 import { useSettings } from "../shared/settings/SettingsProvider.tsx";
 import { useI18n } from "../shared/i18n/index.ts";
 import { useResource } from "../shared/hooks/useResource.ts";

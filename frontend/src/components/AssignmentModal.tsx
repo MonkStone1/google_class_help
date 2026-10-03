@@ -4,7 +4,7 @@ import { formatDate, formatTime, parseDue } from "../shared/lib/dates.ts";
 import type { I18nKey } from "../shared/i18n/index.ts";
 import { useI18n } from "../shared/i18n/index.ts";
 import type { Assignment } from "../shared/types/index.ts";
-import { GradeBadge, PriorityBadge, StatusBadge } from "./Badges.tsx";
+import { GradeBadge, PriorityBadge, StatusBadge } from "../entities/assignment/ui/Badges.tsx";
 
 type Props = {
   assignment: Assignment | null;

@@ -23,7 +23,7 @@ import {
   DataProvider,
 } from "./app/providers/DataProvider.tsx";
 import { SettingsProvider } from "./shared/settings/SettingsProvider.tsx";
-import { DashboardBoundary } from "./components/ErrorBoundary.tsx";
+import { DashboardBoundary } from "./shared/ui/ErrorBoundary.tsx";
 import { useI18n } from "./shared/i18n/index.ts";
 import { AdminAdmins } from "./pages/AdminAdmins.tsx";
 import { AdminDashboard } from "./pages/AdminDashboard.tsx";

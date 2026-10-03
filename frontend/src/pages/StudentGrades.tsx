@@ -2,8 +2,8 @@ import { ArrowLeft, ExternalLink, Paperclip } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import { api } from "../shared/api/index.ts";
-import { SubmissionStatusBadge } from "../components/Badges.tsx";
-import { EmptyState, SectionSkeleton } from "../components/Skeletons.tsx";
+import { SubmissionStatusBadge } from "../entities/assignment/ui/Badges.tsx";
+import { EmptyState, SectionSkeleton } from "../shared/ui/Skeletons.tsx";
 import {
  formatDate,
  formatDateTimeShort,

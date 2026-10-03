@@ -70,6 +70,11 @@ export function useAsyncResource<T>(
 ): AsyncResource<T> {
     const loadRef = useRef(load);
     loadRef.current = load;
+    // The message is read through a ref for the same reason `load` is: it is
+    // captured when the effect was set up, and a caller passing a new string on
+    // every render must not re-run the request because of it.
+    const fallbackRef = useRef(fallbackError);
+    fallbackRef.current = fallbackError;
 
     const [data, setData] = useState<T | null>(null);
     const [loading, setLoading] = useState(true);
@@ -94,7 +99,7 @@ export function useAsyncResource<T>(
             .catch((reason: unknown) => {
                 if (cancelled || controller.signal.aborted) return;
                 if (isUnreachable(reason)) return;
-                setError(messageOf(reason, fallbackError));
+                setError(messageOf(reason, fallbackRef.current));
             })
             .finally(() => {
                 if (!cancelled) setLoading(false);
@@ -106,8 +111,10 @@ export function useAsyncResource<T>(
             cancelled = true;
             controller.abort();
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- `deps` is the
-        // caller's dependency list; `loadRef` is a ref and never changes.
+        // `deps` is the CALLER's dependency list, spread on purpose: the hook
+        // cannot know which of a caller's values identify the request. The
+        // exhaustive-deps rule cannot verify a spread, so the cost of listing
+        // `loadRef`/`fallbackRef` here would be a re-fetch on every render.
     }, [...deps, nonce]);
 
     return { data, loading, error, refresh };

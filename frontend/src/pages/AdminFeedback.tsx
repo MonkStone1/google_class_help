@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, type ApiError } from "../shared/api/index.ts";
-import { EmptyState, SectionSkeleton } from "../components/Skeletons.tsx";
+import { EmptyState, SectionSkeleton } from "../shared/ui/Skeletons.tsx";
 import { formatDateTimeShort, toLocalDate } from "../shared/lib/dates.ts";
 import { useI18n } from "../shared/i18n/index.ts";
 import type {
@@ -12,7 +12,7 @@ import type {
     FeedbackStatus,
 } from "../shared/types/index.ts";
 import type { I18nKey } from "../shared/i18n/index.ts";
-import { STATUS_CLASS } from "./FeedbackTickets.tsx";
+import { STATUS_CLASS, STATUS_LABEL } from "../entities/feedback/index.ts";
 
 const STATUSES: (FeedbackStatus | "")[] = [
     "",
@@ -27,12 +27,6 @@ const CATEGORIES: (FeedbackCategory | "")[] = [
     "suggestion",
     "other",
 ];
-
-const STATUS_LABEL: Record<string, I18nKey> = {
-    new: "feedback.status.new",
-    in_progress: "feedback.status.in_progress",
-    resolved: "feedback.status.resolved",
-};
 
 const CATEGORY_LABEL: Record<string, I18nKey> = {
     bug: "feedback.category.bug",

@@ -1,7 +1,8 @@
 import { BookOpen } from "lucide-react";
+import { Link } from "react-router-dom";
 
-import { EmptyState, SectionSkeleton } from "../components/Skeletons.tsx";
-import { SubjectCard } from "../components/SubjectCards.tsx";
+import { EmptyState, SectionSkeleton } from "../shared/ui/Skeletons.tsx";
+import { SubjectCard } from "../entities/course/index.ts";
 import { useCourses } from "../entities/course/index.ts";
 import { useSync } from "../features/sync/index.ts";
 import { useI18n } from "../shared/i18n/index.ts";
@@ -38,7 +39,20 @@ export function Subjects() {
       ) : (
         <div className="subject-grid">
           {courses.map((course) => (
-            <SubjectCard key={course.id} course={course} />
+            <SubjectCard
+              key={course.id}
+              course={course}
+              // The route lives here, not in the card: the domain states how a
+              // course reads, the page states where it goes (ADR-0040 #4).
+              wrap={(content) => (
+                <Link
+                  to={`/subjects/${course.id}`}
+                  className="card subject-card"
+                >
+                  {content}
+                </Link>
+              )}
+            />
           ))}
         </div>
       )}
