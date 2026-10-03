@@ -39,6 +39,22 @@ from core import config, logging_filters
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 BACKEND_DIR = PROJECT_DIR / "backend"
 FRONTEND_DIR = PROJECT_DIR / "frontend"
+FRONTEND_STYLES = FRONTEND_DIR / "src" / "app" / "styles"
+
+
+def _frontend_css() -> str:
+    """Every stylesheet the app loads, concatenated (ADR-0040 §3.5).
+
+    The CSS was one `styles/` folder of four files; it is now `app/styles/` with
+    one file per page domain, all listed in `app/styles/index.css`. These tests
+    ask "does this RULE exist in the app's styles", and which file holds it is
+    an implementation detail that changes every time a page gets its own sheet —
+    so they read the whole set rather than a path that has to be edited each
+    time. Files are joined with blank lines so a rule cannot span the seam.
+    """
+    sheets = sorted(FRONTEND_STYLES.rglob("*.css"))
+    assert sheets, f"no stylesheets under {FRONTEND_STYLES}"
+    return "\n\n".join(sheet.read_text(encoding="utf-8") for sheet in sheets)
 
 
 def _subprocess_env(tmp_path: Path, **overrides: str) -> dict[str, str]:
@@ -391,9 +407,9 @@ def test_donation_qr_codes_are_shipped_and_referenced():
     broken. Hence the explicit reference check.
     """
     donate = FRONTEND_DIR / "public" / "donate"
-    component = (FRONTEND_DIR / "src" / "components" / "DonateCards.tsx").read_text(
-        encoding="utf-8"
-    )
+    component = (
+        FRONTEND_DIR / "src" / "features" / "donate" / "DonateCards.tsx"
+    ).read_text(encoding="utf-8")
 
     for name in ("monobank.png", "privatbank.png"):
         path = donate / name
@@ -456,9 +472,7 @@ def test_support_answer_has_no_white_background_in_css():
     load the app's CSS, so a jsdom ``getComputedStyle`` assertion would pass
     without ever looking at the rule.
     """
-    css = (FRONTEND_DIR / "src" / "styles" / "pages.css").read_text(
-        encoding="utf-8"
-    )
+    css = _frontend_css()
     # Comments are stripped before any selector check: the paragraph above the
     # rule NAMES the wrong selector on purpose, to explain why it is wrong, and a
     # naive substring search would match that prose and fail forever.
@@ -512,9 +526,7 @@ def test_donation_codes_are_not_recolored_by_css():
     does not load the app's stylesheets: a jsdom `getComputedStyle` check would
     pass without ever reading the rule it claims to verify.
     """
-    css = (FRONTEND_DIR / "src" / "styles" / "components.css").read_text(
-        encoding="utf-8"
-    )
+    css = _frontend_css()
     for selector in (r"\.donate-qr\s*\{", r"\.donate-preview-image\s*\{"):
         match = re.search(selector + r"([^}]*)\}", css)
         assert match is not None, f"the {selector} rule is missing"
