@@ -141,18 +141,20 @@
   width: min(980px, 100%);
   max-width: 980px;
 }
+/* Deliberately NOT a scroll container.
+   `overflow-x: auto` here would clip the SVG at its own left edge — the first
+   point then appears sliced in half once the content is wider than the box —
+   and, because CSS promotes `overflow-y: visible` to `auto` whenever the other
+   axis is not `visible`, it would clip the tooltip vertically as well. The SVG
+   scales to whatever width it is given, so there is nothing to scroll to. */
 .grade-chart-plot {
   position: relative;
-  /* Below ~520px the 12 marks would collide with their own labels, so the plot
-     scrolls sideways instead of shrinking into illegibility. */
-  overflow-x: auto;
 }
 /* The SVG carries a fixed `viewBox` and scales to this width, which is why the
    feature never measures anything (see ADR-0042). */
 .grade-chart-svg {
   display: block;
   width: 100%;
-  min-width: 520px;
   height: auto;
   background: var(--bg-muted);
   border: 1px solid var(--border);

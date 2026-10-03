@@ -14,9 +14,11 @@
 import {
   GRADE_MAX,
   GRADE_MIN,
+  HIT_RADIUS,
   MAX_X_LABELS,
   PLOT_BOTTOM,
   PLOT_LEFT,
+  PLOT_RIGHT,
   PLOT_TOP,
   PLOT_WIDTH,
   TICK_COUNT,
@@ -100,14 +102,41 @@ export function bandWidth(count: number): number {
 }
 
 /**
- * Centre of the band at `index` — the X position of a point.
+ * X position of the point at `index`.
+ *
+ * The bands are anchored at the AXES and grow INWARDS, rather than splitting the
+ * plot in half a band at each end. `bandCenter(0)` sits one half-band from the
+ * left axis and `bandCenter(n - 1)` one half-band from the right axis, with the
+ * rest evenly spaced between them.
+ *
+ * That is the whole difference between a point fully inside the frame and one
+ * touching it. On a course with 60 graded works a band is 14 units wide, so a
+ * point centred half a band in from the FRAME edge sits 7 units from the axis —
+ * and its 20-unit hit circle then hangs across the axis line and out of the
+ * picture, which is what sliced the first point in half. Measuring from the axes
+ * keeps the extreme points clear of both the line and the border whatever the
+ * count, because the inset is itself sized to hold them.
  *
  * The single point case must not divide by zero: a course with one graded work
  * has no chart (the button is disabled), but `buildSeries` must not throw if it
  * is ever called with such data.
  */
 export function bandCenter(index: number, count: number): number {
-  return PLOT_LEFT + bandWidth(count) * (index + 0.5);
+  if (count <= 0) {
+    return PLOT_LEFT + PLOT_WIDTH / 2;
+  }
+  const width = bandWidth(count);
+  const half = width / 2;
+  // A band narrower than the hit circle would otherwise put the first and last
+  // points on top of each other, and both of them under the axis line.
+  const inset = Math.max(half, HIT_RADIUS + 2);
+  if (index === 0) {
+    return PLOT_LEFT + inset;
+  }
+  if (index === count - 1) {
+    return PLOT_RIGHT - inset;
+  }
+  return PLOT_LEFT + half + (PLOT_WIDTH - 2 * inset) * (index / (count - 1));
 }
 
 /** Every `stride`-th band keeps its label, so a long course stays readable. */

@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CHART_WIDTH,
   GRADE_MAX,
   GRADE_MIN,
+  HIT_RADIUS,
   MAX_X_LABELS,
   PLOT_BOTTOM,
   PLOT_LEFT,
+  PLOT_RIGHT,
   PLOT_TOP,
   PLOT_WIDTH,
   TICK_COUNT,
@@ -129,6 +132,34 @@ describe("the grade axis", () => {
 });
 
 describe("the X scale", () => {
+  it("keeps the first and last points fully inside the frame, however many there are", () => {
+    // The regression this guards: on a long course the band is narrow, so a point
+    // centred half a band in from the FRAME sat ~7 units from the axis and its
+    // hit circle hung outside the picture — the first point looked sliced.
+    for (const count of [2, 5, 12, 40, 60, 200]) {
+      const first = bandCenter(0, count);
+      const last = bandCenter(count - 1, count);
+      // The hit circle must clear the axis line, the border and the top/bottom.
+      expect(first - HIT_RADIUS).toBeGreaterThanOrEqual(PLOT_LEFT);
+      expect(last + HIT_RADIUS).toBeLessThanOrEqual(PLOT_RIGHT);
+      expect(first - HIT_RADIUS).toBeGreaterThan(0);
+      expect(last + HIT_RADIUS).toBeLessThan(CHART_WIDTH);
+      // And they must stay in order — a fix that moved them would be no fix.
+      expect(first).toBeLessThan(last);
+    }
+  });
+
+  it("spaces the points evenly between the two ends", () => {
+    const count = 6;
+    const xs = Array.from({ length: count }, (_u, i) => bandCenter(i, count));
+    const steps = xs.slice(1).map((x, i) => x - xs[i]);
+    for (const step of steps) {
+      expect(step).toBeCloseTo(steps[0], 6);
+    }
+    // Symmetric: the first step from the left axis mirrors the last one.
+    expect(xs[0] - PLOT_LEFT).toBeCloseTo(PLOT_RIGHT - xs[count - 1], 6);
+  });
+
   it("places the first and the last band symmetrically around the centre", () => {
     const count = 6;
     const first = bandCenter(0, count);

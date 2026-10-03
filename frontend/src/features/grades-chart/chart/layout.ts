@@ -39,9 +39,16 @@ export const PAD_BOTTOM = 64;
  *
  * The axis title no longer has to fit here: it sits in the column above the
  * numbers with breathing room, so the widest thing on the left is a two-digit
- * mark, and the inset can go back to what that actually needs.
+ * mark.
+ *
+ * It is deliberately LARGER than a two-digit number needs. The first point sits
+ * at the centre of the first band, and a band shrinks with the number of
+ * assignments: on a course with 60 graded works the band is 14 units wide, which
+ * puts the point's 20-unit-wide hit circle across the axis line and past the
+ * frame. The inset is sized so that the tightest realistic case — a long course —
+ * still keeps the whole point inside the plot.
  */
-export const PAD_LEFT = 64;
+export const PAD_LEFT = 96;
 /**
  * Right inset: the line stops here instead of at the frame edge, which is what
  * stops the last point from looking pinned to the border.
