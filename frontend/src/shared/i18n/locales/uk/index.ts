@@ -14,6 +14,7 @@ import { uk_admin } from "./admin.ts";
 import { uk_assignments } from "./assignments.ts";
 import { uk_base } from "./base.ts";
 import { uk_courses } from "./courses.ts";
+import { uk_export } from "./export.ts";
 import { uk_feedback } from "./feedback.ts";
 import { uk_grades } from "./grades.ts";
 import { uk_landing } from "./landing.ts";
@@ -30,4 +31,5 @@ export const uk = {
   ...uk_settings,
   ...uk_landing,
   ...uk_admin,
+  ...uk_export,
 } satisfies Record<I18nKey, string>;

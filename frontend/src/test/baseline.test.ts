@@ -146,8 +146,14 @@ async function localeKeys(lang: "en" | "uk" | "ru"): Promise<string[]> {
   return Object.keys(module[lang]).sort();
 }
 
-/** Keys a dictionary must carry. `en` defines them; the others mirror them. */
-const I18N_KEY_COUNT = 395;
+/**
+ * Keys a dictionary must carry. `en` defines them; the others mirror them.
+ *
+ * 395 before the Excel-export domain (ADR-0041) added its 19 `export.*` keys.
+ * A new domain moves this number in the SAME commit as the dictionary files —
+ * see the note at the top of this file.
+ */
+const I18N_KEY_COUNT = 414;
 
 describe("baseline: routes", () => {
   it("keeps every declared route, in order", () => {
@@ -183,11 +189,12 @@ describe("baseline: stylesheets", () => {
     // nine during the restructure and every rule has to arrive somewhere. A lost
     // selector is a silently unstyled element.
     //
-    // Comments are stripped before counting, so the number is 469 rather than
+    // Comments are stripped before counting, so the number is 481 rather than
     // the 560 a naive scan of the same four files reports — most of the
     // difference is the section banners in `pages.css`, which are prose, not
-    // selectors.
-    expect(cssSelectors().size).toBe(469);
+    // selectors. ADR-0041 added the twelve `.export-*` rules of the export
+    // dialog, which is why this moved from 469 in the same commit as the CSS.
+    expect(cssSelectors().size).toBe(481);
   });
 
   it("keeps the stylesheets themselves in the app layer", () => {

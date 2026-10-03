@@ -16,7 +16,7 @@ shared/  ←  entities/  ←  features/  ←  widgets/  ←  pages/  ←  app/
 |---|---|---|
 | `shared/` | `api/` (транспорт + эндпоинты + `schema.d.ts`), `hooks/`, `lib/` (чистые функции), `i18n/`, `types/`, `config/`, `test/`, `ui/` | домена, знания о маршрутах |
 | `entities/` | `assignment/`, `course/`, `grades/`, `feedback/`, `user/`: доменные типы и правила отображения | `fetch`, `useResource`, `react-router-dom` |
-| `features/` | `assignments-filter/`, `assignment-modal/`, `global-search/`, `notifications/`, `sync/`, `donate/`, `feedback-ticket/` | знания о `widgets/`, `pages/`, `app/` |
+| `features/` | `assignments-filter/`, `assignment-modal/`, `excel-export/`, `global-search/`, `notifications/`, `sync/`, `donate/`, `feedback-ticket/` | знания о `widgets/`, `pages/`, `app/` |
 | `widgets/` | `sidebar/`, `topbar/`, `landing/`, `markdown/`: крупные блоки оболочки | знания о `pages/`, `app/` |
 | `pages/` | маршрут = папка `{ui/, model/, page.css}` | `fetch` напрямую, знания о `app/` |
 | `app/` | `router/`, `layouts/`, `providers/`, `boot/`, `toaster/`, `styles/`, `main.tsx` | чего-либо, кроме как импортируемого из `app/main.tsx` |
@@ -126,6 +126,24 @@ tokens → base → layout → ui → pages/common → pages/*
 
 Ключевой вопрос при выборе места: *это про **что** (домен), про **действие**
 (фича), про **блок интерфейса** (виджет) или про **маршрут** (страница)?*
+
+### Рецепт: добавить формат экспорта
+
+`features/excel-export/` (ADR-0041) разделён так, что новый формат — это
+**один файл плюс одна строка**:
+
+1. `features/excel-export/presets/<имя>.ts` — колонки и их порядок, правила
+   преобразования текста, формат даты, ширины, имя листа, суффикс имени файла.
+   Текстовые колонки несут собственную функцию `text: (source) => string`,
+   поэтому движок не знает, какая колонка «контент», а какая «домашняя
+   работа».
+2. `model/useExportRows.ts` — одна строка `registerPreset(<пресет>)`.
+3. `shared/i18n/locales/{en,uk,ru}/export.ts` — ключ `export.preset.<ид>`,
+   **три файла одним коммитом**.
+
+`engine/`, тесты движка, страница и `baseline.test.ts` при этом **не
+меняются**. Заголовки колонок в пресете остаются на языке формата: это контракт
+с внешним импортом, а не интерфейс, поэтому локализовать их нельзя.
 
 ## Контракт, который нельзя ломать переездом
 

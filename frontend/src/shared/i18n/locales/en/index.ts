@@ -16,6 +16,7 @@ import { en_admin } from "./admin.ts";
 import { en_assignments } from "./assignments.ts";
 import { en_base } from "./base.ts";
 import { en_courses } from "./courses.ts";
+import { en_export } from "./export.ts";
 import { en_feedback } from "./feedback.ts";
 import { en_grades } from "./grades.ts";
 import { en_landing } from "./landing.ts";
@@ -32,6 +33,7 @@ export const en = {
   ...en_settings,
   ...en_landing,
   ...en_admin,
+  ...en_export,
 } as const;
 
 /** Every valid translation key, derived from the English dictionary. */
