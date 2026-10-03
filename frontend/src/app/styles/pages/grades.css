@@ -58,26 +58,17 @@
 .grade-group-average {
   flex: none;
 }
+/* The average and the chart button travel together: the button answers "how is
+   this course going", which is the question the average raised. */
+.grade-group-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
 .grade-average {
   font-weight: 650;
   color: var(--success);
-}
-.grade-history {
-  margin: 12px 0 4px;
-  color: var(--accent);
-}
-.grade-sparkline {
-  width: 100%;
-  max-width: 320px;
-  height: 48px;
-  display: block;
-}
-.grade-history-labels {
-  display: flex;
-  justify-content: space-between;
-  max-width: 320px;
-  font-size: 11px;
-  color: var(--text-muted);
 }
 .grade-list {
   list-style: none;
@@ -130,4 +121,121 @@
 .grade-value {
   font-weight: 600;
   white-space: nowrap;
+}
+/* Grade trend chart (ADR-0042) ------------------------------------------------------ */
+/* The button lives in the course header, next to the average it belongs to. */
+.grade-chart-button {
+  flex: none;
+  color: var(--accent);
+}
+.grade-chart-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* Wide enough for the 960-unit `viewBox` to render at ~1:1, so the tick labels
+   keep their designed size instead of being scaled up or down. The `min()` is
+   what keeps it inside a narrow window: the backdrop's own 20px padding plus
+   this leaves the chart at least a readable width and lets it scroll rather
+   than squash. */
+.grade-chart-modal {
+  width: min(980px, 100%);
+  max-width: 980px;
+}
+/* Deliberately NOT a scroll container.
+   `overflow-x: auto` here would clip the SVG at its own left edge — the first
+   point then appears sliced in half once the content is wider than the box —
+   and, because CSS promotes `overflow-y: visible` to `auto` whenever the other
+   axis is not `visible`, it would clip the tooltip vertically as well. The SVG
+   scales to whatever width it is given, so there is nothing to scroll to. */
+.grade-chart-plot {
+  position: relative;
+}
+/* The SVG carries a fixed `viewBox` and scales to this width, which is why the
+   feature never measures anything (see ADR-0042). */
+.grade-chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.grade-chart-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.grade-chart-axis {
+  stroke: var(--text-muted);
+  stroke-width: 1;
+}
+.grade-chart-tick {
+  fill: var(--text-muted);
+  font-size: 11px;
+}
+.grade-chart-axis-title {
+  fill: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+.grade-chart-line {
+  fill: none;
+  stroke: var(--success);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.grade-chart-dot {
+  fill: var(--success);
+  stroke: var(--bg-elevated);
+  stroke-width: 1.5;
+}
+/* The focusable hit area: invisible, but it must show a focus ring, or a
+   keyboard user would not know where they are. */
+.grade-chart-hit {
+  fill: transparent;
+  cursor: pointer;
+  outline: none;
+}
+.grade-chart-hit:focus {
+  fill: rgba(0, 0, 0, 0.001);
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+/* Anchored to the dot's own coordinates (see ChartTooltip): `top`/`left` are
+   percentages of the whole SVG, and the transform lifts the box clear of the
+   point so the tooltip floats ABOVE it rather than covering it. The dot's
+   radius plus a little air is what that offset has to clear. */
+.grade-chart-tooltip {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 14px));
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: max-content;
+  max-width: 240px;
+  padding: 7px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
+  font-size: 12px;
+  color: var(--text);
+  pointer-events: none;
+  z-index: 2;
+}
+.grade-chart-tooltip-title {
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grade-chart-tooltip-row {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.grade-chart-empty {
+  padding: 24px 8px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
 }

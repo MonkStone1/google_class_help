@@ -1,7 +1,6 @@
 import { ChevronRight, UserRound } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { formatDateTimeShort } from "../../../shared/lib/index.ts";
 import { useI18n } from "../../../shared/i18n/index.ts";
 import type { Course } from "../../../shared/types/index.ts";
 
@@ -78,50 +77,4 @@ export function SubjectCard({
       )}
     </>
   );
-}
-
-export function GradeHistorySparkline({
-  percents,
-}: {
-  percents: Array<{ label: string; percent: number }>;
-}) {
-  if (percents.length < 2) {
-    return null;
-  }
-  const width = 320;
-  const height = 60;
-  const points = percents
-    .map((item, index) => {
-      const x = (index / (percents.length - 1)) * width;
-      const y = height - (item.percent / 100) * height;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
-  return (
-    <div className="grade-history">
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="grade-sparkline"
-        role="img"
-        aria-label="Grade history"
-      >
-        <polyline
-          points={points}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-      </svg>
-      <div className="grade-history-labels">
-        <span>{percents[0].label}</span>
-        <span>{percents[percents.length - 1].label}</span>
-      </div>
-    </div>
-  );
-}
-
-export function formatGradeDate(value: string | null): string {
-  return formatDateTimeShort(value ? new Date(value) : null);
 }

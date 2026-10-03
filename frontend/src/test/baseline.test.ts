@@ -149,11 +149,15 @@ async function localeKeys(lang: "en" | "uk" | "ru"): Promise<string[]> {
 /**
  * Keys a dictionary must carry. `en` defines them; the others mirror them.
  *
- * 395 before the Excel-export domain (ADR-0041) added its 19 `export.*` keys.
+ * 395 before the Excel-export domain (ADR-0041) added its 19 `export.*` keys,
+ * 414 after it. ADR-0042 added the `grades.chart.*` keys of the grade-trend
+ * chart; that chart was then reduced to ONE line on the 1…12 mark scale, so the
+ * keys for the legend, the second axis and the separate percent column went with
+ * it — a string nobody can reach is not a translation, it is dead weight.
  * A new domain moves this number in the SAME commit as the dictionary files —
  * see the note at the top of this file.
  */
-const I18N_KEY_COUNT = 414;
+const I18N_KEY_COUNT = 431;
 
 describe("baseline: routes", () => {
   it("keeps every declared route, in order", () => {
@@ -194,7 +198,18 @@ describe("baseline: stylesheets", () => {
     // difference is the section banners in `pages.css`, which are prose, not
     // selectors. ADR-0041 added the twelve `.export-*` rules of the export
     // dialog, which is why this moved from 469 in the same commit as the CSS.
-    expect(cssSelectors().size).toBe(481);
+    // ADR-0042 removed the three `.grade-history*` rules of the sparkline and
+    // added twenty-six: the twenty-five `.grade-chart-*` rules of the trend
+    // chart plus `.grade-group-actions`, the header row that holds the average
+    // and the chart button together. 481 − 3 + 26 = 504. `.sr-only` MOVED from
+    // `pages/markdown.css` to `ui.css` rather than being added, so it does not
+    // appear in the arithmetic at all.
+    //
+    // The chart was then reduced to a single line on a 1…12 scale, which took
+    // eight of those rules with it: `.grade-chart-bar`, `.grade-chart-average`
+    // and the six `.grade-chart-legend*` selectors — a legend names the series,
+    // and one series needs none. 504 − 8 = 496.
+    expect(cssSelectors().size).toBe(496);
   });
 
   it("keeps the stylesheets themselves in the app layer", () => {
@@ -206,15 +221,18 @@ describe("baseline: stylesheets", () => {
 });
 
 describe("baseline: translations", () => {
-  it("keeps 395 keys in English", async () => {
+  // The names quote 433 and not the constant on purpose: a failure message that
+  // says "expected 414 to be 433" tells you what the number used to be, which
+  // is exactly the question a baseline failure raises.
+  it("keeps 431 keys in English", async () => {
     expect((await localeKeys("en")).length).toBe(I18N_KEY_COUNT);
   });
 
-  it("keeps 395 keys in Ukrainian", async () => {
+  it("keeps 431 keys in Ukrainian", async () => {
     expect((await localeKeys("uk")).length).toBe(I18N_KEY_COUNT);
   });
 
-  it("keeps 395 keys in Russian", async () => {
+  it("keeps 431 keys in Russian", async () => {
     expect((await localeKeys("ru")).length).toBe(I18N_KEY_COUNT);
   });
 
