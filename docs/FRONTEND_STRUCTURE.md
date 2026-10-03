@@ -16,7 +16,7 @@ shared/  ←  entities/  ←  features/  ←  widgets/  ←  pages/  ←  app/
 |---|---|---|
 | `shared/` | `api/` (транспорт + эндпоинты + `schema.d.ts`), `hooks/`, `lib/` (чистые функции), `i18n/`, `types/`, `config/`, `test/`, `ui/` | домена, знания о маршрутах |
 | `entities/` | `assignment/`, `course/`, `grades/`, `feedback/`, `user/`: доменные типы и правила отображения | `fetch`, `useResource`, `react-router-dom` |
-| `features/` | `assignments-filter/`, `assignment-modal/`, `excel-export/`, `global-search/`, `notifications/`, `sync/`, `donate/`, `feedback-ticket/` | знания о `widgets/`, `pages/`, `app/` |
+| `features/` | `assignments-filter/`, `assignment-modal/`, `excel-export/`, `grades-chart/`, `global-search/`, `notifications/`, `sync/`, `donate/`, `feedback-ticket/` | знания о `widgets/`, `pages/`, `app/` |
 | `widgets/` | `sidebar/`, `topbar/`, `landing/`, `markdown/`: крупные блоки оболочки | знания о `pages/`, `app/` |
 | `pages/` | маршрут = папка `{ui/, model/, page.css}` | `fetch` напрямую, знания о `app/` |
 | `app/` | `router/`, `layouts/`, `providers/`, `boot/`, `toaster/`, `styles/`, `main.tsx` | чего-либо, кроме как импортируемого из `app/main.tsx` |
@@ -144,6 +144,30 @@ tokens → base → layout → ui → pages/common → pages/*
 `engine/`, тесты движка, страница и `baseline.test.ts` при этом **не
 меняются**. Заголовки колонок в пресете остаются на языке формата: это контракт
 с внешним импортом, а не интерфейс, поэтому локализовать их нельзя.
+
+### Рецепт: добавить серию в график оценок
+
+`features/grades-chart/` (ADR-0042) разделён так, что **новая серия — это один
+элемент в `chart/types.ts`, одна строка в `chart/series.ts` и одна ветка в
+`ui/GradeChartSvg.tsx`**:
+
+1. `chart/types.ts` — поле в `ChartPoint`. Ноль превращается в `null`, а не в
+   `0`: нулевой столбец читается как «оценка ноль», а это другое утверждение.
+2. `chart/series.ts` — значение в `buildSeries`. Функция чистая и не мутирует
+   вход, поэтому всё, что здесь правится, проверяется без DOM.
+3. `ui/GradeChartSvg.tsx` — примитив SVG плюс правило в `app/styles/pages/grades.css`
+   (цвет приходит из токенов, поэтому новый селектор добавляется **там же**).
+4. `ui/ChartLegend.tsx` — метка. На двойной оси легенда не украшение: без неё
+   читатель не знает, к какой шкале относится серия.
+5. `shared/i18n/locales/{en,uk,ru}/grades.ts` — ключи `grades.chart.*`,
+   **три файла одним коммитом**.
+
+`chart/layout.ts` (геометрия), `chart/scales.ts` (шкалы) и
+`pages/grades/ui/Grades.tsx` при этом **не меняются**, если новая серия
+использует существующую ось. Точка пересмотра зафиксирована в ADR-0042: если
+таких графиков понадобится десять (сводка по всем курсам, сравнение двух курсов,
+тепловая карта по срокам), решение пересматривается в пользу библиотеки
+**поверх существующего `ChartSource`** — а не в пользу второй своей реализации.
 
 ## Контракт, который нельзя ломать переездом
 
