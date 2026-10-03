@@ -9,16 +9,34 @@ const useCourses = vi.fn();
 const useSync = vi.fn();
 const useSettings = vi.fn();
 
-vi.mock("../../../features/sync/index.ts", () => ({
- useSync: () => useSync(),
-}));
-vi.mock("../../../entities/course/index.ts", () => ({
- useCourses: () => useCourses(),
-}));
+vi.mock("../../../features/sync/index.ts", async () => {
+  const actual = await vi.importActual<typeof import("../../../features/sync/index.ts")>(
+    "../../../features/sync/index.ts",
+  );
+  return {
+    ...actual,
+   useSync: () => useSync(),
+  };
+});
+vi.mock("../../../entities/course/index.ts", async () => {
+  const actual = await vi.importActual<typeof import("../../../entities/course/index.ts")>(
+    "../../../entities/course/index.ts",
+  );
+  return {
+    ...actual,
+   useCourses: () => useCourses(),
+  };
+});
 
-vi.mock("../../../shared/settings/SettingsProvider.tsx", () => ({
- useSettings: () => useSettings(),
-}));
+vi.mock("../../../shared/settings/index.ts", async () => {
+  const actual = await vi.importActual<typeof import("../../../shared/settings/index.ts")>(
+    "../../../shared/settings/index.ts",
+  );
+  return {
+    ...actual,
+   useSettings: () => useSettings(),
+  };
+});
 
 function makeCourse(overrides: Partial<Course> = {}): Course {
  return {

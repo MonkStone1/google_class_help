@@ -8,8 +8,7 @@
 
 import { Navigate, Route, Routes } from "react-router-dom";
 
-import { AdminLayout } from "../layouts/AdminLayout.tsx";
-import { AppLayout } from "../layouts/AppLayout.tsx";
+import { AdminLayout, AppLayout } from "../layouts/index.ts";
 import { RequireAdmin, RequireSuperAdmin } from "./guards.tsx";
 import { ADMIN_ROUTES, USER_ROUTES, type Guard } from "./routes.tsx";
 

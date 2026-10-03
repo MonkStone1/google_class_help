@@ -15,7 +15,7 @@
 import { createContext } from "react";
 
 import type { AppStatus, SyncResult } from "../../../shared/types/index.ts";
-import { useContextSafe } from "../../../entities/user/model/authContext.ts";
+import { useContextSafe } from "../../../entities/user/index.ts";
 
 /**
  * Synchronization state: how fresh the local cache is and how to refresh it.

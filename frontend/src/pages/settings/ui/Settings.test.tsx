@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "../../../shared/api/index.ts";
-import { SettingsProvider } from "../../../shared/settings/SettingsProvider.tsx";
+import { SettingsProvider } from "../../../shared/settings/index.ts";
 import { DEFAULT_SETTINGS, type AuthStatus, type Language } from "../../../shared/types/index.ts";
 import { Settings } from "./Settings.tsx";
 
@@ -13,7 +13,15 @@ const toastMock = vi.hoisted(() => ({
   info: vi.fn(),
 }));
 
-vi.mock("sonner", () => ({ toast: toastMock }));
+vi.mock("sonner", async () => {
+  const actual = await vi.importActual<typeof import("sonner")>(
+    "sonner",
+  );
+  return {
+    ...actual,
+   toast: toastMock 
+  };
+});
 
 const useAuth = vi.fn();
 const useSync = vi.fn();

@@ -133,16 +133,16 @@ function cssSelectors(): Set<string> {
 /**
  * Keys of one locale dictionary.
  *
- * Read from the file that exports it rather than from a glob over
- * `locales/<lang>/**`: the dictionaries are SPLIT into seven domain files per
- * language during the restructure (ADR-0040 §4), and each of the seven must
- * still answer to the same key set. Importing the merged `index.ts` keeps this
- * independent of how many files the split produced — and importing it (not
- * parsing the text) is what makes `tsc` and this snapshot agree by
+ * Read from the merged `index.ts` of each locale rather than from a glob over
+ * `locales/<lang>/**`: the dictionaries are SPLIT into nine domain files per
+ * language during the restructure (ADR-0040 §4), and each domain must still
+ * answer to the same key set as the others. Importing the merged dictionary
+ * keeps this independent of how many files the split produced — and importing
+ * it (not parsing the text) is what makes `tsc` and this snapshot agree by
  * construction.
  */
 async function localeKeys(lang: "en" | "uk" | "ru"): Promise<string[]> {
-  const module = await import(`../shared/i18n/locales/${lang}.ts`);
+  const module = await import(`../shared/i18n/locales/${lang}/index.ts`);
   return Object.keys(module[lang]).sort();
 }
 

@@ -3,17 +3,23 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "../../../../shared/api/index.ts";
-import { SettingsProvider } from "../../../../shared/settings/SettingsProvider.tsx";
+import { SettingsProvider } from "../../../../shared/settings/index.ts";
 import { FeedbackNew } from "./FeedbackNew.tsx";
 
-vi.mock("sonner", () => ({
-    toast: {
-        success: vi.fn(),
-        error: vi.fn(),
-        info: vi.fn(),
-        warning: vi.fn(),
-    },
-}));
+vi.mock("sonner", async () => {
+  const actual = await vi.importActual<typeof import("sonner")>(
+    "sonner",
+  );
+  return {
+    ...actual,
+      toast: {
+          success: vi.fn(),
+          error: vi.fn(),
+          info: vi.fn(),
+          warning: vi.fn(),
+      },
+  };
+});
 
 function renderForm() {
     return render(

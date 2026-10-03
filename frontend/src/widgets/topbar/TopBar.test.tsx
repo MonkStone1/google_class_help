@@ -3,7 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_SETTINGS, type AppStatus } from "../../shared/types/index.ts";
-import { SettingsProvider } from "../../shared/settings/SettingsProvider.tsx";
+import { SettingsProvider } from "../../shared/settings/index.ts";
 import { TopBar } from "./TopBar.tsx";
 
 // The sync actions are context-driven, and this suite is about what the topbar

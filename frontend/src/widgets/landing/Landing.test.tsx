@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Landing } from "./Landing.tsx";
-import { SettingsProvider } from "../../shared/settings/SettingsProvider.tsx";
+import { SettingsProvider } from "../../shared/settings/index.ts";
 import { DEFAULT_SETTINGS } from "../../shared/types/index.ts";
 import type { Language } from "../../shared/types/index.ts";
 
@@ -11,14 +11,20 @@ const setLanguage = vi.fn();
 const setTheme = vi.fn();
 let currentLanguage: Language = "en";
 
-vi.mock("../../entities/user/index.ts", () => ({
-  useAuth: () => ({ login }),
-}));
+vi.mock("../../entities/user/index.ts", async () => {
+  const actual = await vi.importActual<typeof import("../../entities/user/index.ts")>(
+    "../../entities/user/index.ts",
+  );
+  return {
+    ...actual,
+    useAuth: () => ({ login }),
+  };
+});
 
-vi.mock("../../shared/settings/SettingsProvider.tsx", async () => {
+vi.mock("../../shared/settings/index.ts", async () => {
   const actual = await vi.importActual<
-    typeof import("../../shared/settings/SettingsProvider.tsx")
-  >("../../shared/settings/SettingsProvider.tsx");
+    typeof import("../../shared/settings/index.ts")
+  >("../../shared/settings/index.ts");
   // Only the hook is driven from here; the real provider still wraps the
   // page, so the select is rendered by the same code the app uses.
   return {
@@ -34,9 +40,15 @@ vi.mock("../../shared/settings/SettingsProvider.tsx", async () => {
 // The challenge hook owns a network call; the landing's own contract is what
 // is under test, so the hook is driven from here.
 const useSignInChallenge = vi.fn();
-vi.mock("./useSignInChallenge.ts", () => ({
-  useSignInChallenge: () => useSignInChallenge(),
-}));
+vi.mock("./useSignInChallenge.ts", async () => {
+  const actual = await vi.importActual<typeof import("./useSignInChallenge.ts")>(
+    "./useSignInChallenge.ts",
+  );
+  return {
+    ...actual,
+    useSignInChallenge: () => useSignInChallenge(),
+  };
+});
 
 function noChallenge() {
   return {

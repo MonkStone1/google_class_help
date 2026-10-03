@@ -7,7 +7,7 @@
  */
 
 import type { Assignment, Course } from "../../shared/types/index.ts";
-import { parseDue } from "../../shared/lib/dates.ts";
+import { parseDue } from "../../shared/lib/index.ts";
 
 export type SearchHit =
   | { type: "assignment"; assignment: Assignment }

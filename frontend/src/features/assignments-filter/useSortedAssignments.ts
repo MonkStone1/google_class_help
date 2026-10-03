@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import { createdTime, parseDue, percentOf } from "../../shared/lib/dates.ts";
+import { createdTime, parseDue, percentOf } from "../../shared/lib/index.ts";
 import type { Assignment, SortKey } from "../../shared/types/index.ts";
 
 /**

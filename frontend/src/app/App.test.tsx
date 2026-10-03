@@ -48,15 +48,24 @@ vi.mock("../entities/course/index.ts", async () => {
   };
 });
 
-vi.mock("../widgets/landing/useSignInChallenge.ts", () => ({
-  useSignInChallenge: () => ({
-    token: null,
-    required: false,
-    requested: false,
-    pending: false,
-    widgetRef: { current: null },
-  }),
-}));
+// A PARTIAL mock: the barrel also exports `Landing` and `SignIn`, which this
+// suite renders for real — only the Turnstile challenge is stubbed out, because
+// it needs a live widget and a token the test has no way to obtain.
+vi.mock("../widgets/landing/index.ts", async () => {
+  const actual = await vi.importActual<
+    typeof import("../widgets/landing/index.ts")
+  >("../widgets/landing/index.ts");
+  return {
+    ...actual,
+    useSignInChallenge: () => ({
+      token: null,
+      required: false,
+      requested: false,
+      pending: false,
+      widgetRef: { current: null },
+    }),
+  };
+});
 
 const SIGNED_OUT: AuthStatus = {
   authenticated: false,

@@ -2,10 +2,8 @@ import { act, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "../../shared/api/index.ts";
-import {
-  DataProvider,
-} from "../providers/DataProvider.tsx";
-import { SettingsProvider } from "../../shared/settings/SettingsProvider.tsx";
+import { DataProvider } from "../providers/index.ts";
+import { SettingsProvider } from "../../shared/settings/index.ts";
 import { DEFAULT_SETTINGS, type AppStatus, type AuthStatus } from "../../shared/types/index.ts";
 import { SyncToaster } from "./SyncToaster.tsx";
 
@@ -18,7 +16,15 @@ const toastMock = vi.hoisted(() => ({
   info: vi.fn(),
 }));
 
-vi.mock("sonner", () => ({ toast: toastMock }));
+vi.mock("sonner", async () => {
+  const actual = await vi.importActual<typeof import("sonner")>(
+    "sonner",
+  );
+  return {
+    ...actual,
+   toast: toastMock 
+  };
+});
 
 const AUTH: AuthStatus = {
   authenticated: true,

@@ -2,7 +2,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FilterPanel } from "./FilterPanel.tsx";
-import { SettingsProvider } from "../../../shared/settings/SettingsProvider.tsx";
+import { SettingsProvider } from "../../../shared/settings/index.ts";
 import type { AssignmentDueFilter, AssignmentFilterStatus, Course } from "../../../shared/types/index.ts";
 import { DEFAULT_SETTINGS } from "../../../shared/types/index.ts";
 

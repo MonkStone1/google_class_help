@@ -14,12 +14,10 @@
 
 import { useRef } from "react";
 
-import { BootSplash } from "./boot/BootSplash.tsx";
-import { bootSurface } from "./boot/bootGate.ts";
-import { AppProviders } from "./providers/AppProviders.tsx";
-import { AppRouter } from "./router/AppRouter.tsx";
-import { Landing } from "../widgets/landing/Landing.tsx";
-import { SignIn } from "../widgets/landing/SignIn.tsx";
+import { BootSplash, bootSurface } from "./boot/index.ts";
+import { AppProviders } from "./providers/index.ts";
+import { AppRouter } from "./router/index.ts";
+import { Landing, SignIn } from "../widgets/landing/index.ts";
 import { useAuth } from "../entities/user/index.ts";
 
 export default function App() {

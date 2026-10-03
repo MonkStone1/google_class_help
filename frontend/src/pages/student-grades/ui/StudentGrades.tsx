@@ -2,16 +2,16 @@ import { ArrowLeft, ExternalLink, Paperclip } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import { api } from "../../../shared/api/index.ts";
-import { SubmissionStatusBadge } from "../../../entities/assignment/ui/Badges.tsx";
-import { EmptyState, SectionSkeleton } from "../../../shared/ui/Skeletons.tsx";
+import { SubmissionStatusBadge } from "../../../entities/assignment/index.ts";
+import { EmptyState, SectionSkeleton } from "../../../shared/ui/index.ts";
 import {
  formatDate,
  formatDateTimeShort,
  formatTime,
  parseDue,
-} from "../../../shared/lib/dates.ts";
+} from "../../../shared/lib/index.ts";
 import { useI18n } from "../../../shared/i18n/index.ts";
-import { useResource } from "../../../shared/hooks/useResource.ts";
+import { useResource } from "../../../shared/hooks/index.ts";
 import type { StudentGradeItem } from "../../../shared/types/index.ts";
 
 /**

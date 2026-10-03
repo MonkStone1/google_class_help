@@ -8,7 +8,7 @@
  * "would this assignment ring?" was to read the shell.
  */
 
-import { parseDue } from "../../shared/lib/dates.ts";
+import { parseDue } from "../../shared/lib/index.ts";
 import type { Assignment } from "../../shared/types/index.ts";
 
 export type NotificationItem = {

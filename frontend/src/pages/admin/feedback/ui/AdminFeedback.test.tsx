@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SettingsProvider } from "../../../../shared/settings/SettingsProvider.tsx";
+import { SettingsProvider } from "../../../../shared/settings/index.ts";
 import { DEFAULT_SETTINGS } from "../../../../shared/types/index.ts";
 import type { AdminTicket, AdminTicketPage } from "../../../../shared/types/index.ts";
 import { AdminFeedback } from "./AdminFeedback.tsx";

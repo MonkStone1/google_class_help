@@ -1,14 +1,14 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { AssignmentModal } from "../../../features/assignment-modal/AssignmentModal.tsx";
-import { EmptyState } from "../../../shared/ui/Skeletons.tsx";
+import { AssignmentModal } from "../../../features/assignment-modal/index.ts";
+import { EmptyState } from "../../../shared/ui/index.ts";
 import { useCourses } from "../../../entities/course/index.ts";
 import { useSync } from "../../../features/sync/index.ts";
-import { useSettings } from "../../../shared/settings/SettingsProvider.tsx";
-import { dayKey, isSameDay, parseDue, startOfDay } from "../../../shared/lib/dates.ts";
+import { useSettings } from "../../../shared/settings/index.ts";
+import { dayKey, isSameDay, parseDue, startOfDay } from "../../../shared/lib/index.ts";
 import { useI18n } from "../../../shared/i18n/index.ts";
-import { cn } from "../../../shared/lib/cn.ts";
+import { cn } from "../../../shared/lib/index.ts";
 import type { Assignment, CalendarViewMode } from "../../../shared/types/index.ts";
 
 type ViewMode = "month" | "week" | "day";

@@ -150,10 +150,35 @@ export function readAllCss(): Map<string, string> {
   );
 }
 
-/** The layer a file belongs to, or null when it is not inside a layer. */
+/**
+ * The layer a file belongs to, or null when it is not inside a layer.
+ *
+ * The LAYER, not the folder: `entities/feedback/ui/TicketMessage.tsx` and
+ * `entities/feedback/index.ts` are in the same slice, and treating the
+ * sub-folder as the slice would report the barrel's own re-exports as
+ * violations of the rule that asks for them.
+ */
 export function layerOf(file: SourceFile): Layer | null {
   const top = file.slice.split("/")[0];
   return (LAYERS as readonly string[]).includes(top) ? (top as Layer) : null;
+}
+
+/**
+ * The slice a path belongs to: the layer plus the folder inside it.
+ *
+ * `entities/feedback/ui/x.tsx`, `entities/feedback/model/y.ts` and
+ * `entities/feedback/index.ts` are all `entities/feedback` — a slice with a
+ * `ui/` and a `model/` inside it. `shared/api/client.ts` is `shared/api`.
+ *
+ * Returns null for a path with no slice: a loose file directly under `src/`
+ * belongs to no slice, and there is no public API to cross.
+ */
+export function sliceRootOf(path: string): string | null {
+  const parts = path.split("/");
+  if (parts.length < 3) return null;
+  const layer = parts[0];
+  if (!(LAYERS as readonly string[]).includes(layer)) return null;
+  return `${layer}/${parts[1]}`;
 }
 
 /** A module specifier together with the file that asked for it. */

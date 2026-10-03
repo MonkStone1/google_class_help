@@ -4,10 +4,10 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { api, type ApiError } from "../../../../shared/api/index.ts";
-import { ConfirmDialog } from "../../../../shared/ui/ConfirmDialog.tsx";
-import { MarkdownField } from "../../../../widgets/markdown/MarkdownField.tsx";
-import { SectionSkeleton } from "../../../../shared/ui/Skeletons.tsx";
-import { TicketConversation } from "../../../../entities/feedback/ui/TicketMessage.tsx";
+import { ConfirmDialog } from "../../../../shared/ui/index.ts";
+import { MarkdownField } from "../../../../widgets/markdown/index.ts";
+import { SectionSkeleton } from "../../../../shared/ui/index.ts";
+import { TicketConversation } from "../../../../entities/feedback/index.ts";
 import { useI18n } from "../../../../shared/i18n/index.ts";
 import type { AdminTicketDetail, FeedbackStatus } from "../../../../shared/types/index.ts";
 import { STATUS_CLASS, STATUS_LABEL } from "../../../../entities/feedback/index.ts";

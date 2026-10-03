@@ -2,7 +2,7 @@ import { AlertTriangle, CheckCircle2, CircleDashed, Clock } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n/index.ts";
 import type { I18nKey } from "../../../shared/i18n/index.ts";
-import { cn } from "../../../shared/lib/cn.ts";
+import { cn } from "../../../shared/lib/index.ts";
 import type { Assignment, Priority, SubmissionStatus } from "../../../shared/types/index.ts";
 
 export function StatusBadge({ assignment }: { assignment: Assignment }) {

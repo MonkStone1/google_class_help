@@ -2,17 +2,17 @@ import { ArrowLeft } from "lucide-react";
 import { useMemo, useState, useEffect } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
-import { AssignmentCard } from "../entities/assignment/ui/AssignmentCard.tsx";
-import { AssignmentModal } from "../features/assignment-modal/AssignmentModal.tsx";
-import { EmptyState, SectionSkeleton } from "../shared/ui/Skeletons.tsx";
-import { TeacherCourse } from "./subject/ui/TeacherCourse.tsx";
-import { useCourses } from "../entities/course/index.ts";
-import { useSync } from "../features/sync/index.ts";
-import { useSettings } from "../shared/settings/SettingsProvider.tsx";
-import { useI18n } from "../shared/i18n/index.ts";
-import type { I18nKey } from "../shared/i18n/index.ts";
-import { matchesStatus, sortAssignments } from "../features/assignments-filter/filters.ts";
-import type { Assignment, AssignmentStatusFilter, SortKey } from "../shared/types/index.ts";
+import { AssignmentCard } from "../../../entities/assignment/index.ts";
+import { AssignmentModal } from "../../../features/assignment-modal/index.ts";
+import { EmptyState, SectionSkeleton } from "../../../shared/ui/index.ts";
+import { TeacherCourse } from "./TeacherCourse.tsx";
+import { useCourses } from "../../../entities/course/index.ts";
+import { useSync } from "../../../features/sync/index.ts";
+import { useSettings } from "../../../shared/settings/index.ts";
+import { useI18n } from "../../../shared/i18n/index.ts";
+import type { I18nKey } from "../../../shared/i18n/index.ts";
+import { matchesStatus, sortAssignments } from "../../../features/assignments-filter/index.ts";
+import type { Assignment, AssignmentStatusFilter, SortKey } from "../../../shared/types/index.ts";
 
 const STATUS_TABS: Array<{
   key: AssignmentStatusFilter | "all";

@@ -1,7 +1,7 @@
 import { ChevronRight, UserRound } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { formatDateTimeShort } from "../../../shared/lib/dates.ts";
+import { formatDateTimeShort } from "../../../shared/lib/index.ts";
 import { useI18n } from "../../../shared/i18n/index.ts";
 import type { Course } from "../../../shared/types/index.ts";
 

@@ -13,8 +13,7 @@ import type { ReactNode } from "react";
 
 import { SettingsProvider } from "../../shared/settings/index.ts";
 import { DataProvider } from "./DataProvider.tsx";
-import { SyncToaster } from "../toaster/SyncToaster.tsx";
-import { Toaster } from "../toaster/Toaster.tsx";
+import { SyncToaster, Toaster } from "../toaster/index.ts";
 
 export function AppProviders({ children }: { children: ReactNode }) {
   return (

@@ -1,10 +1,10 @@
-import { Inbox, Search, X } from "lucide-react";
+﻿import { Inbox, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, type ApiError } from "../../../../shared/api/index.ts";
-import { EmptyState, SectionSkeleton } from "../../../../shared/ui/Skeletons.tsx";
-import { formatDateTimeShort, toLocalDate } from "../../../../shared/lib/dates.ts";
+import { EmptyState, SectionSkeleton } from "../../../../shared/ui/index.ts";
+import { formatDateTimeShort, toLocalDate } from "../../../../shared/lib/index.ts";
 import { useI18n } from "../../../../shared/i18n/index.ts";
 import type {
     AdminTicketPage,
@@ -13,6 +13,7 @@ import type {
 } from "../../../../shared/types/index.ts";
 import type { I18nKey } from "../../../../shared/i18n/index.ts";
 import { STATUS_CLASS, STATUS_LABEL } from "../../../../entities/feedback/index.ts";
+import { AdminPagination } from "./AdminPagination.tsx";
 
 const STATUSES: (FeedbackStatus | "")[] = [
     "",
@@ -96,7 +97,7 @@ export function AdminFeedback() {
                 </div>
                 <div className="page-header-actions">
                     <Link to="/admin" className="back-link">
-                        ← {t("admin.backToAdmin")}
+                        в†ђ {t("admin.backToAdmin")}
                     </Link>
                 </div>
             </div>
@@ -217,13 +218,13 @@ export function AdminFeedback() {
 
               This exact block used to appear TWICE in this file under the same
               `page.items.length > 0` condition, so every ticket was painted as
-              two identical rows that both re-rendered together — which is what
+              two identical rows that both re-rendered together вЂ” which is what
               an administrator saw as "two copies that update in parallel". It
               happened only on this tab because `AdminDashboard.tsx` has one
               such block, and the duplication was in the markup, not in the
               request: the server paged once and both copies read the same page.
 
-              Do not add a second render of the list above the error banner —
+              Do not add a second render of the list above the error banner вЂ”
               `AdminFeedback.test.tsx` pins the row count per ticket.
             */}
             {page !== null && page.items.length > 0 ? (
@@ -260,7 +261,7 @@ export function AdminFeedback() {
                                             {t("admin.reporter")}:{" "}
                                             {ticket.user_name ??
                                                 ticket.user_email ??
-                                                "—"}
+                                                "вЂ”"}
                                         </span>
                                         <span>
                                             {formatDateTimeShort(
@@ -276,6 +277,7 @@ export function AdminFeedback() {
                         <AdminPagination
                             offset={offset}
                             total={page.total}
+                            pageSize={PAGE_SIZE}
                             onChange={setOffset}
                         />
                     ) : null}
@@ -285,37 +287,3 @@ export function AdminFeedback() {
     );
 }
 
-/** Previous/next over a server-paged list; the total comes with the page. */
-function AdminPagination({
-    offset,
-    total,
-    onChange,
-}: {
-    offset: number;
-    total: number;
-    onChange: (offset: number) => void;
-}) {
-    return (
-        <div className="admin-pagination">
-            <button
-                type="button"
-                className="button"
-                disabled={offset === 0}
-                onClick={() => onChange(Math.max(0, offset - PAGE_SIZE))}
-            >
-                ←
-            </button>
-            <span className="updated-label">
-                {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} / {total}
-            </span>
-            <button
-                type="button"
-                className="button"
-                disabled={offset + PAGE_SIZE >= total}
-                onClick={() => onChange(offset + PAGE_SIZE)}
-            >
-                →
-            </button>
-        </div>
-    );
-}

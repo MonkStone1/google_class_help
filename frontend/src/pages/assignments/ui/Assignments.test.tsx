@@ -12,21 +12,33 @@ const useSettings = vi.fn();
 
 // A real SettingsProvider owns its own state, so the page is driven through a
 // spy on `useSettings` to observe what the filter writes back (ADR-0006).
-vi.mock("../../../shared/settings/SettingsProvider.tsx", async () => {
+vi.mock("../../../shared/settings/index.ts", async () => {
  const actual = await vi.importActual<
-  typeof import("../../../shared/settings/SettingsProvider.tsx")
- >("../../../shared/settings/SettingsProvider.tsx");
+  typeof import("../../../shared/settings/index.ts")
+ >("../../../shared/settings/index.ts");
  return { ...actual, useSettings: () => useSettings() };
 });
 
 const useSettingsMock = useSettings;
 
-vi.mock("../../../features/sync/index.ts", () => ({
- useSync: () => useSync(),
-}));
-vi.mock("../../../entities/course/index.ts", () => ({
- useCourses: () => useCourses(),
-}));
+vi.mock("../../../features/sync/index.ts", async () => {
+  const actual = await vi.importActual<typeof import("../../../features/sync/index.ts")>(
+    "../../../features/sync/index.ts",
+  );
+  return {
+    ...actual,
+   useSync: () => useSync(),
+  };
+});
+vi.mock("../../../entities/course/index.ts", async () => {
+  const actual = await vi.importActual<typeof import("../../../entities/course/index.ts")>(
+    "../../../entities/course/index.ts",
+  );
+  return {
+    ...actual,
+   useCourses: () => useCourses(),
+  };
+});
 
 function makeCourse(overrides: Partial<Course> = {}): Course {
  return {

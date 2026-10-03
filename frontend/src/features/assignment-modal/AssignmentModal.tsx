@@ -1,10 +1,10 @@
 import { ExternalLink, X } from "lucide-react";
 
-import { formatDate, formatTime, parseDue } from "../../shared/lib/dates.ts";
+import { formatDate, formatTime, parseDue } from "../../shared/lib/index.ts";
 import type { I18nKey } from "../../shared/i18n/index.ts";
 import { useI18n } from "../../shared/i18n/index.ts";
 import type { Assignment } from "../../shared/types/index.ts";
-import { GradeBadge, PriorityBadge, StatusBadge } from "../../entities/assignment/ui/Badges.tsx";
+import { GradeBadge, PriorityBadge, StatusBadge } from "../../entities/assignment/index.ts";
 
 type Props = {
   assignment: Assignment | null;

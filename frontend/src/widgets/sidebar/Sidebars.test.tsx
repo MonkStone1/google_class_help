@@ -2,7 +2,7 @@ import { render } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SettingsProvider } from "../../shared/settings/SettingsProvider.tsx";
+import { SettingsProvider } from "../../shared/settings/index.ts";
 import type { AuthStatus } from "../../shared/types/index.ts";
 import { AdminSidebar } from "./AdminSidebar.tsx";
 import { Sidebar } from "./Sidebar.tsx";

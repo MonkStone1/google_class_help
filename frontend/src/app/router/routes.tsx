@@ -15,24 +15,24 @@
 import type { ReactNode } from "react";
 
 import { RequireAdmin, RequireSuperAdmin } from "./guards.tsx";
-import { AdminAdmins } from "../../pages/admin/admins/ui/AdminAdmins.tsx";
-import { AdminDashboard } from "../../pages/admin/dashboard/ui/AdminDashboard.tsx";
-import { AdminFeedback } from "../../pages/admin/feedback/ui/AdminFeedback.tsx";
-import { AdminFeedbackTicket } from "../../pages/admin/ticket/ui/AdminFeedbackTicket.tsx";
-import { AssignmentDetail } from "../../pages/assignment/ui/AssignmentDetail.tsx";
-import { Assignments } from "../../pages/assignments/ui/Assignments.tsx";
-import { CalendarPage } from "../../pages/calendar/ui/CalendarPage.tsx";
-import { Dashboard } from "../../pages/dashboard/ui/Dashboard.tsx";
-import { FeedbackHome } from "../../pages/feedback/home/ui/FeedbackHome.tsx";
-import { FeedbackNew } from "../../pages/feedback/new/ui/FeedbackNew.tsx";
-import { FeedbackTicket } from "../../pages/feedback/ticket/ui/FeedbackTicket.tsx";
-import { FeedbackTickets } from "../../pages/feedback/tickets/ui/FeedbackTickets.tsx";
-import { Grades } from "../../pages/grades/ui/Grades.tsx";
-import { Settings } from "../../pages/settings/ui/Settings.tsx";
-import { StudentGrades } from "../../pages/student-grades/ui/StudentGrades.tsx";
-import { SubjectDetail } from "../../pages/SubjectDetail.tsx";
-import { Subjects } from "../../pages/subjects/ui/Subjects.tsx";
-import { TeacherGrades } from "../../pages/teacher-grades/ui/TeacherGrades.tsx";
+import { AdminAdmins } from "../../pages/admin/admins/index.ts";
+import { AdminDashboard } from "../../pages/admin/dashboard/index.ts";
+import { AdminFeedback } from "../../pages/admin/feedback/index.ts";
+import { AdminFeedbackTicket } from "../../pages/admin/ticket/index.ts";
+import { AssignmentDetail } from "../../pages/assignment/index.ts";
+import { Assignments } from "../../pages/assignments/index.ts";
+import { CalendarPage } from "../../pages/calendar/index.ts";
+import { Dashboard } from "../../pages/dashboard/index.ts";
+import { FeedbackHome } from "../../pages/feedback/home/index.ts";
+import { FeedbackNew } from "../../pages/feedback/new/index.ts";
+import { FeedbackTicket } from "../../pages/feedback/ticket/index.ts";
+import { FeedbackTickets } from "../../pages/feedback/tickets/index.ts";
+import { Grades } from "../../pages/grades/index.ts";
+import { Settings } from "../../pages/settings/index.ts";
+import { StudentGrades } from "../../pages/student-grades/index.ts";
+import { SubjectDetail } from "../../pages/subject/index.ts";
+import { Subjects } from "../../pages/subjects/index.ts";
+import { TeacherGrades } from "../../pages/teacher-grades/index.ts";
 
 /** Who must be signed in for a route to render. */
 export type Guard = "none" | "admin" | "super-admin";

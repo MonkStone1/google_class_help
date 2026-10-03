@@ -56,32 +56,28 @@ import {
   listSourceFiles,
   readAllCss,
   repoText,
+  sliceRootOf,
   testFiles,
   type ImportRef,
   type Layer,
 } from "./structureHelpers.ts";
 
 /**
- * False until the flat folders are gone. Flipped in stage 10 of the plan; see
- * the module doc comment for why the checks start soft.
+ * True since the flat folders are gone. The flag stays in the file rather than
+ * disappearing with the layout: it records that the checks below were green
+ * BEFORE the code moved, which is the only reason turning them on is safe.
  */
-const RESTRUCTURE_STARTED = false;
+const RESTRUCTURE_STARTED = true;
 
-/** Checks that only make sense once the layout exists, in reporting order. */
-const PENDING: readonly string[] = [
-  "#1 line budgets",
-  "#2 shared/lib is React-free",
-  "#3 shared does not import upward",
-  "#4 entities knows no transport or router",
-  "#5 features do not import widgets/pages/app",
-  "#6 widgets do not import pages/app",
-  "#7 pages do not import app",
-  "#8 app is imported only by its own entry point",
-  "#9 slices do not import their neighbours",
-  "#10 only index.ts is reachable from outside",
-  "#11 no utils.ts/helpers.ts/common.ts",
-  "#12 page.css is wired through app/styles/index.css",
-];
+/**
+ * Checks that only make sense once the layout exists.
+ *
+ * Empty on purpose. While it is not, `it.runIf(false)` skips the check below
+ * AND a non-empty entry here keeps the reason visible; a check that is quietly
+ * disabled looks exactly like one that is passing, which is how a plan silently
+ * stops being executed.
+ */
+const PENDING: readonly string[] = [];
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -290,20 +286,27 @@ describe("structure: public API", () => {
       // The rule that pays for the whole layering: with it, a slice's internals
       // can change without touching its consumers. Without it, `types.ts` had
       // 57 importers and could not be split at all.
+      //
+      // What counts as a slice is the LAYER plus its folder — `entities/feedback`
+      // for everything in `entities/feedback/ui/` too. Otherwise the rule would
+      // flag the barrel's own re-exports, which are the thing it asks for.
       const offenders = format(
         allImports().filter((ref) => {
           const to = ref.resolved;
           if (!to) return false;
-          const toSlice = to.slice(0, Math.max(0, to.lastIndexOf("/")));
-          const fromSlice = ref.from.slice(
-            0,
-            Math.max(0, ref.from.lastIndexOf("/")),
-          );
-          // Inside one slice, an internal import is the normal way to reach a
-          // sibling module — the rule is about crossing OUT of a slice.
-          if (toSlice === fromSlice) return false;
-          if (!toSlice || to.endsWith("/index.ts")) return false;
-          return LAYERS.includes(toSlice.split("/")[0] as Layer);
+          const toSlice = sliceRootOf(to);
+          const fromSlice = sliceRootOf(ref.from);
+          // Inside one slice, reaching a sibling module is the normal way to
+          // work: the rule is about crossing OUT of a slice.
+          if (!toSlice || toSlice === fromSlice) return false;
+          if (to.endsWith("/index.ts")) return false;
+          // The GENERATED schema is not part of `shared/api`'s hand-written API:
+          // `shared/types/wire.ts` is the single place allowed to know it exists
+          // (ADR-0005), and a `.d.ts` has no public surface to honour anyway.
+          if (to.endsWith(".d.ts")) return false;
+          // A loose file directly under a layer (`shared/types/index.ts` has a
+          // slice, but nothing below `src/` does) has no public API to honour.
+          return fromSlice !== null;
         }),
       );
       expect(offenders).toBe("");

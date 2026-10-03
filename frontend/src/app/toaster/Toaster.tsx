@@ -1,7 +1,7 @@
 import { AlertTriangle, CheckCircle2, Info, KeyRound } from "lucide-react";
 import { Toaster as SonnerToaster } from "sonner";
 
-import { useSettings } from "../../shared/settings/SettingsProvider.tsx";
+import { useSettings } from "../../shared/settings/index.ts";
 import { useI18n } from "../../shared/i18n/index.ts";
 
 /**

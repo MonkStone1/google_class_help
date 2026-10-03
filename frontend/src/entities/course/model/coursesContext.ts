@@ -10,7 +10,7 @@
 import { createContext } from "react";
 
 import type { Assignment, Course } from "../../../shared/types/index.ts";
-import { useContextSafe } from "../../user/model/authContext.ts";
+import { useContextSafe } from "../../user/index.ts";
 
 /**
  * The locally cached Classroom slice. Changes on a sync or a manual refresh.

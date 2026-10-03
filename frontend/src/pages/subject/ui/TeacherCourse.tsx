@@ -8,11 +8,11 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api } from "../../../shared/api/index.ts";
-import { AssignmentCard } from "../../../entities/assignment/ui/AssignmentCard.tsx";
-import { EmptyState, SectionSkeleton } from "../../../shared/ui/Skeletons.tsx";
-import { useSettings } from "../../../shared/settings/SettingsProvider.tsx";
+import { AssignmentCard } from "../../../entities/assignment/index.ts";
+import { EmptyState, SectionSkeleton } from "../../../shared/ui/index.ts";
+import { useSettings } from "../../../shared/settings/index.ts";
 import { useI18n } from "../../../shared/i18n/index.ts";
-import { useResource } from "../../../shared/hooks/useResource.ts";
+import { useResource } from "../../../shared/hooks/index.ts";
 import type { Assignment, Course, StudentGradeRow } from "../../../shared/types/index.ts";
 
 type Tab = "assignments" | "students" | "grades";

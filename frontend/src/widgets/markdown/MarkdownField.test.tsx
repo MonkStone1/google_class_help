@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 
-import { SettingsProvider } from "../../shared/settings/SettingsProvider.tsx";
+import { SettingsProvider } from "../../shared/settings/index.ts";
 import { MarkdownField } from "./MarkdownField.tsx";
 
 function renderField(value: string) {

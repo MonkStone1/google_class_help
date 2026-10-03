@@ -31,8 +31,8 @@ import {
     canonicalStatuses,
     DUE_FILTER_KEYS,
     STATUS_FILTER_KEYS,
-} from "../../shared/lib/url.ts";
-import { createdTime, parseDue } from "../../shared/lib/dates.ts";
+} from "../../shared/lib/index.ts";
+import { createdTime, parseDue } from "../../shared/lib/index.ts";
 
 export { STATUS_FILTER_KEYS, DUE_FILTER_KEYS, canonicalDue, canonicalStatuses };
 

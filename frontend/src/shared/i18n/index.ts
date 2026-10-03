@@ -10,12 +10,12 @@
  * for `I18nKey`, so a missing translation fails the build (ADR-0011).
  */
 
-import { LOCALE } from "../lib/dates.ts";
+import { LOCALE } from "../lib/index.ts";
 import { useSettings } from "../settings/index.ts";
-import { en } from "./locales/en.ts";
-import { ru } from "./locales/ru.ts";
-import { uk } from "./locales/uk.ts";
-import type { I18nKey } from "./locales/en.ts";
+import { en } from "./locales/en/index.ts";
+import { ru } from "./locales/ru/index.ts";
+import { uk } from "./locales/uk/index.ts";
+import type { I18nKey } from "./locales/en/index.ts";
 import type { Language } from "../types/index.ts";
 
 export type { I18nKey };

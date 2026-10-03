@@ -9,14 +9,14 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { AssignmentCard } from "../../../entities/assignment/ui/AssignmentCard.tsx";
-import { StatCard } from "../../../shared/ui/StatCard.tsx";
-import { EmptyState, SectionSkeleton } from "../../../shared/ui/Skeletons.tsx";
-import { AssignmentModal } from "../../../features/assignment-modal/AssignmentModal.tsx";
+import { AssignmentCard } from "../../../entities/assignment/index.ts";
+import { StatCard } from "../../../shared/ui/index.ts";
+import { EmptyState, SectionSkeleton } from "../../../shared/ui/index.ts";
+import { AssignmentModal } from "../../../features/assignment-modal/index.ts";
 import { useCourses } from "../../../entities/course/index.ts";
 import { useSync } from "../../../features/sync/index.ts";
-import { useSettings } from "../../../shared/settings/SettingsProvider.tsx";
-import { parseDue, startOfDay } from "../../../shared/lib/dates.ts";
+import { useSettings } from "../../../shared/settings/index.ts";
+import { parseDue, startOfDay } from "../../../shared/lib/index.ts";
 import { useI18n } from "../../../shared/i18n/index.ts";
 import type { Assignment } from "../../../shared/types/index.ts";
 

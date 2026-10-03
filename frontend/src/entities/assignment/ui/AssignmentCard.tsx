@@ -2,13 +2,13 @@ import { CalendarDays, ExternalLink, Paperclip } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { useI18n } from "../../../shared/i18n/index.ts";
-import { cn } from "../../../shared/lib/cn.ts";
+import { cn } from "../../../shared/lib/index.ts";
 import {
   formatDateTimeShort,
   formatTime,
   parseDue,
   relativeDayLabel,
-} from "../../../shared/lib/dates.ts";
+} from "../../../shared/lib/index.ts";
 import type { Assignment } from "../../../shared/types/index.ts";
 import { GradeBadge, PriorityBadge, StatusBadge } from "./Badges.tsx";
 

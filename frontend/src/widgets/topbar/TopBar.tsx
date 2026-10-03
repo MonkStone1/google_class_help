@@ -20,14 +20,17 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../entities/user/index.ts";
 import { useSync } from "../../features/sync/index.ts";
 import { useCourses } from "../../entities/course/index.ts";
-import { useSettings } from "../../shared/settings/SettingsProvider.tsx";
-import { parseDue, toLocalDate } from "../../shared/lib/dates.ts";
+import { useSettings } from "../../shared/settings/index.ts";
+import { toLocalDate } from "../../shared/lib/index.ts";
 import { useI18n } from "../../shared/i18n/index.ts";
-import { cn } from "../../shared/lib/cn.ts";
-import { searchAll } from "../../features/global-search/search.ts";
-import type { SearchHit } from "../../features/global-search/search.ts";
-import type { Assignment } from "../../shared/types/index.ts";
-import { NotificationCenter } from "../../features/notifications/NotificationCenter.tsx";
+import { cn } from "../../shared/lib/index.ts";
+import { searchAll } from "../../features/global-search/index.ts";
+import type { SearchHit } from "../../features/global-search/index.ts";
+import {
+  NotificationCenter,
+  buildNotifications,
+  notificationKey,
+} from "../../features/notifications/index.ts";
 import { SearchResults } from "./SearchResults.tsx";
 
 function SyncTime({ lastSync }: { lastSync: string | null }) {
@@ -298,41 +301,4 @@ export function TopBar() {
       ) : null}
     </header>
   );
-}
-
-export type NotificationItem = {
-  assignment: Assignment;
-  kind: "overdue" | "today" | "tomorrow";
-};
-
-/**
- * Dismissal key: kind + assignment id, so hiding a reminder is scoped to one
- * category — the same assignment reappears when it moves to another category
- * (e.g. "due tomorrow" → "due today").
- */
-function notificationKey(item: NotificationItem): string {
-  return `${item.kind}:${item.assignment.id}`;
-}
-
-export function buildNotifications(
-  assignments: Assignment[],
-): NotificationItem[] {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
-  const items: NotificationItem[] = [];
-  for (const assignment of assignments) {
-    if (assignment.submitted || !assignment.due_at) {
-      continue;
-    }
-    const due = parseDue(assignment.due_at);
-    if (due && due < today) {
-      items.push({ assignment, kind: "overdue" });
-    } else if (due && due.toDateString() === today.toDateString()) {
-      items.push({ assignment, kind: "today" });
-    } else if (due && due.toDateString() === tomorrow.toDateString()) {
-      items.push({ assignment, kind: "tomorrow" });
-    }
-  }
-  return items;
 }

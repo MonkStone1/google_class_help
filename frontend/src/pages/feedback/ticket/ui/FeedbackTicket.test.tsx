@@ -2,14 +2,20 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SettingsProvider } from "../../../../shared/settings/SettingsProvider.tsx";
+import { SettingsProvider } from "../../../../shared/settings/index.ts";
 import { DEFAULT_SETTINGS } from "../../../../shared/types/index.ts";
 import type { FeedbackTicketDetail, TicketMessage } from "../../../../shared/types/index.ts";
 import { FeedbackTicket } from "./FeedbackTicket.tsx";
 
-vi.mock("sonner", () => ({
-    toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
-}));
+vi.mock("sonner", async () => {
+  const actual = await vi.importActual<typeof import("sonner")>(
+    "sonner",
+  );
+  return {
+    ...actual,
+      toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
+  };
+});
 
 /** `vi.hoisted` because `vi.mock` is hoisted above every top-level statement. */
 const api = vi.hoisted(() => ({

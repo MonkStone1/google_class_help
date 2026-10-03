@@ -1,12 +1,12 @@
 import { ChevronDown, ChevronRight, GraduationCap } from "lucide-react";
 import { useMemo } from "react";
 
-import { EmptyState, SectionSkeleton } from "../../../shared/ui/Skeletons.tsx";
-import { GradeHistorySparkline } from "../../../entities/course/ui/SubjectCards.tsx";
+import { EmptyState, SectionSkeleton } from "../../../shared/ui/index.ts";
+import { GradeHistorySparkline } from "../../../entities/course/index.ts";
 import { useCourses } from "../../../entities/course/index.ts";
 import { useSync } from "../../../features/sync/index.ts";
-import { useSettings } from "../../../shared/settings/SettingsProvider.tsx";
-import { parseDue } from "../../../shared/lib/dates.ts";
+import { useSettings } from "../../../shared/settings/index.ts";
+import { parseDue } from "../../../shared/lib/index.ts";
 import { useI18n } from "../../../shared/i18n/index.ts";
 import type { CourseGrades } from "../../../shared/types/index.ts";
 

@@ -3,7 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AdminAdmins } from "./AdminAdmins.tsx";
-import { SettingsProvider } from "../../../../shared/settings/SettingsProvider.tsx";
+import { SettingsProvider } from "../../../../shared/settings/index.ts";
 import type { Administrator } from "../../../../shared/types/index.ts";
 
 /**

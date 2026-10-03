@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 
-import { cn } from "../../shared/lib/cn.ts";
+import { cn } from "../../shared/lib/index.ts";
 import type { I18nKey } from "../../shared/i18n/index.ts";
 
 /**

@@ -13,7 +13,7 @@ import {
   normalizeCourseFilter,
   normalizeDueFilter,
   normalizeStatusFilter,
-} from "../lib/url.ts";
+} from "../lib/index.ts";
 import {
   DEFAULT_SETTINGS,
   type AppSettings,
@@ -22,7 +22,7 @@ import {
   type Language,
   type ThemeMode,
 } from "../../shared/types/index.ts";
-import { LOCALE, detectLanguage, setLocale } from "../../shared/lib/dates.ts";
+import { LOCALE, detectLanguage, setLocale } from "../lib/index.ts";
 
 const STORAGE_KEY = "gc-settings";
 

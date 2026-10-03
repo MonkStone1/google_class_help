@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 import { useSync } from "../../features/sync/index.ts";
-import { toLocalDate } from "../../shared/lib/dates.ts";
+import { toLocalDate } from "../../shared/lib/index.ts";
 import { useI18n } from "../../shared/i18n/index.ts";
 
 /**

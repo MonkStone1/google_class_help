@@ -3,9 +3,9 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, type ApiError } from "../../../../shared/api/index.ts";
-import { StatCard } from "../../../../shared/ui/StatCard.tsx";
-import { EmptyState, SectionSkeleton } from "../../../../shared/ui/Skeletons.tsx";
-import { formatDateTimeShort, toLocalDate } from "../../../../shared/lib/dates.ts";
+import { StatCard } from "../../../../shared/ui/index.ts";
+import { EmptyState, SectionSkeleton } from "../../../../shared/ui/index.ts";
+import { formatDateTimeShort, toLocalDate } from "../../../../shared/lib/index.ts";
 import { useI18n } from "../../../../shared/i18n/index.ts";
 import type { AdminTicket, FeedbackStats } from "../../../../shared/types/index.ts";
 import { STATUS_CLASS, STATUS_LABEL } from "../../../../entities/feedback/index.ts";

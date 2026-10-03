@@ -12,12 +12,12 @@ import {
   Users,
 } from "lucide-react";
 import { useEffect, useRef } from "react";
-import type { ReactNode } from "react";
 
 import { useAuth } from "../../entities/user/index.ts";
-import { useSettings } from "../../shared/settings/SettingsProvider.tsx";
+import { useSettings } from "../../shared/settings/index.ts";
 import { LANGUAGE_OPTIONS, useI18n } from "../../shared/i18n/index.ts";
 import { useSignInChallenge } from "./useSignInChallenge.ts";
+import { DataPoint, Feature, Step } from "./sections.tsx";
 
 /**
  * The public landing page of the hosted service (ADR-0029).
@@ -271,58 +271,5 @@ export function Landing() {
         </div>
       </footer>
     </div>
-  );
-}
-
-function Feature({
-  icon,
-  title,
-  text,
-}: {
-  icon: ReactNode;
-  title: string;
-  text: string;
-}) {
-  return (
-    <article className="landing-feature">
-      <div className="landing-feature-icon">{icon}</div>
-      <h3>{title}</h3>
-      <p>{text}</p>
-    </article>
-  );
-}
-
-function Step({
-  step,
-  title,
-  text,
-}: {
-  step: number;
-  title: string;
-  text: string;
-}) {
-  return (
-    <li className="landing-step">
-      <span className="landing-step-number">{step}</span>
-      <div>
-        <h3>{title}</h3>
-        <p>{text}</p>
-      </div>
-    </li>
-  );
-}
-
-function DataPoint({
-  icon,
-  children,
-}: {
-  icon: ReactNode;
-  children: string;
-}) {
-  return (
-    <li className="landing-data-point">
-      <span className="landing-data-icon">{icon}</span>
-      <span>{children}</span>
-    </li>
   );
 }

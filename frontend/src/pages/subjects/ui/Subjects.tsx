@@ -1,7 +1,7 @@
 import { BookOpen } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import { EmptyState, SectionSkeleton } from "../../../shared/ui/Skeletons.tsx";
+import { EmptyState, SectionSkeleton } from "../../../shared/ui/index.ts";
 import { SubjectCard } from "../../../entities/course/index.ts";
 import { useCourses } from "../../../entities/course/index.ts";
 import { useSync } from "../../../features/sync/index.ts";

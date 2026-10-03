@@ -11,7 +11,7 @@ import { NavLink } from "react-router-dom";
 
 import { useSync } from "../../features/sync/index.ts";
 import { useCourses } from "../../entities/course/index.ts";
-import { useSettings } from "../../shared/settings/SettingsProvider.tsx";
+import { useSettings } from "../../shared/settings/index.ts";
 import { useI18n } from "../../shared/i18n/index.ts";
 import { SidebarNav, type NavItem } from "./SidebarNav.tsx";
 
