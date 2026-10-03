@@ -9,10 +9,10 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { AssignmentCard } from "../components/AssignmentCard.tsx";
+import { AssignmentCard } from "../entities/assignment/ui/AssignmentCard.tsx";
 import { StatCard } from "../shared/ui/StatCard.tsx";
 import { EmptyState, SectionSkeleton } from "../shared/ui/Skeletons.tsx";
-import { AssignmentModal } from "../components/AssignmentModal.tsx";
+import { AssignmentModal } from "../features/assignment-modal/AssignmentModal.tsx";
 import { useCourses } from "../entities/course/index.ts";
 import { useSync } from "../features/sync/index.ts";
 import { useSettings } from "../shared/settings/SettingsProvider.tsx";

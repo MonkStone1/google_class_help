@@ -2,7 +2,7 @@ import { formatDateTimeShort, toLocalDate } from "../../../shared/lib/dates.ts";
 import { useI18n } from "../../../shared/i18n/index.ts";
 import type { TicketMessage } from "../../../shared/types/index.ts";
 import { AttachmentList } from "./AttachmentList.tsx";
-import { Markdown } from "../../../components/Markdown.tsx";
+import { Markdown } from "../../../widgets/markdown/Markdown.tsx";
 
 type Props = {
     message: TicketMessage;

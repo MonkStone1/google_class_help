@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { AssignmentModal } from "../components/AssignmentModal.tsx";
+import { AssignmentModal } from "../features/assignment-modal/AssignmentModal.tsx";
 import { EmptyState } from "../shared/ui/Skeletons.tsx";
 import { useCourses } from "../entities/course/index.ts";
 import { useSync } from "../features/sync/index.ts";

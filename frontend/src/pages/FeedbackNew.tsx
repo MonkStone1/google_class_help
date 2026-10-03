@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import { api, type ApiError } from "../shared/api/index.ts";
-import { MarkdownField } from "../components/MarkdownField.tsx";
+import { MarkdownField } from "../widgets/markdown/MarkdownField.tsx";
 import { useI18n } from "../shared/i18n/index.ts";
 import type { I18nKey } from "../shared/i18n/index.ts";
 import type { FeedbackCategory } from "../shared/types/index.ts";

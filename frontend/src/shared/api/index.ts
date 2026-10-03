@@ -8,7 +8,7 @@
  * grows logic becomes the god object this restructure was meant to remove
  * (ADR-0040 §3.3).
  *
- * `vi.mock("../shared/api/index.ts")` replaces THIS module: tests mock the
+ * `vi.mock("../../entities/user/index.ts")` replaces THIS module: tests mock the
  * facade, not the eight groups, so a new endpoint does not mean a new mock.
  */
 

@@ -2,10 +2,10 @@ import { ArrowLeft } from "lucide-react";
 import { useMemo, useState, useEffect } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
-import { AssignmentCard } from "../components/AssignmentCard.tsx";
-import { AssignmentModal } from "../components/AssignmentModal.tsx";
+import { AssignmentCard } from "../entities/assignment/ui/AssignmentCard.tsx";
+import { AssignmentModal } from "../features/assignment-modal/AssignmentModal.tsx";
 import { EmptyState, SectionSkeleton } from "../shared/ui/Skeletons.tsx";
-import { TeacherCourse } from "../components/TeacherCourse.tsx";
+import { TeacherCourse } from "./subject/ui/TeacherCourse.tsx";
 import { useCourses } from "../entities/course/index.ts";
 import { useSync } from "../features/sync/index.ts";
 import { useSettings } from "../shared/settings/SettingsProvider.tsx";

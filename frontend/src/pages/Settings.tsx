@@ -11,7 +11,7 @@ import { useI18n, LANGUAGE_OPTIONS } from "../shared/i18n/index.ts";
 import type { I18nKey } from "../shared/i18n/index.ts";
 import type { AppSettings, ThemeMode } from "../shared/types/index.ts";
 import { CollapsibleCard } from "../shared/ui/CollapsibleCard.tsx";
-import { DonateCards } from "../components/DonateCards.tsx";
+import { DonateCards } from "../features/donate/DonateCards.tsx";
 
 const THEME_OPTIONS: Array<{ mode: ThemeMode; labelKey: I18nKey }> = [
   { mode: "light", labelKey: "settings.light" },

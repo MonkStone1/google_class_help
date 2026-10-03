@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import { api, type ApiError } from "../shared/api/index.ts";
 import { ConfirmDialog } from "../shared/ui/ConfirmDialog.tsx";
-import { MarkdownField } from "../components/MarkdownField.tsx";
+import { MarkdownField } from "../widgets/markdown/MarkdownField.tsx";
 import { SectionSkeleton } from "../shared/ui/Skeletons.tsx";
 import { TicketConversation } from "../entities/feedback/ui/TicketMessage.tsx";
 import { useI18n } from "../shared/i18n/index.ts";

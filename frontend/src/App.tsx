@@ -7,16 +7,16 @@ import {
     useSearchParams,
 } from "react-router-dom";
 
-import { AdminSidebar } from "./components/AdminSidebar.tsx";
-import { Sidebar } from "./components/Sidebar.tsx";
-import { TopBar } from "./components/TopBar.tsx";
-import { BootSplash } from "./components/BootSplash.tsx";
-import { Landing } from "./components/Landing.tsx";
-import { RequireAdmin } from "./components/RequireAdmin.tsx";
-import { RequireSuperAdmin } from "./components/RequireSuperAdmin.tsx";
-import { SignIn } from "./components/SignIn.tsx";
-import { SyncToaster } from "./components/SyncToaster.tsx";
-import { Toaster } from "./components/Toaster.tsx";
+import { AdminSidebar } from "./widgets/sidebar/AdminSidebar.tsx";
+import { Sidebar } from "./widgets/sidebar/Sidebar.tsx";
+import { TopBar } from "./widgets/topbar/TopBar.tsx";
+import { BootSplash } from "./app/boot/BootSplash.tsx";
+import { Landing } from "./widgets/landing/Landing.tsx";
+import { RequireAdmin } from "./app/router/RequireAdmin.tsx";
+import { RequireSuperAdmin } from "./app/router/RequireSuperAdmin.tsx";
+import { SignIn } from "./widgets/landing/SignIn.tsx";
+import { SyncToaster } from "./app/toaster/SyncToaster.tsx";
+import { Toaster } from "./app/toaster/Toaster.tsx";
 import { useAuth } from "./entities/user/index.ts";
 import { useSync } from "./features/sync/index.ts";
 import {

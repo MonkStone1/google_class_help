@@ -2,8 +2,8 @@ import { ListChecks, SlidersHorizontal, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import { AssignmentCard } from "../components/AssignmentCard.tsx";
-import { AssignmentModal } from "../components/AssignmentModal.tsx";
+import { AssignmentCard } from "../entities/assignment/ui/AssignmentCard.tsx";
+import { AssignmentModal } from "../features/assignment-modal/AssignmentModal.tsx";
 import { FilterPanel } from "../features/assignments-filter/ui/FilterPanel.tsx";
 import { EmptyState, SectionSkeleton } from "../shared/ui/Skeletons.tsx";
 import { useCourses } from "../entities/course/index.ts";
