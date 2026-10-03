@@ -1,3 +1,17 @@
+# pyright: reportAttributeAccessIssue=false
+# This module is the Nuitka entry point of the WINDOWS executable (ADR-0016):
+# it drives a named mutex, a tray icon and a message box through
+# `ctypes.windll` / `ctypes.WinDLL` / `ctypes.WINFUNCTYPE`. Those attributes
+# exist only in the Windows typeshed, so the checker reports eight
+# `reportAttributeAccessIssue` on any runner that is not Windows — CI is
+# ubuntu — while the same command is green on a developer's Windows machine.
+# That is a platform mismatch, not a defect, and the eight calls are exactly
+# what this file exists to make.
+#
+# Only THIS rule is silenced, and only here. Every other check stays active on
+# this file — including the one that matters most for a Nuitka entry point:
+# that the names it imports from the backend are spelled correctly and live in
+# the modules it says they do.
 """Production launcher — entry point of GoogleClassHelp.exe.
 
 Responsibilities (see docs/prompt/GoogleClassHelp_Nuitka_Production_Prompt.md):

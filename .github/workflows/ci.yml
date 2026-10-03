@@ -65,7 +65,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r backend/requirements.txt
+      # Both requirement files, not just the runtime one: this job analyses
+      # `tests/`, and without pytest installed the checker cannot resolve the
+      # `import pytest` at the top of every test module. That surfaced as four
+      # `reportMissingImports` and, worse, as four `reportPossiblyUnbound`
+      # inside a test — `pytest.fail` is unknown, so the checker cannot see that
+      # it never returns and concludes a variable assigned above it may be
+      # unbound. The `.venv` the config points at does not exist on a runner, so
+      # the packages must be visible to whichever interpreter the checker picks.
+      - run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt
       # Pyright ships as a Node package, and the frontend job already pins Node,
       # so the checker is invoked through npx rather than pip: two versions of
       # one tool in one repo is how the editor and CI disagree about a file.
