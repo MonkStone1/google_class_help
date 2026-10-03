@@ -181,4 +181,76 @@ describe("Grades collapsible groups", () => {
   expect(controls).toBeTruthy();
   expect(document.getElementById(controls as string)).toBeInTheDocument();
  });
+describe("the grade-trend chart on the grades page", () => {
+  beforeEach(() => {
+    useSync.mockReturnValue({
+      loading: false,
+      status: { average_grade: 90 },
+    });
+    useSettings.mockReturnValue({
+      ...DEFAULT_SETTINGS,
+      collapsedGradeCourses: [],
+      update: vi.fn(),
+    });
+  });
+
+  it("no longer draws the sparkline, and offers the chart instead", () => {
+    // The sparkline was a second, worse way to see the same grades. Removing it
+    // is what makes the button the ONLY way to open the chart.
+    useCourses.mockReturnValue({
+      courses: [makeCourse()],
+      assignments: [
+        makeAssignment({ id: "a1", due_at: "2026-01-12T12:00:00" }),
+        makeAssignment({ id: "a2", due_at: "2026-02-02T12:00:00" }),
+      ],
+    });
+
+    const { container } = renderPage();
+
+    expect(container.querySelector(".grade-sparkline")).toBeNull();
+    expect(container.querySelector(".grade-history")).toBeNull();
+    expect(screen.getByRole("button", { name: "Chart" })).toBeInTheDocument();
+  });
+
+  it("gives every course group a named chart button", () => {
+    useCourses.mockReturnValue({
+      courses: [
+        makeCourse({ id: "c1", name: "Math" }),
+        makeCourse({ id: "c2", name: "Physics" }),
+      ],
+      assignments: [
+        makeAssignment({ id: "a1", course_id: "c1" }),
+        makeAssignment({ id: "a2", course_id: "c2" }),
+      ],
+    });
+
+    renderPage();
+
+    // Two courses, two buttons — each in its own header, next to its average.
+    const buttons = screen.getAllByRole("button", { name: "Chart" });
+    expect(buttons).toHaveLength(2);
+    for (const button of buttons) {
+      expect(button.getAttribute("aria-label")).toBeTruthy();
+    }
+  });
+
+  it("keeps the chart button on a COLLAPSED group, where the summary is", () => {
+    useSettings.mockReturnValue({
+      ...DEFAULT_SETTINGS,
+      collapsedGradeCourses: ["c1"],
+      update: vi.fn(),
+    });
+    useCourses.mockReturnValue({
+      courses: [makeCourse()],
+      assignments: [makeAssignment()],
+    });
+
+    renderPage();
+
+    // A collapsed row still says the course name and the average; hiding the
+    // only way to open the chart would hide the question that row raises.
+    expect(screen.queryByText("HW")).toBeNull();
+    expect(screen.getByRole("button", { name: "Chart" })).toBeInTheDocument();
+  });
+});
 });

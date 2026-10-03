@@ -16,7 +16,6 @@ import { MIN_CHART_POINTS } from "./layout.ts";
 import {
   PERCENT_MAX,
   bandCenter,
-  labelStride,
   niceMax,
   ticksFor,
   yScale,

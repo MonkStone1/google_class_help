@@ -58,6 +58,14 @@
 .grade-group-average {
   flex: none;
 }
+/* The average and the chart button travel together: the button answers "how is
+   this course going", which is the question the average raised. */
+.grade-group-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
 .grade-average {
   font-weight: 650;
   color: var(--success);

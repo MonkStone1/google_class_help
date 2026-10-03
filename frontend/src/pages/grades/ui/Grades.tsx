@@ -2,27 +2,12 @@ import { ChevronDown, ChevronRight, GraduationCap } from "lucide-react";
 import { useMemo } from "react";
 
 import { EmptyState, SectionSkeleton } from "../../../shared/ui/index.ts";
-import { GradeHistorySparkline } from "../../../entities/course/index.ts";
+import { GradeChartButton } from "../../../features/grades-chart/index.ts";
 import { useCourses } from "../../../entities/course/index.ts";
 import { useSync } from "../../../features/sync/index.ts";
 import { useSettings } from "../../../shared/settings/index.ts";
-import { parseDue } from "../../../shared/lib/index.ts";
 import { useI18n } from "../../../shared/i18n/index.ts";
 import type { CourseGrades } from "../../../shared/types/index.ts";
-
-function historyPoints(course: CourseGrades) {
-  return course.items
-    .slice()
-    .sort(
-      (a, b) =>
-        (parseDue(a.due_at)?.getTime() ?? 0) -
-        (parseDue(b.due_at)?.getTime() ?? 0),
-    )
-    .map((item) => ({
-      label: item.title,
-      percent: item.percent ?? 0,
-    }));
-}
 
 export function Grades() {
   const { courses, assignments } = useCourses();
@@ -132,19 +117,30 @@ export function Grades() {
                       </span>
                     </button>
                   </h2>
-                  <span className="grade-group-average">
-                    {group.average === null ? (
-                      <span className="grade-average">{t("grades.noGrades")}</span>
-                    ) : (
-                      <span className="grade-average">
-                        {t("grades.average", { value: group.average })}
-                      </span>
-                    )}
+                  {/* The chart button sits in the header, next to the average it
+                      belongs to, and stays visible when the group is collapsed:
+                      a collapsed row is a summary, and the summary is where a
+                      reader looks for "how is this course going" (ADR-0042). */}
+                  <span className="grade-group-actions">
+                    <span className="grade-group-average">
+                      {group.average === null ? (
+                        <span className="grade-average">{t("grades.noGrades")}</span>
+                      ) : (
+                        <span className="grade-average">
+                          {t("grades.average", { value: group.average })}
+                        </span>
+                      )}
+                    </span>
+                    <GradeChartButton
+                      courseId={group.course_id}
+                      courseName={group.course_name}
+                      average={group.average}
+                      items={group.items}
+                    />
                   </span>
                 </div>
                 {collapsed ? null : (
                   <div id={bodyId}>
-                    <GradeHistorySparkline percents={historyPoints(group)} />
                     <ul className="grade-list">
                       {group.items.map((item) => (
                         <li key={item.assignment_id} className="grade-row">

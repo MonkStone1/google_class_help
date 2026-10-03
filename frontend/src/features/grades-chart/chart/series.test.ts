@@ -138,12 +138,13 @@ describe("what one render of the chart is built from", () => {
       source([item({ assignment_id: "a" }), item({ assignment_id: "b" })]),
       t,
     );
+    if (!series) throw new Error("two items must produce a series");
 
-    expect(series?.averageY).toBe(yScale(87, PERCENT_MAX));
-    // 87 % is 13 % of the way down from the top, and above the midpoint:
-    // a reader must be able to see the average sits high on the percent axis.
-    expect(series?.averageY).toBeGreaterThan(PLOT_TOP);
-    expect(series?.averageY!).toBeLessThan((PLOT_TOP + PLOT_BOTTOM) / 2);
+    expect(series.averageY).toBe(yScale(87, PERCENT_MAX));
+    // 87 % is 13 % of the way down from the top, and above the midpoint: a
+    // reader must be able to see the average sits high on the percent axis.
+    expect(series.averageY).toBeGreaterThan(PLOT_TOP);
+    expect(series.averageY).toBeLessThan((PLOT_TOP + PLOT_BOTTOM) / 2);
   });
 
   it("returns nothing at all for a course with fewer than two graded works", () => {

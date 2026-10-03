@@ -15,7 +15,9 @@ import type { GradeItem } from "../../../shared/types/index.ts";
  * these assertions, which is the one thing they exist to prevent.
  */
 const t: Translate = (key, vars) => {
-  const raw = en[key] ?? key;
+  // Annotated as `string`: without it `en[key]` keeps its literal union, and a
+  // `reduce` over that union has no single accumulator type to infer.
+  const raw: string = en[key] ?? key;
   if (!vars) return raw;
   return Object.entries(vars).reduce(
     (text, [name, value]) => text.replaceAll(`{${name}}`, String(value)),

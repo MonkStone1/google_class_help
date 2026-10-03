@@ -196,10 +196,12 @@ describe("baseline: stylesheets", () => {
     // selectors. ADR-0041 added the twelve `.export-*` rules of the export
     // dialog, which is why this moved from 469 in the same commit as the CSS.
     // ADR-0042 removed the three `.grade-history*` rules of the sparkline and
-    // added the twenty-five `.grade-chart-*` rules of the trend chart: 481 − 3
-    // + 25 = 503. `.sr-only` MOVED from `pages/markdown.css` to `ui.css` rather
-    // than being added, so it does not appear in the arithmetic at all.
-    expect(cssSelectors().size).toBe(503);
+    // added twenty-six: the twenty-five `.grade-chart-*` rules of the trend
+    // chart plus `.grade-group-actions`, the header row that holds the average
+    // and the chart button together. 481 − 3 + 26 = 504. `.sr-only` MOVED from
+    // `pages/markdown.css` to `ui.css` rather than being added, so it does not
+    // appear in the arithmetic at all.
+    expect(cssSelectors().size).toBe(504);
   });
 
   it("keeps the stylesheets themselves in the app layer", () => {
