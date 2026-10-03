@@ -23,6 +23,7 @@ import {
   AXIS_TITLE_GAP,
   CHART_HEIGHT,
   CHART_WIDTH,
+  GRADE_MIN,
   HIT_RADIUS,
   MAX_X_LABELS,
   PAD_TOP,
@@ -189,7 +190,11 @@ export function GradeChartSvg({ series, courseName }: Props) {
             inside SVG is a `foreignObject`, which jsdom does not lay out and a
             screen reader treats inconsistently. */}
         {active === null ? null : (
-          <ChartTooltip point={points[active]} x={bandCenter(active, count)} />
+          <ChartTooltip
+            point={points[active]}
+            x={bandCenter(active, count)}
+            y={yScale(points[active].grade ?? GRADE_MIN)}
+          />
         )}
       </div>
 

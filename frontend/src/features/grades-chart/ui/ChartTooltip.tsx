@@ -1,38 +1,46 @@
 /**
- * What one point is worth, shown next to the dot the reader is on (ADR-0042).
+ * What one point is worth, shown right above the dot the reader is on (ADR-0042).
  *
  * HTML rather than SVG text: it can be styled and read normally, and it does not
- * need a `foreignObject` — which jsdom does not lay out and screen readers
- * treat inconsistently.
+ * need a `foreignObject` — which jsdom does not lay out and screen readers treat
+ * inconsistently.
  *
- * The position is COMPUTED, not measured. `x` arrives as a `viewBox` coordinate
- * and is converted to a percentage of the plot, so the tooltip sits over the
- * dot at any window width without the feature ever reading the DOM.
+ * The position is COMPUTED, not measured: `x` and `y` arrive as `viewBox`
+ * coordinates and become percentages of the WHOLE frame, so the tooltip sits
+ * over its own dot at any window width without the feature ever reading the DOM.
+ *
+ * Both percentages are of `CHART_WIDTH` / `CHART_HEIGHT` and not of the plot
+ * area: the element is positioned inside `.grade-chart-plot`, which spans the
+ * whole SVG including its padding, so a percentage of the plot area would land
+ * short of the dot by exactly the padding.
  */
 
 import { useI18n } from "../../../shared/i18n/index.ts";
-import { PLOT_LEFT, PLOT_RIGHT } from "../chart/layout.ts";
+import { CHART_HEIGHT, CHART_WIDTH } from "../chart/layout.ts";
 import type { ChartPoint } from "../chart/types.ts";
 
 type Props = {
   point: ChartPoint;
   /** Centre of the point's band, in `viewBox` units. */
   x: number;
+  /** The dot's height, in `viewBox` units. */
+  y: number;
 };
 
-export function ChartTooltip({ point, x }: Props) {
+export function ChartTooltip({ point, x, y }: Props) {
   const { t } = useI18n();
-  // Clamped to the plot: at the first and the last band a tooltip centred on
-  // the dot would hang off the edge of the modal.
-  const left = Math.min(
-    100,
-    Math.max(0, ((x - PLOT_LEFT) / (PLOT_RIGHT - PLOT_LEFT)) * 100),
-  );
+
+  // Clamped to the FRAME, not to the plot: a dot near the first or the last
+  // band sits inside the padding, and a tooltip centred on it would otherwise
+  // hang over the edge of the modal. The clamp keeps it on screen while leaving
+  // it as close to its own dot as that allows.
+  const left = Math.min(CHART_WIDTH, Math.max(0, (x / CHART_WIDTH) * 100));
+  const top = Math.min(CHART_HEIGHT, Math.max(0, (y / CHART_HEIGHT) * 100));
 
   return (
     <div
       className="grade-chart-tooltip"
-      style={{ left: `${left}%` }}
+      style={{ left: `${left}%`, top: `${top}%` }}
       role="status"
     >
       <span className="grade-chart-tooltip-title">{point.title}</span>

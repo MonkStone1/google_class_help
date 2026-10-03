@@ -23,15 +23,19 @@
  */
 export const CHART_WIDTH = 960;
 /** `viewBox` height. Grown with {@link PAD_TOP} so the plot itself stays tall. */
-export const CHART_HEIGHT = 436;
+export const CHART_HEIGHT = 488;
 
 /**
- * Space above the plot, and it holds TWO rows: the axis title and, under it,
- * the topmost tick label. It has to fit both plus a real gap, because stacking
- * an 11px word directly on top of an 11px number is what makes a chart read as
- * crowded even when nothing technically overlaps.
+ * Space above the plot, and it holds THREE rows: the axis title, the topmost tick
+ * label, AND the tallest tooltip.
+ *
+ * The tooltip is the reason this is generous. A tooltip hangs a fixed distance
+ * above its dot, so over mark 12 — the highest dot there is — it would hang
+ * clear over the top edge of the frame. Sizing the inset for the tallest
+ * tooltip is what lets the anchor stay simple ("above my own dot") without a
+ * flip rule for the top of the chart.
  */
-export const PAD_TOP = 44;
+export const PAD_TOP = 96;
 /** Space below it: the date labels AND the "Date" axis title under them. */
 export const PAD_BOTTOM = 64;
 /**
@@ -70,6 +74,18 @@ export const AXIS_TICK_GAP = 12;
  * label, otherwise the two 11px texts stack into one crowded line.
  */
 export const AXIS_TITLE_GAP = 30;
+
+/**
+ * How far a hover tooltip floats ABOVE its dot, in `viewBox` units.
+ *
+ * Mirrored by the `transform` on `.grade-chart-tooltip` in `pages/grades.css`.
+ * It is a constant rather than a bare number in both places because the top of
+ * the chart depends on it: {@link PAD_TOP} is sized to hold a tooltip standing
+ * on the highest dot, and a change here has to be seen there.
+ */
+export const TOOLTIP_HOVER_OFFSET = 14;
+/** Tallest a tooltip gets: four rows of text plus its own padding. */
+export const TOOLTIP_HEIGHT = 70;
 
 /** Plot area: the rectangle the axis and the line are drawn inside. */
 export const PLOT_TOP = PAD_TOP;

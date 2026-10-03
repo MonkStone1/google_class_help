@@ -6,10 +6,16 @@ import {
   AXIS_TICK_GAP,
   AXIS_TITLE_GAP,
   CHART_HEIGHT,
+  CHART_WIDTH,
+  GRADE_MAX,
   PAD_BOTTOM,
   PAD_TOP,
   PLOT_LEFT,
+  POINT_RADIUS,
+  TOOLTIP_HEIGHT,
+  TOOLTIP_HOVER_OFFSET,
 } from "../chart/layout.ts";
+import { yScale } from "../chart/scales.ts";
 import { buildSeries, type Translate } from "../chart/series.ts";
 import type { ChartSource } from "../chart/types.ts";
 import { en } from "../../../shared/i18n/locales/en/index.ts";
@@ -264,6 +270,64 @@ describe("the chart picture", () => {
     );
     expect(dated).toContain("start");
     expect(dated).toContain("end");
+  });
+
+  it("puts the tooltip over ITS OWN dot, not at the top of the frame", () => {
+    pinEnglish();
+    const { container } = renderChart();
+
+    const hits = container.querySelectorAll("circle.grade-chart-hit");
+    const dots = container.querySelectorAll("circle.grade-chart-dot");
+
+    // The bug this guards: the tooltip used to be pinned with `bottom: 100%`,
+    // which parked it against the TOP of the plot whatever dot you were on.
+    const tops: number[] = [];
+    for (const index of [0, 1, 2]) {
+      fireEvent.mouseEnter(hits[index]);
+      tops.push(Number.parseFloat(screen.getByRole("status").style.top));
+      fireEvent.mouseLeave(hits[index]);
+    }
+
+    // Every dot gets its OWN height — two identical percentages would mean the
+    // tooltip is pinned to the frame rather than following the point.
+    expect(new Set(tops).size).toBe(THREE.length);
+    // And each one matches its dot's Y exactly.
+    for (const index of [0, 1, 2]) {
+      const cy = Number(dots[index].getAttribute("cy"));
+      expect(tops[index]).toBeCloseTo((cy / CHART_HEIGHT) * 100, 6);
+    }
+  });
+
+  it("leaves room above the plot for a tooltip over the highest mark", () => {
+    // The tooltip hangs above its own dot, so over mark 12 it would hang over
+    // the top edge unless PAD_TOP is sized for it. This is the check that keeps
+    // the anchor simple: no flip rule, just enough headroom.
+    const tallest = yScale(GRADE_MAX);
+    // The VISIBLE dot is what the tooltip must clear, not the 10-unit hit circle
+    // underneath it: the box floats just above the mark the reader can see.
+    const tooltipTop = tallest - POINT_RADIUS - TOOLTIP_HOVER_OFFSET - TOOLTIP_HEIGHT;
+    expect(tooltipTop).toBeGreaterThanOrEqual(0);
+    // And the plot itself must not have shrunk to pay for it.
+    expect(PAD_TOP).toBeGreaterThanOrEqual(TOOLTIP_HEIGHT);
+});
+
+it("keeps a tooltip at the frame edge inside the frame", () => {
+    pinEnglish();
+    const { container } = renderChart();
+
+    const hits = container.querySelectorAll("circle.grade-chart-hit");
+    // The first dot is the leftmost, so its tooltip is the one at risk of
+    // hanging over the modal's edge.
+    fireEvent.mouseEnter(hits[0]);
+
+    const left = Number.parseFloat(screen.getByRole("status").style.left);
+    const dotX = Number(hits[0].getAttribute("cx"));
+    expect(Number.isFinite(left)).toBe(true);
+    expect(left).toBeGreaterThanOrEqual(0);
+    expect(left).toBeLessThanOrEqual(100);
+    // A percentage of the FRAME, not of the plot area: these differ by exactly
+    // the left padding, so getting it wrong shifts the tooltip off its dot.
+    expect(left).toBeCloseTo((dotX / CHART_WIDTH) * 100, 6);
   });
 
   it("states every mark in a table a screen reader can walk", () => {

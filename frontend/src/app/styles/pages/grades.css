@@ -201,13 +201,17 @@
   stroke: var(--accent);
   stroke-width: 2;
 }
+/* Anchored to the dot's own coordinates (see ChartTooltip): `top`/`left` are
+   percentages of the whole SVG, and the transform lifts the box clear of the
+   point so the tooltip floats ABOVE it rather than covering it. The dot's
+   radius plus a little air is what that offset has to clear. */
 .grade-chart-tooltip {
   position: absolute;
-  bottom: 100%;
-  transform: translate(-50%, -8px);
+  transform: translate(-50%, calc(-100% - 14px));
   display: flex;
   flex-direction: column;
   gap: 2px;
+  width: max-content;
   max-width: 240px;
   padding: 7px 10px;
   background: var(--bg-elevated);
