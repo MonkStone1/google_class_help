@@ -11,19 +11,35 @@
  * claim about the same series, not a second fact.
  */
 
-/** `viewBox` width. Together with the height it gives a 2:1 plot. */
-export const CHART_WIDTH = 640;
+/**
+ * `viewBox` width. Together with the height it gives a 2.3:1 plot, which is wide
+ * enough for a course's dates to have air between them.
+ *
+ * The size is chosen to match the modal: the CSS gives the dialog a max-width of
+ * 980px, which leaves ~936px of content, so a 960-unit `viewBox` renders at
+ * roughly 1:1. A much narrower `viewBox` would be scaled UP and the tick labels
+ * would grow with it; a much wider one would be scaled down and they would turn
+ * to dust. Every padding below is therefore also a pixel margin on screen.
+ */
+export const CHART_WIDTH = 960;
 /** `viewBox` height. */
-export const CHART_HEIGHT = 320;
+export const CHART_HEIGHT = 420;
 
-/** Space above the plot area for the topmost tick label. */
-export const PAD_TOP = 16;
-/** Space below it: enough for the date labels. */
-export const PAD_BOTTOM = 48;
-/** Left inset — the only axis there is, and it is labelled. */
-export const PAD_LEFT = 44;
-/** Right inset: the line ends inside the plot, this is breathing room. */
-export const PAD_RIGHT = 24;
+/** Space above the plot: the "Mark" axis title and the topmost tick label. */
+export const PAD_TOP = 28;
+/** Space below it: the date labels AND the "Date" axis title under them. */
+export const PAD_BOTTOM = 64;
+/**
+ * Left inset — the only axis there is, and it carries two labels: a tick number
+ * and the axis title above it. The widest of those is "Оцінка", so the inset is
+ * sized for it rather than for the number.
+ */
+export const PAD_LEFT = 72;
+/**
+ * Right inset: the line stops here instead of at the frame edge, which is what
+ * stops the last point from looking pinned to the border.
+ */
+export const PAD_RIGHT = 48;
 
 /** Plot area: the rectangle the axis and the line are drawn inside. */
 export const PLOT_TOP = PAD_TOP;

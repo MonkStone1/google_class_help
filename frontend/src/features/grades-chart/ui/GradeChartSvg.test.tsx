@@ -201,6 +201,19 @@ describe("the chart picture", () => {
     expect(texts).toContain("#2");
   });
 
+  it("anchors the first and last dates inward, so neither hangs over the frame", () => {
+    pinEnglish();
+    const { container } = renderChart();
+
+    // A centred date at the very first band would stick out past the left edge,
+    // and that is what makes a chart look cramped even with no real overlap.
+    const dated = [...container.querySelectorAll("svg text.grade-chart-tick")].map(
+      (node) => node.getAttribute("text-anchor"),
+    );
+    expect(dated).toContain("start");
+    expect(dated).toContain("end");
+  });
+
   it("states every mark in a table a screen reader can walk", () => {
     renderChart();
 

@@ -132,17 +132,27 @@
   opacity: 0.4;
   cursor: default;
 }
+/* Wide enough for the 960-unit `viewBox` to render at ~1:1, so the tick labels
+   keep their designed size instead of being scaled up or down. The `min()` is
+   what keeps it inside a narrow window: the backdrop's own 20px padding plus
+   this leaves the chart at least a readable width and lets it scroll rather
+   than squash. */
 .grade-chart-modal {
-  max-width: 780px;
+  width: min(980px, 100%);
+  max-width: 980px;
 }
 .grade-chart-plot {
   position: relative;
+  /* Below ~520px the 12 marks would collide with their own labels, so the plot
+     scrolls sideways instead of shrinking into illegibility. */
+  overflow-x: auto;
 }
 /* The SVG carries a fixed `viewBox` and scales to this width, which is why the
    feature never measures anything (see ADR-0042). */
 .grade-chart-svg {
   display: block;
   width: 100%;
+  min-width: 520px;
   height: auto;
   background: var(--bg-muted);
   border: 1px solid var(--border);

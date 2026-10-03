@@ -144,8 +144,8 @@ export function GradeChartSvg({ series, courseName }: Props) {
           {/* The two axis titles: the mark scale on the left, the dates below. */}
           <text
             className="grade-chart-axis-title"
-            x={PAD_LEFT - 10}
-            y={PAD_TOP - 6}
+            x={PAD_LEFT - 12}
+            y={PAD_TOP - 12}
             textAnchor="end"
           >
             {t("grades.chart.axis.grade")}
@@ -153,7 +153,7 @@ export function GradeChartSvg({ series, courseName }: Props) {
           <text
             className="grade-chart-axis-title"
             x={(PLOT_LEFT + PLOT_RIGHT) / 2}
-            y={CHART_HEIGHT - 8}
+            y={CHART_HEIGHT - 12}
             textAnchor="middle"
           >
             {t("grades.chart.axis.date")}
@@ -164,8 +164,17 @@ export function GradeChartSvg({ series, courseName }: Props) {
                 key={`x-${index}`}
                 className="grade-chart-tick"
                 x={label.x}
-                y={PLOT_BOTTOM + 20}
-                textAnchor="middle"
+                y={PLOT_BOTTOM + 24}
+                // The first and last dates are anchored INWARD, so a wide date
+                // can never hang over the frame — which is the thing that makes
+                // a chart look cramped even when nothing actually overlaps.
+                textAnchor={
+                  index === 0
+                    ? "start"
+                    : index === count - 1
+                      ? "end"
+                      : "middle"
+                }
               >
                 {label.text}
               </text>
