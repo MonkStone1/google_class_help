@@ -149,11 +149,12 @@ async function localeKeys(lang: "en" | "uk" | "ru"): Promise<string[]> {
 /**
  * Keys a dictionary must carry. `en` defines them; the others mirror them.
  *
- * 395 before the Excel-export domain (ADR-0041) added its 19 `export.*` keys.
- * A new domain moves this number in the SAME commit as the dictionary files —
- * see the note at the top of this file.
+ * 395 before the Excel-export domain (ADR-0041) added its 19 `export.*` keys,
+ * 414 after it. ADR-0042 added the 19 `grades.chart.*` keys of the grade-trend
+ * chart. A new domain moves this number in the SAME commit as the dictionary
+ * files — see the note at the top of this file.
  */
-const I18N_KEY_COUNT = 414;
+const I18N_KEY_COUNT = 433;
 
 describe("baseline: routes", () => {
   it("keeps every declared route, in order", () => {
@@ -206,15 +207,18 @@ describe("baseline: stylesheets", () => {
 });
 
 describe("baseline: translations", () => {
-  it("keeps 395 keys in English", async () => {
+  // The names quote 433 and not the constant on purpose: a failure message that
+  // says "expected 414 to be 433" tells you what the number used to be, which
+  // is exactly the question a baseline failure raises.
+  it("keeps 433 keys in English", async () => {
     expect((await localeKeys("en")).length).toBe(I18N_KEY_COUNT);
   });
 
-  it("keeps 395 keys in Ukrainian", async () => {
+  it("keeps 433 keys in Ukrainian", async () => {
     expect((await localeKeys("uk")).length).toBe(I18N_KEY_COUNT);
   });
 
-  it("keeps 395 keys in Russian", async () => {
+  it("keeps 433 keys in Russian", async () => {
     expect((await localeKeys("ru")).length).toBe(I18N_KEY_COUNT);
   });
 
