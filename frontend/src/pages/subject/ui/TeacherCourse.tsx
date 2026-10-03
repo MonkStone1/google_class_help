@@ -9,6 +9,7 @@ import { Link } from "react-router-dom";
 
 import { api } from "../../../shared/api/index.ts";
 import { AssignmentCard } from "../../../entities/assignment/index.ts";
+import { ExcelExportButton } from "../../../features/excel-export/index.ts";
 import { EmptyState, SectionSkeleton } from "../../../shared/ui/index.ts";
 import { useSettings } from "../../../shared/settings/index.ts";
 import { useI18n } from "../../../shared/i18n/index.ts";
@@ -74,6 +75,12 @@ export function TeacherCourse({ course }: { course: Course }) {
           </div>
         </div>
         <div className="page-header-actions">
+          {/* ADR-0041: the export reads the coursework this page has already
+              loaded, so it adds no request and no state of its own here. */}
+          <ExcelExportButton
+            courseName={course.name}
+            assignments={coursework.data ?? []}
+          />
           {updatedAt ? (
             <span className="updated-label">
               {t("teacher.updated", {

@@ -47,3 +47,4 @@
 | [ADR-0038](adr-0038-donation-settings-only.md) | Поддержка проекта спрашивается в настройках, а не на публичном лендинге | Accepted |
 | [ADR-0039](adr-0039-layered-backend-packages.md) | Слоистые пакеты внутри `backend/`: `api/`, `core/`, `db/`, `google/`, `sync/`, `auth/`, `edge/`; `backend/` остаётся корнем `sys.path` ради Nuitka-сборки | Accepted |
 | [ADR-0040](adr-0040-layered-frontend-slices.md) | Пять слоёв в `frontend/src`: `shared/`, `entities/`, `features/`, `widgets/`, `pages/`, `app/` вместо плоских `components/`/`lib/`/`context/` | Accepted |
+| [ADR-0041](adr-0041-client-side-excel-export.md) | Клиентский экспорт курса в Excel: пресетная архитектура, ExcelJS, ноль строк бэкенда и ноль новых запросов | Accepted |

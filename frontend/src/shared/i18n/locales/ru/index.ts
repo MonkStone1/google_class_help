@@ -14,6 +14,7 @@ import { ru_admin } from "./admin.ts";
 import { ru_assignments } from "./assignments.ts";
 import { ru_base } from "./base.ts";
 import { ru_courses } from "./courses.ts";
+import { ru_export } from "./export.ts";
 import { ru_feedback } from "./feedback.ts";
 import { ru_grades } from "./grades.ts";
 import { ru_landing } from "./landing.ts";
@@ -30,4 +31,5 @@ export const ru = {
   ...ru_settings,
   ...ru_landing,
   ...ru_admin,
+  ...ru_export,
 } satisfies Record<I18nKey, string>;

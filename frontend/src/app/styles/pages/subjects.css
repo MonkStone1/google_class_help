@@ -182,3 +182,77 @@
   border-top-color: var(--accent);
   animation: spin 0.8s linear infinite;
 }
+/* Excel export ---------------------------------------------------------------- */
+
+/*
+ * The export dialog (ADR-0041).
+ *
+ * It rides the shared `.modal` and re-declares only what its own content needs:
+ * a scrollable body (a course can have hundreds of lessons), a field row for the
+ * preset selector, and a date input that matches the app's inputs rather than
+ * the browser's default one.
+ */
+.export-dialog {
+  max-width: 880px;
+  width: 100%;
+}
+.export-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.export-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.export-label {
+  color: var(--text-muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.export-hint {
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+.export-warning {
+  color: var(--warning);
+  font-size: 12.5px;
+}
+.export-empty {
+  color: var(--text-muted);
+  padding: 24px 0;
+  text-align: center;
+}
+/*
+ * The preview is a scroll region of its own: a long course would otherwise push
+ * the Cancel/Export buttons off the dialog, which is where they must stay.
+ */
+.export-preview {
+  max-height: 42vh;
+  overflow-y: auto;
+}
+.export-preview .data-table th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-elevated);
+}
+.export-date {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color-scheme: light dark;
+}
+.export-date:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.export-actions {
+  justify-content: flex-end;
+}
