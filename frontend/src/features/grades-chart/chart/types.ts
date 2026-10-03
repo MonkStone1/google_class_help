@@ -24,6 +24,8 @@ export type ChartPoint = {
   due: Date | null;
   /** Earned points — the bar series, on the RIGHT axis. */
   points: number | null;
+  /** The bar's full height; also the denominator in the tooltip and the table. */
+  maxPoints: number | null;
   /** Score in percent — the line series, on the LEFT axis. */
   percent: number | null;
 };

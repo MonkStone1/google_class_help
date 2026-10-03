@@ -195,7 +195,11 @@ describe("baseline: stylesheets", () => {
     // difference is the section banners in `pages.css`, which are prose, not
     // selectors. ADR-0041 added the twelve `.export-*` rules of the export
     // dialog, which is why this moved from 469 in the same commit as the CSS.
-    expect(cssSelectors().size).toBe(481);
+    // ADR-0042 removed the three `.grade-history*` rules of the sparkline and
+    // added the twenty-five `.grade-chart-*` rules of the trend chart: 481 − 3
+    // + 25 = 503. `.sr-only` MOVED from `pages/markdown.css` to `ui.css` rather
+    // than being added, so it does not appear in the arithmetic at all.
+    expect(cssSelectors().size).toBe(503);
   });
 
   it("keeps the stylesheets themselves in the app layer", () => {

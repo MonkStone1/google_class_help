@@ -84,6 +84,7 @@ export function buildSeries(
       due,
       // `null` stays `null`: a bar of height zero would be a grade of zero.
       points: item.points ?? null,
+      maxPoints: item.max_points ?? null,
       percent: item.percent ?? null,
     };
   });
