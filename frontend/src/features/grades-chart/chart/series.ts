@@ -13,13 +13,7 @@ import { formatDateTimeShort, parseDue } from "../../../shared/lib/index.ts";
 import type { I18nKey, I18nVars } from "../../../shared/i18n/index.ts";
 import type { GradeItem } from "../../../shared/types/index.ts";
 import { MIN_CHART_POINTS } from "./layout.ts";
-import {
-  PERCENT_MAX,
-  bandCenter,
-  niceMax,
-  ticksFor,
-  yScale,
-} from "./scales.ts";
+import { bandCenter, gradeTicks, percentToGrade } from "./scales.ts";
 import type { ChartPoint, ChartSeries, ChartSource } from "./types.ts";
 
 /**
@@ -81,7 +75,10 @@ export function buildSeries(
         ? formatDateTimeShort(due)
         : translate("grades.chart.noAxisTask", { n: index + 1 }),
       due,
-      // `null` stays `null`: a bar of height zero would be a grade of zero.
+      // The percentage becomes a mark HERE and nowhere else: above this point
+      // the chart works in marks, which is the scale the reader thinks in.
+      grade: percentToGrade(item.percent),
+      // `null` stays `null`: showing 0 would be showing a mark no teacher gives.
       points: item.points ?? null,
       maxPoints: item.max_points ?? null,
       percent: item.percent ?? null,
@@ -90,26 +87,10 @@ export function buildSeries(
 
   return {
     points,
-    leftTicks: ticksFor(PERCENT_MAX),
-    rightTicks: ticksFor(niceMax(maxMaxPoints(items))),
+    ticks: gradeTicks(),
     xLabels: points.map((point, index) => ({
       text: point.label,
       x: bandCenter(index, count),
     })),
-    // No average, no dashed line: a line at 0 % would read as "you scored
-    // nothing", which is a different and much worse claim than "unknown".
-    averageY:
-      source.average === null ? null : yScale(source.average, PERCENT_MAX),
   };
-}
-
-/** The largest maximum any assignment of the course declares. */
-function maxMaxPoints(items: readonly GradeItem[]): number {
-  let max = 0;
-  for (const item of items) {
-    if (item.max_points !== null && item.max_points > max) {
-      max = item.max_points;
-    }
-  }
-  return max;
 }

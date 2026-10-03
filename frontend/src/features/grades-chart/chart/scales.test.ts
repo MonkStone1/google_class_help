@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  GRADE_MAX,
+  GRADE_MIN,
   MAX_X_LABELS,
   PLOT_BOTTOM,
   PLOT_LEFT,
@@ -9,81 +11,97 @@ import {
   TICK_COUNT,
 } from "./layout.ts";
 import {
-  PERCENT_MAX,
   bandCenter,
   bandWidth,
   formatTick,
+  gradeTicks,
   labelStride,
-  niceMax,
-  ticksFor,
+  percentToGrade,
   yScale,
 } from "./scales.ts";
 
-describe("the upper bound of the points axis", () => {
-  it("keeps a 100-point course readable as 0…100", () => {
-    // The whole point of the double axis: a 100-point course makes both scales
-    // read identically, so a bar and a dot at the same height mean the same.
-    expect(niceMax(100)).toBe(100);
+describe("the percentage-to-mark rule", () => {
+  it("puts each mark at the lowest percentage that earns it", () => {
+    // The Ukrainian 12-point scale. These boundaries are the whole rule: 89 % is
+    // an 11 and 90 % is a 12, which is exactly the distinction a linear
+    // `percent / 100 * 12` would have thrown away.
+    expect(percentToGrade(100)).toBe(12);
+    expect(percentToGrade(90)).toBe(12);
+    expect(percentToGrade(89.9)).toBe(11);
+    expect(percentToGrade(85)).toBe(11);
+    expect(percentToGrade(80)).toBe(10);
+    expect(percentToGrade(75)).toBe(9);
+    expect(percentToGrade(70)).toBe(8);
+    expect(percentToGrade(65)).toBe(7);
+    expect(percentToGrade(60)).toBe(6);
+    expect(percentToGrade(50)).toBe(5);
+    expect(percentToGrade(45)).toBe(4);
+    expect(percentToGrade(35)).toBe(3);
+    expect(percentToGrade(20)).toBe(2);
   });
 
-  it("rounds every input UP to a multiple of 25, and never below 25", () => {
-    // The multiple of 25 is not cosmetic: `ticksFor` divides the axis into four
-    // intervals, so a bound of 87 would put ticks at 21.75 and no tick would
-    // coincide with a gridline.
-    for (const value of [0, 1, 12, 25, 26, 49, 50, 87, 100, 340, 1000]) {
-      const bound = niceMax(value);
-      expect(bound % 25).toBe(0);
-      expect(bound).toBeGreaterThanOrEqual(value);
+  it("never returns zero, and never returns null for a number", () => {
+    // On this scale there is no zero, and below 20 % the answer is still a mark:
+    // the teacher gave a low mark, not "no mark".
+    expect(percentToGrade(19.9)).toBe(1);
+    expect(percentToGrade(0)).toBe(1);
+    expect(percentToGrade(-10)).toBe(1);
+    // A bonus cannot push a mark above the top of the scale.
+    expect(percentToGrade(140)).toBe(12);
+    for (const percent of [0, 1, 49, 50, 99, 100]) {
+      const grade = percentToGrade(percent);
+      expect(grade).toBeGreaterThanOrEqual(GRADE_MIN);
+      expect(grade).toBeLessThanOrEqual(GRADE_MAX);
     }
-    expect(niceMax(0)).toBe(25);
-    expect(niceMax(null)).toBe(25);
-    expect(niceMax(undefined)).toBe(25);
   });
 
-  it("gives a course graded out of 12 a 0…25 axis, and out of 26 a 0…50 one", () => {
-    expect(niceMax(12)).toBe(25);
-    expect(niceMax(26)).toBe(50);
-  });
-});
-
-describe("the ticks of the points axis", () => {
-  it("lands every right-axis tick on a gridline of the shared grid", () => {
-    // The grid is drawn from the PERCENT ticks; a right-axis tick that fell
-    // between two of them would have no line to sit on. Equal step, equal Y.
-    const step = niceMax(26) / (TICK_COUNT - 1);
-    expect(step).toBe(12.5);
-
-    const leftYs = ticksFor(PERCENT_MAX).map((tick) => tick.y);
-    const rightYs = ticksFor(niceMax(26)).map((tick) => tick.y);
-    expect(rightYs).toEqual(leftYs);
-  });
-
-  it("labels a fractional step without pretending it is a whole number", () => {
-    expect(formatTick(6.25)).toBe("6.25");
-    expect(formatTick(12.5)).toBe("12.5");
-    expect(formatTick(100)).toBe("100");
-    // 0.1 + 0.2 is 0.30000000000000004 in IEEE 754; an axis label is not the
-    // place to show that off.
-    expect(formatTick(0.1 + 0.2)).toBe("0.3");
+  it("has no mark to give when there is no percentage", () => {
+    // An ungraded assignment gets no point on the line: inventing the lowest
+    // mark would draw a fall the teacher never recorded.
+    expect(percentToGrade(null)).toBeNull();
+    expect(percentToGrade(undefined)).toBeNull();
   });
 });
 
-describe("the vertical scale", () => {
-  it("puts the lower bound at the bottom of the plot and the upper at the top", () => {
-    expect(yScale(0, 100)).toBe(PLOT_BOTTOM);
-    expect(yScale(100, 100)).toBe(PLOT_TOP);
-    expect(yScale(0, 0)).toBe(PLOT_BOTTOM);
+describe("the grade axis", () => {
+  it("labels every mark from 1 to 12, once each", () => {
+    const ticks = gradeTicks();
+
+    expect(ticks).toHaveLength(TICK_COUNT);
+    expect(ticks.map((tick) => tick.value)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+    ]);
+    // Whole numbers, so no rounding is ever involved in a label.
+    for (const tick of ticks) {
+      expect(formatTick(tick.value)).toBe(String(tick.value));
+    }
   });
 
-  it("puts the middle of the range in the middle of the plot", () => {
-    // SVG grows downward, so the midpoint is the average of the two bounds and
-    // nothing else — an inverted axis is the classic silent chart bug.
-    expect(yScale(50, 100)).toBe((PLOT_TOP + PLOT_BOTTOM) / 2);
+  it("puts mark 12 at the top of the plot and mark 1 at the bottom", () => {
+    // SVG grows downward, so an inverted scale would draw a rising mark as a
+    // falling one — the classic silent chart bug.
+    expect(yScale(GRADE_MAX)).toBe(PLOT_TOP);
+    expect(yScale(GRADE_MIN)).toBe(PLOT_BOTTOM);
+    // There is no mark in the middle of 1…12 — the scale has an even number of
+    // steps, so its centre sits BETWEEN 6 and 7 and neither of them is on it.
+    expect(yScale(6.5)).toBeCloseTo((PLOT_TOP + PLOT_BOTTOM) / 2, 6);
+    expect(yScale(6)).toBeGreaterThan((PLOT_TOP + PLOT_BOTTOM) / 2);
+    expect(yScale(7)).toBeLessThan((PLOT_TOP + PLOT_BOTTOM) / 2);
   });
 
-  it("pins a value above the axis to the top instead of drawing outside it", () => {
-    expect(yScale(140, 100)).toBe(PLOT_TOP);
-    expect(yScale(-5, 100)).toBe(PLOT_BOTTOM);
+  it("spaces the marks evenly", () => {
+    const ys = gradeTicks().map((tick) => tick.y);
+    const steps = ys.slice(1).map((y, index) => ys[index] - y);
+    for (const step of steps) {
+      expect(step).toBeCloseTo(steps[0], 6);
+    }
+    // And a mark is higher on the screen than the one below it.
+    expect(steps[0]).toBeGreaterThan(0);
+  });
+
+  it("pins a mark outside the scale to the nearest end", () => {
+    expect(yScale(99)).toBe(PLOT_TOP);
+    expect(yScale(-5)).toBe(PLOT_BOTTOM);
   });
 });
 
@@ -106,11 +124,10 @@ describe("the X scale", () => {
     expect(Number.isFinite(bandCenter(0, 0))).toBe(true);
   });
 
-  it("thins the X labels of a long course instead of overprinting them", () => {
-    expect(labelStride(12)).toBe(1);
-    expect(labelStride(13)).toBe(2);
-    expect(labelStride(60)).toBe(5);
-    // Whatever the count, no more than the readable maximum of labels.
+  it("thins the date labels of a long course instead of overprinting them", () => {
+    expect(labelStride(10)).toBe(1);
+    expect(labelStride(11)).toBe(2);
+    expect(labelStride(60)).toBe(6);
     for (const count of [2, 7, 20, 60, 200]) {
       expect(Math.ceil(count / labelStride(count))).toBeLessThanOrEqual(
         MAX_X_LABELS,

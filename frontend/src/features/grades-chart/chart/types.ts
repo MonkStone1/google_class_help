@@ -12,21 +12,26 @@
 
 import type { GradeItem } from "../../../shared/types/index.ts";
 
-/** One plotted assignment: everything both axes and the tooltip need. */
+/** One plotted assignment: everything the line, the tooltip and the table need. */
 export type ChartPoint = {
   /** `assignment_id` — the React key and the focus target. */
   key: string;
   /** Full title: the tooltip line and the hidden table's first column. */
   title: string;
-  /** Category label under the X axis: a date, or `#{n}` without a deadline. */
+  /** Date label under the X axis, or `#{n}` without a deadline. */
   label: string;
   /** Parsed `due_at`, kept for the tooltip and for sorting. */
   due: Date | null;
-  /** Earned points — the bar series, on the RIGHT axis. */
+  /**
+   * The mark on the 1…12 scale, or `null` when the work carries no percentage.
+   * This is the ONLY value the chart plots — see {@link ChartSeries}.
+   */
+  grade: number | null;
+  /** Earned points: shown in the tooltip and the table, never on an axis. */
   points: number | null;
-  /** The bar's full height; also the denominator in the tooltip and the table. */
+  /** The denominator behind `points`. */
   maxPoints: number | null;
-  /** Score in percent — the line series, on the LEFT axis. */
+  /** The percentage the mark was derived from, kept for the tooltip. */
   percent: number | null;
 };
 
@@ -34,7 +39,7 @@ export type ChartPoint = {
 export type ChartSource = {
   courseId: string;
   courseName: string;
-  /** Course average; `null` means there is no dashed line to draw. */
+  /** Course average; kept for the header, not drawn on the chart. */
   average: number | null;
   items: readonly GradeItem[];
 };
@@ -45,14 +50,17 @@ export type AxisTick = {
   y: number;
 };
 
-/** Everything one render of the chart needs, computed once per data change. */
+/**
+ * Everything one render of the chart needs.
+ *
+ * One series, one axis. There is no `rightTicks` and no `averageY`: a bar of
+ * raw points beside a line of marks would have been the same fact drawn twice
+ * on two scales, and a second scale is a second thing to misread.
+ */
 export type ChartSeries = {
   points: ChartPoint[];
-  /** Percent axis, always 0…100. */
-  leftTicks: AxisTick[];
-  /** Points axis, always 0…niceMax. */
-  rightTicks: AxisTick[];
+  /** The grade axis, every mark from 1 to 12. */
+  ticks: AxisTick[];
+  /** Date labels under the plot, one per point. */
   xLabels: Array<{ text: string; x: number }>;
-  /** Dashed course-average line, or `null` when the course has no average. */
-  averageY: number | null;
 };

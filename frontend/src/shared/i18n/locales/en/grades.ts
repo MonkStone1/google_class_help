@@ -14,25 +14,24 @@ export const en_grades = {
   "grades.average": "Average: {value}%",
   "grades.noGrades": "No grades yet",
   "studentGrades.attachments": "Attachments ({count})",
-  // The grade-trend chart (ADR-0042). Axis titles are short because they sit
-  // inside the plot; the tooltip and the hidden table carry the long forms.
+  // The grade-trend chart (ADR-0042). The chart is ONE line on the 1…12 mark
+  // scale with dates underneath, so it needs no legend: there is nothing to
+  // tell apart.
   "grades.chart.open": "Chart",
   "grades.chart.title": "Grade trend",
   "grades.chart.close": "Close",
   "grades.chart.ariaLabel": "Grade trend for {course}",
-  "grades.chart.axis.percent": "Score, %",
-  "grades.chart.axis.points": "Points",
-  "grades.chart.axis.task": "Assignment",
-  "grades.chart.legend.points": "Points earned",
-  "grades.chart.legend.percent": "Score, %",
-  "grades.chart.legend.average": "Course average",
-  "grades.chart.tooltip.grade": "{points} / {max}",
+  "grades.chart.axis.grade": "Mark",
+  "grades.chart.axis.date": "Date",
+  "grades.chart.tooltip.grade": "Mark {grade}",
+  "grades.chart.tooltip.points": "{points} / {max}",
   "grades.chart.tooltip.due": "Due {date}",
   "grades.chart.tooltip.noDue": "No deadline",
   "grades.chart.empty": "Not enough graded work for a chart",
   "grades.chart.table.caption": "Grade trend data",
   "grades.chart.table.task": "Assignment",
-  "grades.chart.table.points": "Points",
-  "grades.chart.table.percent": "Score, %",
+  "grades.chart.table.date": "Date",
+  "grades.chart.table.grade": "Mark",
+  "grades.chart.table.gradeValue": "{grade} ({points} / {max})",
   "grades.chart.noAxisTask": "#{n}",
 } as const;

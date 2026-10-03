@@ -3,53 +3,79 @@
  *
  * No React and no DOM: a scale that could only be checked by rendering is a
  * scale nobody checks, and the arithmetic here is exactly the part a chart
- * library would have got subtly wrong. `niceMax` in particular is the rule that
- * keeps the right axis ON the grid — a nice-looking axis whose ticks do not
- * coincide with the horizontal lines is worse than no right axis at all.
+ * library would have got subtly wrong.
+ *
+ * The one rule with a real decision in it is {@link percentToGrade}: Google
+ * Classroom speaks percentages (ADR-0008) and a school reads marks on a
+ * 12-point scale, so the chart converts between them ONCE, here, and every
+ * layer above works in marks.
  */
 
 import {
+  GRADE_MAX,
+  GRADE_MIN,
   MAX_X_LABELS,
   PLOT_BOTTOM,
   PLOT_LEFT,
   PLOT_TOP,
   PLOT_WIDTH,
   TICK_COUNT,
-  TICK_STEP,
 } from "./layout.ts";
 
-/** The percent axis has a fixed domain: a score above 100 % is not a score. */
-export const PERCENT_MAX = 100;
+/**
+ * Percentage → mark, on the 12-point scale used in Ukrainian schools.
+ *
+ * The table is thresholds, not arithmetic: `round(percent / 100 × 12)` would
+ * make 89 % and 90 % the same mark, and those are 11 and 12. Each row is the
+ * lowest percentage that earns that mark, walked from the top down.
+ *
+ * Below 20 % the answer is 1 rather than "nothing" — on this scale there is no
+ * zero, and a chart showing 0 would be showing a mark no teacher gives.
+ */
+const GRADE_THRESHOLDS: ReadonlyArray<readonly [number, number]> = [
+  [90, 12],
+  [85, 11],
+  [80, 10],
+  [75, 9],
+  [70, 8],
+  [65, 7],
+  [60, 6],
+  [50, 5],
+  [45, 4],
+  [35, 3],
+  [20, 2],
+];
 
 /**
- * Upper bound of the points axis: `25`, or the largest multiple of 25 that
- * covers `max`, whichever is larger.
+ * The mark a percentage earns.
  *
- * A course graded out of 10 therefore gets `0…25` rather than `0…10`, and one
- * graded out of 100 gets `0…100`, so both axes read the same way. The multiple
- * of 25 is what makes `niceMax / 4` land on a gridline; `ceil(10 / 25) * 25`
- * gives 25 for a course of 10 points and 100 for a course of 87.
+ * `null` in, `null` out: an ungraded assignment has no mark, and inventing one
+ * would draw a point the teacher never gave.
  */
-export function niceMax(max: number | null | undefined): number {
-  const value = max ?? 0;
-  const rounded = Math.ceil(value / TICK_STEP) * TICK_STEP;
-  return Math.max(TICK_STEP, rounded);
+export function percentToGrade(percent: number | null | undefined): number | null {
+  if (percent === null || percent === undefined) {
+    return null;
+  }
+  const value = Math.min(100, Math.max(0, percent));
+  for (const [threshold, grade] of GRADE_THRESHOLDS) {
+    if (value >= threshold) {
+      return grade;
+    }
+  }
+  return GRADE_MIN;
 }
 
 /**
- * Vertical position of `value` on an axis running 0…`max`.
+ * Vertical position of a mark on the 1…12 axis.
  *
- * Y grows downward in SVG, so the top of the range is {@link PLOT_TOP} and the
- * bottom is {@link PLOT_BOTTOM}; a value above `max` is pinned to the top
- * rather than drawn outside the plot.
+ * Y grows downward in SVG, so mark 12 is at {@link PLOT_TOP} and mark 1 at
+ * {@link PLOT_BOTTOM}. A mark outside 1…12 is pinned to the nearest end instead
+ * of being drawn outside the plot.
  */
-export function yScale(value: number, max: number): number {
-  if (max <= 0) {
-    return PLOT_BOTTOM;
-  }
-  const clamped = Math.min(Math.max(value, 0), max);
-  const ratio = clamped / max;
-  return PLOT_TOP + (1 - ratio) * (PLOT_BOTTOM - PLOT_TOP);
+export function yScale(grade: number): number {
+  const clamped = Math.min(GRADE_MAX, Math.max(GRADE_MIN, grade));
+  const ratio = (clamped - GRADE_MIN) / (GRADE_MAX - GRADE_MIN);
+  return PLOT_BOTTOM - ratio * (PLOT_BOTTOM - PLOT_TOP);
 }
 
 /** Width of one category band. Zero bands are impossible (see `bandCenter`). */
@@ -58,7 +84,7 @@ export function bandWidth(count: number): number {
 }
 
 /**
- * Centre of the band at `index` — the X position of a bar or a point.
+ * Centre of the band at `index` — the X position of a point.
  *
  * The single point case must not divide by zero: a course with one graded work
  * has no chart (the button is disabled), but `buildSeries` must not throw if it
@@ -73,21 +99,15 @@ export function labelStride(count: number): number {
   return Math.max(1, Math.ceil(count / MAX_X_LABELS));
 }
 
-/** Ticks of an axis running 0…`max`, from the bottom up. */
-export function ticksFor(max: number): Array<{ value: number; y: number }> {
+/** Ticks of the grade axis, from mark 1 at the bottom up to mark 12. */
+export function gradeTicks(): Array<{ value: number; y: number }> {
   return Array.from({ length: TICK_COUNT }, (_unused, index) => {
-    const value = (max / (TICK_COUNT - 1)) * index;
-    return { value, y: yScale(value, max) };
+    const value = GRADE_MIN + index;
+    return { value, y: yScale(value) };
   });
 }
 
-/**
- * Tick labels without floating-point noise: `100`, `6.25`, `12.5`, `0`.
- *
- * A course graded out of 25 gives a 6.25 step, so the labels cannot be rounded
- * to integers without lying about the axis — they are only rounded to two
- * decimals, which is where the division stops being meaningful anyway.
- */
+/** Axis labels: the marks are whole numbers, so no rounding is involved. */
 export function formatTick(value: number): string {
-  return String(Math.round(value * 100) / 100);
+  return String(value);
 }

@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { PLOT_BOTTOM, PLOT_TOP, TICK_COUNT } from "./layout.ts";
-import { PERCENT_MAX, yScale } from "./scales.ts";
 import { buildSeries, type Translate } from "./series.ts";
 import type { ChartSource } from "./types.ts";
 import type { GradeItem } from "../../../shared/types/index.ts";
@@ -92,78 +90,64 @@ describe("what one render of the chart is built from", () => {
     expect(series?.xLabels[2].text).toBe('grades.chart.noAxisTask:{"n":3}');
   });
 
-  it("carries the percent through without recomputing it", () => {
-    // The page already rounds to 0.1 %; recomputing here would show 79.999… on
-    // one screen and 80 on another.
+  it("turns each percentage into the mark the line will show", () => {
+    // The percentage is converted ONCE, here: 87 % is an 11 and 87 itself is
+    // never plotted, because the axis is a 12-point scale.
     const series = buildSeries(
       source([
-        item({ assignment_id: "a", percent: 79.9 }),
+        item({ assignment_id: "a", percent: 87 }),
         item({ assignment_id: "b", percent: 100 }),
       ]),
       t,
     );
+    if (!series) throw new Error("two items must produce a series");
 
-    expect(series?.points.map((point) => point.percent)).toEqual([79.9, 100]);
+    expect(series.points.map((point) => point.grade)).toEqual([11, 12]);
+    // The percentage itself survives for the tooltip, just not for the axis.
+    expect(series.points.map((point) => point.percent)).toEqual([87, 100]);
   });
 
-  it("keeps a missing score missing instead of drawing a zero bar", () => {
+  it("keeps a missing score missing instead of drawing the lowest mark", () => {
     const series = buildSeries(
       source([
         item({ assignment_id: "with", points: 80, percent: 80 }),
-        item({ assignment_id: "without", points: null, max_points: null, percent: null }),
+        item({
+          assignment_id: "without",
+          points: null,
+          max_points: null,
+          percent: null,
+        }),
       ]),
-      t,
-    );
-
-    const missing = series?.points[1];
-    expect(missing?.points).toBeNull();
-    expect(missing?.percent).toBeNull();
-    // The other point is untouched: one gapless bar must not shift the rest.
-    expect(series?.points[0].points).toBe(80);
-  });
-
-  it("draws no average line for a course that has no average", () => {
-    const series = buildSeries(
-      source([item({ assignment_id: "a" }), item({ assignment_id: "b" })], {
-        average: null,
-      }),
-      t,
-    );
-
-    expect(series?.averageY).toBeNull();
-  });
-
-  it("places the average line on the percent axis at its own value", () => {
-    const series = buildSeries(
-      source([item({ assignment_id: "a" }), item({ assignment_id: "b" })]),
       t,
     );
     if (!series) throw new Error("two items must produce a series");
 
-    expect(series.averageY).toBe(yScale(87, PERCENT_MAX));
-    // 87 % is 13 % of the way down from the top, and above the midpoint: a
-    // reader must be able to see the average sits high on the percent axis.
-    expect(series.averageY).toBeGreaterThan(PLOT_TOP);
-    expect(series.averageY).toBeLessThan((PLOT_TOP + PLOT_BOTTOM) / 2);
+    // No mark at all: a dot at the bottom of a 1…12 scale would be a claim the
+    // teacher never made.
+    expect(series.points[1].grade).toBeNull();
+    // And the graded work is untouched by its ungraded neighbour.
+    expect(series.points[0].grade).toBe(10);
   });
 
   it("returns nothing at all for a course with fewer than two graded works", () => {
-    // Not an empty chart: one bar is not a trend, and the caller turns `null`
+    // Not an empty chart: one mark is not a trend, and the caller turns `null`
     // into a disabled button.
     expect(buildSeries(source([]), t)).toBeNull();
     expect(buildSeries(source([item()]), t)).toBeNull();
   });
 
-  it("gives both axes five ticks that share their Y positions", () => {
+  it("labels the axis with the twelve marks and nothing else", () => {
     const series = buildSeries(
       source([item({ assignment_id: "a" }), item({ assignment_id: "b" })]),
       t,
     );
 
-    expect(series?.leftTicks).toHaveLength(TICK_COUNT);
-    expect(series?.rightTicks).toHaveLength(TICK_COUNT);
-    expect(series?.rightTicks.map((tick) => tick.y)).toEqual(
-      series?.leftTicks.map((tick) => tick.y),
-    );
+    expect(series?.ticks.map((tick) => tick.value)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+    ]);
+    // One axis, not two: the same fact on a second scale is a second thing to
+    // misread, not a second fact.
+    expect(series).not.toHaveProperty("rightTicks");
+    expect(series).not.toHaveProperty("averageY");
   });
 });

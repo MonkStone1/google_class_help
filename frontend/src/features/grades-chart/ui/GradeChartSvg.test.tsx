@@ -95,42 +95,39 @@ function svgTexts(container: HTMLElement): Array<string | null> {
 }
 
 describe("the chart picture", () => {
-  it("labels BOTH axes with five values each", () => {
+  it("labels ONE axis, with every mark from 1 to 12", () => {
     const { container } = renderChart();
 
-    // Five on the left and five on the right: an axis with no numbers is
-    // decoration, and the two sets must be told apart by their position rather
-    // than by colour.
+    // The whole axis, start to finish: 12 is the best mark and 1 the lowest, and
+    // nothing between them is skipped.
     const texts = svgTexts(container);
-    for (const value of ["0", "25", "50", "75", "100"]) {
-      expect(texts.filter((text) => text === value)).toHaveLength(2);
+    for (let mark = 1; mark <= 12; mark += 1) {
+      expect(texts.filter((text) => text === String(mark))).toHaveLength(1);
     }
-    expect(texts).toContain("Score, %");
-    expect(texts).toContain("Points");
-    expect(texts).toContain("Assignment");
+    expect(texts).toContain("Mark");
+    expect(texts).toContain("Date");
+    // No percentages anywhere on the picture: the axis is in marks, not in %.
+    expect(texts).not.toContain("Score, %");
   });
 
-  it("draws one bar per point that has points, and none for the rest", () => {
-    pinEnglish();
-    const { container, rerender } = renderChart();
-    expect(container.querySelectorAll("rect.grade-chart-bar")).toHaveLength(3);
+  it("draws no bars at all, only the line and its dots", () => {
+    const { container } = renderChart();
 
-    // A work with no score is a GAP, not a zero-height bar: a bar of height
-    // zero claims the student scored nothing, which is a different statement.
-    rerender(
-      draw(
-        source({
-          items: [
-            ...THREE,
-            item({ assignment_id: "a4", points: null, percent: null }),
-          ],
-        }),
-      ),
-    );
-    expect(container.querySelectorAll("rect.grade-chart-bar")).toHaveLength(3);
+    // A `<rect>` per assignment would have been the same grades drawn a second
+    // time on a second scale.
+    expect(container.querySelector("rect")).toBeNull();
+    expect(container.querySelectorAll("circle.grade-chart-dot")).toHaveLength(3);
+    expect(container.querySelector("polyline.grade-chart-line")).toBeTruthy();
   });
 
-  it("joins the score line through exactly the points that have a percent", () => {
+  it("draws no average line and no legend", () => {
+    const { container } = renderChart();
+
+    expect(container.querySelector("line.grade-chart-average")).toBeNull();
+    expect(container.querySelector(".grade-chart-legend")).toBeNull();
+  });
+
+  it("joins the line through exactly the points that have a mark", () => {
     const { container } = renderChart();
 
     const polyline = container.querySelector("polyline.grade-chart-line");
@@ -143,15 +140,25 @@ describe("the chart picture", () => {
     }
   });
 
-  it("dashes the average line, and draws none when there is no average", () => {
+  it("skips a point that has no mark instead of dropping it to the bottom", () => {
     pinEnglish();
-    const { container, rerender } = renderChart();
+    const { container } = renderChart({
+      items: [
+        ...THREE,
+        item({ assignment_id: "a4", points: null, percent: null }),
+      ],
+    });
 
-    const average = container.querySelector("line.grade-chart-average");
-    expect(average?.getAttribute("stroke-dasharray")).toBeTruthy();
-
-    rerender(draw(source({ average: null })));
-    expect(container.querySelector("line.grade-chart-average")).toBeNull();
+    // Three dots for four assignments: an ungraded work has no mark, and a dot
+    // at 1 would be a mark the teacher never gave.
+    expect(container.querySelectorAll("circle.grade-chart-dot")).toHaveLength(3);
+    const pairs = (
+      container.querySelector("polyline.grade-chart-line")?.getAttribute("points") ??
+      ""
+    )
+      .trim()
+      .split(/\s+/);
+    expect(pairs).toHaveLength(3);
   });
 
   it("names the picture for a screen reader", () => {
@@ -164,7 +171,7 @@ describe("the chart picture", () => {
     );
   });
 
-  it("writes a formatted date under each category", () => {
+  it("writes a formatted date under every point", () => {
     pinEnglish();
     const { container } = renderChart();
 
@@ -194,27 +201,15 @@ describe("the chart picture", () => {
     expect(texts).toContain("#2");
   });
 
-  it("names all three series in the legend", () => {
-    pinEnglish();
-    const { container } = renderChart();
-
-    // Not decoration: on a double axis a reader who cannot tell which scale the
-    // bars belong to reads the whole chart wrong.
-    expect(container.querySelectorAll(".grade-chart-legend li")).toHaveLength(3);
-    expect(screen.getByText("Points earned")).toBeInTheDocument();
-    expect(screen.getByText("Course average")).toBeInTheDocument();
-    expect(screen.getAllByText("Score, %").length).toBeGreaterThan(0);
-  });
-
-  it("states every number in a table a screen reader can walk", () => {
+  it("states every mark in a table a screen reader can walk", () => {
     renderChart();
 
-    // The bars answer "how much" only approximately; the table says it exactly.
+    // The line answers "how well" only to the nearest mark; the table gives the
+    // exact one, and the raw points behind it.
     const rows = screen.getAllByRole("row");
     expect(rows).toHaveLength(THREE.length + 1);
     expect(rows[2]).toHaveTextContent("HW 2");
-    expect(rows[2]).toHaveTextContent("87 / 100");
-    expect(rows[2]).toHaveTextContent("87%");
+    expect(rows[2]).toHaveTextContent("11 (87 / 100)");
   });
 
   it("shows a dot's numbers on hover AND on keyboard focus", () => {
