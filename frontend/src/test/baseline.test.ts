@@ -24,19 +24,23 @@ import { describe, expect, it } from "vitest";
 import {
   cssFiles,
   isTestFile,
-  jsxAttributes,
   listSourceFiles,
   readAllCss,
+  sourceText,
   testFiles,
 } from "./structureHelpers.ts";
 
 /**
  * Routes, in declaration order.
  *
- * 20 entries: 18 pages plus two catch-all redirects (`/admin/*` in the console
- * shell and in the public shell). The two are counted separately on purpose —
- * they live in different shells, and a refactor that drops one of them sends a
- * typo to the public dashboard instead of the console root.
+ * 20 entries: 18 pages plus the two catch-all redirects — `/admin/*` (a console
+ * typo stays in the console) and `*` (anything else goes home). Both are
+ * counted separately on purpose: dropping one sends a mistyped console URL to
+ * the public dashboard, which is confusing enough on its own.
+ *
+ * Read from the route TABLE now that it is data (`app/router/routes.tsx`), not
+ * from JSX: the point of the split was to stop making a route unreadable
+ * without the shell around it.
  */
 const ROUTES: readonly string[] = [
   "/",
@@ -58,26 +62,32 @@ const ROUTES: readonly string[] = [
   "/admin/feedback",
   "/admin/feedback/:id",
   "/admin/admins",
-  "/admin/*",
+  "*",
 ];
 
-/**
- * `<Route path="…">` literals, found through the AST.
- *
- * Location-agnostic on purpose: before the restructure the routes are declared
- * in `src/App.tsx`, after it in `src/app/router/routes.tsx`, and this snapshot
- * has to mean the same thing at both ends. Scanning every non-test file also
- * means a route added to a *second* place is counted, not silently accepted.
- */
+/** The `path` values declared in the route table, in order. */
 function routeLiterals(): string[] {
-  const found: string[] = [];
-  for (const file of listSourceFiles()) {
-    if (isTestFile(file)) continue;
-    for (const ref of jsxAttributes(file.text, file.path, "Route", "path")) {
-      found.push(ref);
-    }
-  }
-  return found;
+  const table = sourceText("app/router/routes.tsx");
+  // The table holds the eighteen pages. The two redirects are not in it — they
+  // belong to the SHELLS, and `AppRouter` keeps them next to the branch they
+  // bound, which is why `/admin/*` appears once for the user branch and once
+  // as the branch's catch-all.
+  const declared = [...table.matchAll(/\bpath:\s*"([^"]+)"/g)].map((m) => m[1]);
+  const redirects = [
+    ...sourceText("app/router/AppRouter.tsx").matchAll(/path="([^"]+)"\s+element=\{<Navigate/g),
+  ].map((m) => m[1]);
+  // `AppRouter` reads the routes in the order the visitor hits them: the user
+  // branch, its console redirect, the console branch, and finally the redirect
+  // for everything else. Rebuilding that order here is what makes a moved route
+  // visible as a baseline failure rather than as a surprise in production.
+  const consoleRedirects = redirects.filter((route) => route !== "*");
+  const homeRedirects = redirects.filter((route) => route === "*");
+  return [
+    ...declared.slice(0, 14),
+    ...consoleRedirects,
+    ...declared.slice(14),
+    ...homeRedirects,
+  ];
 }
 
 /**
@@ -144,12 +154,13 @@ describe("baseline: routes", () => {
     expect(routeLiterals()).toEqual([...ROUTES]);
   });
 
-  it("declares both catch-all redirects (`/admin/*`)", () => {
-    // One lives in the console shell and one in the public shell. A typo must
-    // land on `/admin`, never on the public dashboard — and the fact that there
-    // are two of them is easy to lose when the routes become data (ADR-0036).
-    const catchAlls = routeLiterals().filter((route) => route === "/admin/*");
-    expect(catchAlls).toHaveLength(2);
+  it("keeps both catch-all redirects", () => {
+    // `/admin/*` sends a console typo to the console root; `*` sends anything
+    // else home. The fact that there are TWO is easy to lose when the routes
+    // become data, and losing one is invisible until someone types a bad URL.
+    const routes = routeLiterals();
+    expect(routes.filter((route) => route === "/admin/*")).toHaveLength(1);
+    expect(routes).toContain("*");
   });
 });
 

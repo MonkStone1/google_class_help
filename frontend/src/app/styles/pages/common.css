@@ -1,0 +1,32 @@
+/*
+ * Page-specific styles (teacher matrix, subject detail, calendar, settings,
+ * public landing). Loaded last so a page can refine the shared components.
+ */
+
+.stack > * + * {
+  margin-top: 10px;
+}
+.assignment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+.meta-due {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.meta-overdue {
+  color: var(--danger);
+  font-weight: 600;
+}
+.meta-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.meta-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}

@@ -1,0 +1,78 @@
+/* Settings ---------------------------------------------------------------------------------- */
+
+.settings-page {
+  max-width: 720px;
+}
+.settings-card {
+  margin-bottom: 14px;
+}
+.settings-card h2 {
+  margin-bottom: 14px;
+}
+.settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 0;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border);
+}
+.settings-row:first-of-type {
+  border-top: none;
+}
+.settings-row-top {
+  align-items: flex-start;
+}
+.settings-label {
+  font-weight: 600;
+  font-size: 13px;
+}
+.settings-value {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.settings-error {
+  color: var(--danger);
+  font-size: 12.5px;
+}
+.settings-hint {
+  margin-top: 4px;
+  font-size: 12.5px;
+}
+.settings-hint a {
+  color: var(--accent);
+}
+.settings-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.toggle input {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+}
+.confirm-box {
+  background: var(--warning-soft);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  margin-top: 6px;
+}
+.confirm-box > div {
+  display: flex;
+  gap: 8px;
+}

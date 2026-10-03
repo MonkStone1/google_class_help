@@ -69,7 +69,7 @@ function renderTopBar() {
   return render(
     <SettingsProvider>
       <MemoryRouter>
-        <TopBar search="" onSearch={() => {}} />
+        <TopBar />
       </MemoryRouter>
     </SettingsProvider>,
   );

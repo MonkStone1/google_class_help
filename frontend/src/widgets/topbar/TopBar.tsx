@@ -1,7 +1,21 @@
+/**
+ * The top bar: search, the sync controls and the notification bell.
+ *
+ * Search lives in the URL (`?q=`): a reload keeps the query, the link is
+ * shareable and the browser Back button cancels it — the same contract the
+ * assignments filter uses. That is why the bar reads `useSearchParams` itself
+ * instead of taking the query through props from the shell: the shell had no
+ * opinion about search, it only carried a value it never used.
+ *
+ * The two features it composes — global search and the notification centre —
+ * stay in `features/`: the bar is the shell that assembles them, not their
+ * owner, and a bell that lived here could not be reused on the settings page.
+ */
+
 import { Bell, KeyRound, Moon, RefreshCw, Sun } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../../entities/user/index.ts";
 import { useSync } from "../../features/sync/index.ts";
@@ -33,13 +47,7 @@ function SyncTime({ lastSync }: { lastSync: string | null }) {
   );
 }
 
-export function TopBar({
-  search,
-  onSearch,
-}: {
-  search: string;
-  onSearch: (value: string) => void;
-}) {
+export function TopBar() {
   const { status, syncing, syncStuck, syncNow, syncRestart, error } = useSync();
   const { login } = useAuth();
   const { assignments, courses } = useCourses();
@@ -54,6 +62,18 @@ export function TopBar({
   const [bellOpen, setBellOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  // The search query IS the URL parameter; the bar is its only writer.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const search = searchParams.get("q") ?? "";
+  const onSearch = (value: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (value.trim() === "") {
+      next.delete("q");
+    } else {
+      next.set("q", value);
+    }
+    setSearchParams(next, { replace: true });
+  };
 
   const results = useMemo(
     () => searchAll(assignments, courses, search),

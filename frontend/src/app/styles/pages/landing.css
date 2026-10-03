@@ -1,0 +1,290 @@
+/* Public landing (ADR-0029) ---------------------------------------------------------- */
+
+/*
+ * A full page, not the dashboard frame: it scrolls with the document, so it
+ * opts out of the app shell's `height: 100vh` overflow model entirely.
+ * Everything is built from the base tokens, which means the dark theme
+ * applied by prepaint-init.js before first paint works with no extra rules.
+ */
+.landing {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+}
+.landing-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 24px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+}
+.landing-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.landing-brand-logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.landing-brand-name {
+  font-weight: 650;
+  white-space: nowrap;
+}
+.landing-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.landing-language {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.landing-language-label {
+  white-space: nowrap;
+}
+.landing-language select {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.landing-main {
+  flex: 1;
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 40px 24px 56px;
+}
+/* Hero ------------------------------------------------------------------- */
+.landing-hero {
+  text-align: center;
+  padding: 24px 0 40px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 40px;
+}
+.landing-hero h1 {
+  font-size: 30px;
+  margin: 0 0 12px;
+  letter-spacing: -0.02em;
+}
+.landing-lead {
+  font-size: 15px;
+  color: var(--text-muted);
+  max-width: 62ch;
+  margin: 0 auto 12px;
+}
+.landing-hint {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin: 0;
+}
+/* Sections ---------------------------------------------------------------- */
+.landing-section {
+  margin-bottom: 44px;
+}
+.landing-section h2 {
+  font-size: 19px;
+  margin: 0 0 12px;
+}
+.landing-body {
+  color: var(--text-muted);
+  max-width: 74ch;
+  margin: 0;
+  line-height: 1.6;
+}
+/* Feature grid ------------------------------------------------------------ */
+.landing-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 14px;
+}
+.landing-feature {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.landing-feature-icon {
+  color: var(--accent);
+  margin-bottom: 10px;
+  display: flex;
+}
+.landing-feature h3 {
+  font-size: 14px;
+  margin: 0 0 6px;
+}
+.landing-feature p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+/* Steps ------------------------------------------------------------------- */
+.landing-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  counter-reset: none;
+}
+.landing-step {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.landing-step-number {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 12.5px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.landing-step h3 {
+  margin: 3px 0 4px;
+  font-size: 14px;
+}
+.landing-step p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+/* Data & privacy ---------------------------------------------------------- */
+.landing-data {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.landing-data-point {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13.5px;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+.landing-data-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+  display: inline-flex;
+  margin-top: 1px;
+}
+.landing-privacy-link {
+  width: fit-content;
+}
+/* Call to action ---------------------------------------------------------- */
+.landing-cta {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 28px 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.landing-cta h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.landing-cta .landing-body {
+  max-width: 56ch;
+}
+.landing-cta .button {
+  margin-top: 4px;
+}
+.landing-challenge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+/* Footer ------------------------------------------------------------------ */
+.landing-footer {
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+.landing-footer-links {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-weight: 550;
+  font-size: 13.5px;
+}
+.landing-footer-note,
+.landing-footer-contact {
+  font-size: 12px;
+  color: var(--text-muted);
+  max-width: 70ch;
+}
+/* Narrow screens: the header wraps, so the actions get their own row. */
+@media (max-width: 640px) {
+  .landing-header {
+    padding: 10px 16px;
+  }
+  .landing-main {
+    padding: 28px 16px 40px;
+  }
+  .landing-hero h1 {
+    font-size: 24px;
+  }
+  .landing-language-label {
+    display: none;
+  }
+}
+
+.assignment-detail-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.assignment-detail-card h2 {
+  margin: 0;
+}
+.assignment-detail-card .modal-details {
+  margin: 0;
+}
+

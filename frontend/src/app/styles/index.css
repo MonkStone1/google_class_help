@@ -1,0 +1,32 @@
+/*
+ * The order below IS the contract (ADR-0005): each layer may override the one
+ * before it. `tokens` must come first (everything else reads its variables),
+ * `ui` must come after `layout` (a card draws on top of a grid), and the page
+ * styles come last so a page may restyle a shared class on purpose — which is
+ * what the settings page does with `.subject-card`.
+ *
+ * It lives in ONE file, imported once from `app/main.tsx`, so the order is a
+ * list a reader can check rather than a property of whichever component happened
+ * to be imported first. A component that imported its own stylesheet would make
+ * the load order depend on the module graph, and Vite emits CSS in traversal
+ * order — the "floating CSS" the plan warns about (§3.5).
+ *
+ * The `pages/*` entries are the per-slice stylesheets the 1 556-line
+ * `pages.css` was split into; the split preserved the original sequence, so
+ * this list is the old four-line import plus eight more.
+ */
+
+@import "./tokens.css";
+@import "./base.css";
+@import "./layout.css";
+@import "./ui.css";
+@import "./pages/common.css";
+@import "./pages/subjects.css";
+@import "./pages/calendar.css";
+@import "./pages/grades.css";
+@import "./pages/settings.css";
+@import "./pages/responsive.css";
+@import "./pages/landing.css";
+@import "./pages/feedback.css";
+@import "./pages/markdown.css";
+@import "./pages/admins.css";

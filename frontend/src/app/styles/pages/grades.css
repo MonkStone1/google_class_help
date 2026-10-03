@@ -1,0 +1,133 @@
+/* Grades ---------------------------------------------------------------------------------- */
+
+.grades-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 760px;
+}
+.grade-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.grade-group-header h2 {
+  font-size: 16px;
+  margin: 0;
+}
+/* The whole header is the disclosure control, so the chevron, the course name
+   and the average stay on one clickable row with a visible focus ring. */
+.grade-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.grade-group-toggle:hover .grade-group-name {
+  color: var(--accent);
+}
+.grade-group-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.grade-group-chevron {
+  flex: none;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+.grade-group-name {
+  font-size: 16px;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grade-group-average {
+  flex: none;
+}
+.grade-average {
+  font-weight: 650;
+  color: var(--success);
+}
+.grade-history {
+  margin: 12px 0 4px;
+  color: var(--accent);
+}
+.grade-sparkline {
+  width: 100%;
+  max-width: 320px;
+  height: 48px;
+  display: block;
+}
+.grade-history-labels {
+  display: flex;
+  justify-content: space-between;
+  max-width: 320px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.grade-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.grade-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 2px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+.grade-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Active filter chips (ADR-0013): each one removes exactly its own value. */
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.filter-chip:hover {
+  background: var(--bg-muted);
+  border-color: var(--text-muted);
+  color: var(--text);
+}
+.filter-chip svg {
+  flex: none;
+}
+.grade-value {
+  font-weight: 600;
+  white-space: nowrap;
+}

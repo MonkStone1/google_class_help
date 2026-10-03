@@ -1,0 +1,67 @@
+/*
+ * Design tokens and the reset — the lowest CSS layer (ADR-0040 §3.1).
+ *
+ * The theme switches on <html data-theme="light|dark">, and this is the ONLY
+ * file with `:root` and `[data-theme]`: a second source for a colour is how a
+ * dark theme ends up with one white surface that nothing else can fix. The
+ * pre-paint script (ADR-0034) writes the same attribute before first paint, so
+ * nothing here may depend on JavaScript having run.
+ *
+ * Typography and bare elements live in `base.css`; the order of the whole stack
+ * is `app/styles/index.css`.
+ */
+
+/* Design tokens ------------------------------------------------------- */
+
+:root {
+  --bg: #f6f7f9;
+  --bg-elevated: #ffffff;
+  --bg-muted: #eef0f3;
+  --border: #e3e6ea;
+  --text: #1c2430;
+  --text-muted: #66707e;
+  --accent: #3b6ef5;
+  --accent-soft: rgba(59, 110, 245, 0.1);
+  --danger: #d94848;
+  --danger-soft: rgba(217, 72, 72, 0.12);
+  --warning: #c77b1e;
+  --warning-soft: rgba(199, 123, 30, 0.13);
+  --success: #2e9e5b;
+  --success-soft: rgba(46, 158, 91, 0.12);
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 12px rgba(16, 24, 40, 0.05);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --sidebar-width: 232px;
+  /*
+   * Отступ тоста (ADR-0030) от верхнего края окна. Не 16px: тост висит
+   * position:fixed, поэтому при 16px он накрыл бы сам топбар вместе с кнопками
+   * «Синк», колокольчиком и переключателем темы. 70px — это высота топбара
+   * (12 + 35.5 + 12 + 1) плюс ~10px зазора: тост появляется сразу под ним,
+   * у правого края, ровно под колокольчиком. На узком экране топбар
+   * переносится на две строки — значение переопределяется в pages.css.
+   */
+  --toast-top: 70px;
+}
+:root[data-theme="dark"] {
+  --bg: #12161d;
+  --bg-elevated: #1a2029;
+  --bg-muted: #232b36;
+  --border: #2c3542;
+  --text: #e6eaf0;
+  --text-muted: #97a1af;
+  --accent: #6b93f7;
+  --accent-soft: rgba(107, 147, 247, 0.14);
+  --danger: #ef7070;
+  --danger-soft: rgba(239, 112, 112, 0.14);
+  --warning: #e0a04c;
+  --warning-soft: rgba(224, 160, 76, 0.14);
+  --success: #55c07f;
+  --success-soft: rgba(85, 192, 127, 0.14);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
