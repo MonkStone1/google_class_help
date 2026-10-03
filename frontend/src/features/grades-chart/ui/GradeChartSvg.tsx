@@ -19,11 +19,12 @@ import { useState } from "react";
 
 import { useI18n } from "../../../shared/i18n/index.ts";
 import {
+  AXIS_TICK_GAP,
+  AXIS_TITLE_GAP,
   CHART_HEIGHT,
   CHART_WIDTH,
   HIT_RADIUS,
   MAX_X_LABELS,
-  PAD_LEFT,
   PAD_TOP,
   PLOT_BOTTOM,
   PLOT_LEFT,
@@ -100,7 +101,7 @@ export function GradeChartSvg({ series, courseName }: Props) {
             <text
               key={`tick-${tick.value}`}
               className="grade-chart-tick"
-              x={PLOT_LEFT - 10}
+              x={PLOT_LEFT - AXIS_TICK_GAP}
               y={tick.y}
               textAnchor="end"
               dominantBaseline="middle"
@@ -141,11 +142,13 @@ export function GradeChartSvg({ series, courseName }: Props) {
               </g>
             ),
           )}
-          {/* The two axis titles: the mark scale on the left, the dates below. */}
+          {/* The two axis titles. The mark title sits on its OWN row well above the
+              topmost tick: sharing a line with a number is what made it look
+              stuck to the scale. `AXIS_TITLE_GAP` is the space between them. */}
           <text
             className="grade-chart-axis-title"
-            x={PAD_LEFT - 12}
-            y={PAD_TOP - 12}
+            x={PLOT_LEFT - AXIS_TICK_GAP}
+            y={PAD_TOP - AXIS_TITLE_GAP}
             textAnchor="end"
           >
             {t("grades.chart.axis.grade")}

@@ -22,24 +22,47 @@
  * to dust. Every padding below is therefore also a pixel margin on screen.
  */
 export const CHART_WIDTH = 960;
-/** `viewBox` height. */
-export const CHART_HEIGHT = 420;
+/** `viewBox` height. Grown with {@link PAD_TOP} so the plot itself stays tall. */
+export const CHART_HEIGHT = 436;
 
-/** Space above the plot: the "Mark" axis title and the topmost tick label. */
-export const PAD_TOP = 28;
+/**
+ * Space above the plot, and it holds TWO rows: the axis title and, under it,
+ * the topmost tick label. It has to fit both plus a real gap, because stacking
+ * an 11px word directly on top of an 11px number is what makes a chart read as
+ * crowded even when nothing technically overlaps.
+ */
+export const PAD_TOP = 44;
 /** Space below it: the date labels AND the "Date" axis title under them. */
 export const PAD_BOTTOM = 64;
 /**
- * Left inset — the only axis there is, and it carries two labels: a tick number
- * and the axis title above it. The widest of those is "Оцінка", so the inset is
- * sized for it rather than for the number.
+ * Left inset, sized for the tick NUMBERS only.
+ *
+ * The axis title no longer has to fit here: it sits in the column above the
+ * numbers with breathing room, so the widest thing on the left is a two-digit
+ * mark, and the inset can go back to what that actually needs.
  */
-export const PAD_LEFT = 72;
+export const PAD_LEFT = 64;
 /**
  * Right inset: the line stops here instead of at the frame edge, which is what
  * stops the last point from looking pinned to the border.
  */
 export const PAD_RIGHT = 48;
+
+/**
+ * Gap between a tick NUMBER and the axis it belongs to.
+ *
+ * Every tick label hangs off this one distance, so the axis reads as a column
+ * rather than as numbers floating at different distances from the line.
+ */
+export const AXIS_TICK_GAP = 12;
+/**
+ * Vertical distance from the plot's top edge up to the axis TITLE.
+ *
+ * This is the gap that fixes "Оценка" looking welded to the scale: the title
+ * needs roughly its own line height PLUS this much space before the first tick
+ * label, otherwise the two 11px texts stack into one crowded line.
+ */
+export const AXIS_TITLE_GAP = 30;
 
 /** Plot area: the rectangle the axis and the line are drawn inside. */
 export const PLOT_TOP = PAD_TOP;

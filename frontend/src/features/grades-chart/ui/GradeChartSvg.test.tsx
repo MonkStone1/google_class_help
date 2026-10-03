@@ -2,6 +2,14 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { GradeChartSvg } from "./GradeChartSvg.tsx";
+import {
+  AXIS_TICK_GAP,
+  AXIS_TITLE_GAP,
+  CHART_HEIGHT,
+  PAD_BOTTOM,
+  PAD_TOP,
+  PLOT_LEFT,
+} from "../chart/layout.ts";
 import { buildSeries, type Translate } from "../chart/series.ts";
 import type { ChartSource } from "../chart/types.ts";
 import { en } from "../../../shared/i18n/locales/en/index.ts";
@@ -199,6 +207,50 @@ describe("the chart picture", () => {
     const texts = svgTexts(container);
     expect(texts).toContain("#1");
     expect(texts).toContain("#2");
+  });
+
+  it("keeps the axis title on its own row, clear of the tick numbers", () => {
+    const { container } = renderChart();
+
+    // The bug this guards: "Оценка" used to sit ~6 units above the "12" label,
+    // so the two 11px texts read as one crowded line stuck to the scale.
+    const title = container.querySelector("text.grade-chart-axis-title");
+    const topTick = container.querySelector("text.grade-chart-tick");
+    expect(title).toBeTruthy();
+    expect(topTick).toBeTruthy();
+
+    const titleY = Number(title?.getAttribute("y"));
+    const tickY = Number(topTick?.getAttribute("y"));
+    // A full line height plus a real margin between the two baselines.
+    expect(tickY - titleY).toBeGreaterThanOrEqual(AXIS_TITLE_GAP);
+    // And the title must stay INSIDE the frame, above the top of the plot.
+    expect(titleY).toBeGreaterThan(0);
+    expect(titleY).toBeLessThan(PAD_TOP);
+  });
+
+  it("hangs every tick number off the axis at the same distance", () => {
+    const { container } = renderChart();
+
+    // One column: the NUMBERS must line up with each other and with the title,
+    // not drift toward and away from the line at different distances. The date
+    // labels share the class but sit on their own X positions, so they are
+    // picked out by the vertical gap — a tick is centred on a gridline, a date
+    // is not.
+    const axisLabels = [
+      ...container.querySelectorAll("text.grade-chart-tick"),
+    ].filter((node) => {
+      const y = Number(node.getAttribute("y"));
+      return y >= PAD_TOP && y <= PAD_TOP + (CHART_HEIGHT - PAD_TOP - PAD_BOTTOM);
+    });
+    expect(axisLabels).toHaveLength(12);
+
+    const titleX = container
+      .querySelector("text.grade-chart-axis-title")
+      ?.getAttribute("x");
+    for (const node of axisLabels) {
+      expect(node.getAttribute("x")).toBe(String(PLOT_LEFT - AXIS_TICK_GAP));
+    }
+    expect(titleX).toBe(String(PLOT_LEFT - AXIS_TICK_GAP));
   });
 
   it("anchors the first and last dates inward, so neither hangs over the frame", () => {
