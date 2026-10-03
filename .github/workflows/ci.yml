@@ -33,6 +33,11 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm test
+      # `npm run lint` is `eslint src && tsc --noEmit`; `npm run build` adds
+      # the real `tsc -b` project graph plus the Vite bundle, so a broken
+      # build reference or an import that only resolves under one entry point
+      # fails here instead of on someone's machine (ADR-0040, stage 0).
+      - run: npm run build
 
   backend:
     runs-on: ubuntu-latest

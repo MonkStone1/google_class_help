@@ -150,6 +150,33 @@ core/  ←  db/  ←  gapi/  ←  sync/  ←  api/routes  ←  main.py
 [`docs/BACKEND_STRUCTURE.md`](docs/BACKEND_STRUCTURE.md). Автоматически
 проверяются `tests/test_backend_structure.py` и `ruff.toml`.
 
+### Структура `frontend/`
+
+`frontend/src/` разделён на шесть слоёв (ADR-0040). Разрешённая стрелка
+импортов — одна, справа налево:
+
+```text
+shared/  ←  entities/  ←  features/  ←  widgets/  ←  pages/  ←  app/
+```
+
+| Слой | Что в нём |
+|---|---|
+| `shared/` | `api/` (транспорт + эндпоинты + генерируемый `schema.d.ts`), `hooks/`, `lib/` (только чистые функции), `i18n/`, `types/`, `config/`, `test/`, `ui/` |
+| `entities/` | `assignment/`, `course/`, `grades/`, `feedback/`, `user/` — доменные типы и правила отображения, без `fetch` |
+| `features/` | `assignments-filter/`, `assignment-modal/`, `global-search/`, `notifications/`, `sync/`, `donate/`, `feedback-ticket/` |
+| `widgets/` | `sidebar/`, `topbar/`, `landing/`, `markdown/` — крупные блоки оболочки |
+| `pages/` | маршрут = папка `{ui/, model/, page.css}` |
+| `app/` | `router/`, `layouts/`, `providers/`, `boot/`, `toaster/`, `styles/`, `main.tsx` — импортируется **только** из `app/main.tsx` |
+
+Наружу у каждой папки-слайса торчит только её `index.ts`: импорт вроде
+`from "../../entities/feedback/status.ts"` запрещён. `shared/lib/` не содержит
+импорта `react` вовсе, а `entities/` не знает про `api.*` и `react-router-dom`.
+
+Полная карта, бюджеты строк, порядок CSS и рецепт добавления фичи —
+[`docs/FRONTEND_STRUCTURE.md`](docs/FRONTEND_STRUCTURE.md). Проверяют всё это
+`frontend/src/test/structure.test.ts` и `eslint.config.js`
+(`no-restricted-imports`), обе проверки — в обычном `npm test` / `npm run lint`.
+
 ### Frontend
 
 ```bat

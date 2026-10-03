@@ -6,6 +6,13 @@
 
 ## Почему `backend/` остаётся корнем `sys.path`
 
+Фронтенд решён отдельно: `frontend/src/` делится на шесть слоёв —
+`shared/`, `entities/`, `features/`, `widgets/`, `pages/`, `app/`
+([ADR-0040](adr/adr-0040-layered-frontend-slices.md),
+[`docs/FRONTEND_STRUCTURE.md`](FRONTEND_STRUCTURE.md)). Там слоями являются
+каталоги верхнего уровня `src/`, а не пакеты: у Node-резолвинга нет проблемы
+`sys.path`, которая потребовала пакетов здесь.
+
 `backend/` добавлен в `sys.path` (`pytest.ini`, `tests/conftest.py:18`,
 `migrations/env.py:24`, четыре файла в `tools/`), поэтому все модули
 импортируются верхнего уровня: `from config import ...`, `from models import ...`.
