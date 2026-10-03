@@ -2,8 +2,9 @@ import { BookOpen } from "lucide-react";
 
 import { EmptyState, SectionSkeleton } from "../components/Skeletons.tsx";
 import { SubjectCard } from "../components/SubjectCards.tsx";
-import { useCourses, useSync } from "../context/DataContext.tsx";
-import { useI18n } from "../i18n.ts";
+import { useCourses } from "../entities/course/index.ts";
+import { useSync } from "../features/sync/index.ts";
+import { useI18n } from "../shared/i18n/index.ts";
 
 export function Subjects() {
   const { courses } = useCourses();

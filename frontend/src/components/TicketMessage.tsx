@@ -1,6 +1,6 @@
-import { formatDateTimeShort, toLocalDate } from "../dates.ts";
-import { useI18n } from "../i18n.ts";
-import type { TicketMessage } from "../types.ts";
+import { formatDateTimeShort, toLocalDate } from "../shared/lib/dates.ts";
+import { useI18n } from "../shared/i18n/index.ts";
+import type { TicketMessage } from "../shared/types/index.ts";
 import { AttachmentList } from "./AttachmentList.tsx";
 import { Markdown } from "./Markdown.tsx";
 

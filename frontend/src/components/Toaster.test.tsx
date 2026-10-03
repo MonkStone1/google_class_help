@@ -2,8 +2,8 @@ import { act, render, screen } from "@testing-library/react";
 import { toast } from "sonner";
 import { describe, expect, it } from "vitest";
 
-import { SettingsProvider } from "../context/SettingsContext.tsx";
-import { DEFAULT_SETTINGS, type ThemeMode } from "../types.ts";
+import { SettingsProvider } from "../shared/settings/SettingsProvider.tsx";
+import { DEFAULT_SETTINGS, type ThemeMode } from "../shared/types/index.ts";
 import { Toaster } from "./Toaster.tsx";
 
 /**

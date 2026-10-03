@@ -3,19 +3,21 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CalendarPage } from "./CalendarPage.tsx";
-import type { AppSettings, Assignment } from "../types.ts";
-import { DEFAULT_SETTINGS } from "../types.ts";
+import type { AppSettings, Assignment } from "../shared/types/index.ts";
+import { DEFAULT_SETTINGS } from "../shared/types/index.ts";
 
 const useCourses = vi.fn();
 const useSync = vi.fn();
 const useSettings = vi.fn();
 
-vi.mock("../context/DataContext.tsx", () => ({
- useCourses: () => useCourses(),
+vi.mock("../features/sync/index.ts", () => ({
  useSync: () => useSync(),
 }));
+vi.mock("../entities/course/index.ts", () => ({
+ useCourses: () => useCourses(),
+}));
 
-vi.mock("../context/SettingsContext.tsx", () => ({
+vi.mock("../shared/settings/SettingsProvider.tsx", () => ({
  useSettings: () => useSettings(),
 }));
 

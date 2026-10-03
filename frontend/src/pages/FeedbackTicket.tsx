@@ -3,14 +3,14 @@ import { useEffect, useId, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
 
-import { api, type ApiError } from "../api.ts";
+import { api, type ApiError } from "../shared/api/index.ts";
 import { MarkdownField } from "../components/MarkdownField.tsx";
 import { SectionSkeleton } from "../components/Skeletons.tsx";
 import { TicketConversation } from "../components/TicketMessage.tsx";
-import { useI18n } from "../i18n.ts";
-import type { FeedbackTicketDetail } from "../types.ts";
+import { useI18n } from "../shared/i18n/index.ts";
+import type { FeedbackTicketDetail } from "../shared/types/index.ts";
 import { STATUS_CLASS } from "./FeedbackTickets.tsx";
-import type { I18nKey } from "../i18n.ts";
+import type { I18nKey } from "../shared/i18n/index.ts";
 
 const STATUS_LABEL: Record<string, I18nKey> = {
     new: "feedback.status.new",

@@ -1,9 +1,9 @@
 import { AlertTriangle, CalendarClock, Sun, Trash2, X } from "lucide-react";
 
-import { useSettings } from "../context/SettingsContext.tsx";
-import { formatDateTimeShort, parseDue } from "../dates.ts";
-import { useI18n } from "../i18n.ts";
-import type { I18nKey } from "../i18n.ts";
+import { useSettings } from "../shared/settings/SettingsProvider.tsx";
+import { formatDateTimeShort, parseDue } from "../shared/lib/dates.ts";
+import { useI18n } from "../shared/i18n/index.ts";
+import type { I18nKey } from "../shared/i18n/index.ts";
 import type { NotificationItem } from "./TopBar.tsx";
 
 const KIND_META: Record<

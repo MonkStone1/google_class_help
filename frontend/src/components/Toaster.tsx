@@ -1,8 +1,8 @@
 import { AlertTriangle, CheckCircle2, Info, KeyRound } from "lucide-react";
 import { Toaster as SonnerToaster } from "sonner";
 
-import { useSettings } from "../context/SettingsContext.tsx";
-import { useI18n } from "../i18n.ts";
+import { useSettings } from "../shared/settings/SettingsProvider.tsx";
+import { useI18n } from "../shared/i18n/index.ts";
 
 /**
  * The toast host (ADR-0030).

@@ -3,11 +3,11 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { StudentGrades } from "./StudentGrades.tsx";
-import { api } from "../api.ts";
-import { SettingsProvider } from "../context/SettingsContext.tsx";
-import { invalidateAllResources } from "../lib/resource.ts";
-import type { StudentGradeItem, StudentGrades as StudentGradesData } from "../types.ts";
-import { DEFAULT_SETTINGS } from "../types.ts";
+import { api } from "../shared/api/index.ts";
+import { SettingsProvider } from "../shared/settings/SettingsProvider.tsx";
+import { invalidateAllResources } from "../shared/hooks/useResource.ts";
+import type { StudentGradeItem, StudentGrades as StudentGradesData } from "../shared/types/index.ts";
+import { DEFAULT_SETTINGS } from "../shared/types/index.ts";
 
 const getStudentGrades = vi.spyOn(api, "getStudentGrades");
 function makeItem(overrides: Partial<StudentGradeItem> = {}): StudentGradeItem {

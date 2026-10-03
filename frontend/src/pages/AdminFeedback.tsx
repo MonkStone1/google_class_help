@@ -2,16 +2,16 @@ import { Inbox, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { api, type ApiError } from "../api.ts";
+import { api, type ApiError } from "../shared/api/index.ts";
 import { EmptyState, SectionSkeleton } from "../components/Skeletons.tsx";
-import { formatDateTimeShort, toLocalDate } from "../dates.ts";
-import { useI18n } from "../i18n.ts";
+import { formatDateTimeShort, toLocalDate } from "../shared/lib/dates.ts";
+import { useI18n } from "../shared/i18n/index.ts";
 import type {
     AdminTicketPage,
     FeedbackCategory,
     FeedbackStatus,
-} from "../types.ts";
-import type { I18nKey } from "../i18n.ts";
+} from "../shared/types/index.ts";
+import type { I18nKey } from "../shared/i18n/index.ts";
 import { STATUS_CLASS } from "./FeedbackTickets.tsx";
 
 const STATUSES: (FeedbackStatus | "")[] = [

@@ -1,9 +1,9 @@
 import { ChevronRight, UserRound } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import { formatDateTimeShort } from "../dates.ts";
-import { useI18n } from "../i18n.ts";
-import type { Course } from "../types.ts";
+import { formatDateTimeShort } from "../shared/lib/dates.ts";
+import { useI18n } from "../shared/i18n/index.ts";
+import type { Course } from "../shared/types/index.ts";
 
 export function SubjectCard({ course }: { course: Course }) {
   const { t } = useI18n();

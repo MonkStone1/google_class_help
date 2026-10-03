@@ -1,9 +1,9 @@
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
-import { useSync } from "../context/DataContext.tsx";
-import { toLocalDate } from "../dates.ts";
-import { useI18n } from "../i18n.ts";
+import { useSync } from "../features/sync/index.ts";
+import { toLocalDate } from "../shared/lib/dates.ts";
+import { useI18n } from "../shared/i18n/index.ts";
 
 /**
  * Announce a finished synchronization (ADR-0030). Renders nothing.

@@ -2,8 +2,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { api } from "../api.ts";
-import { SettingsProvider } from "../context/SettingsContext.tsx";
+import { api } from "../shared/api/index.ts";
+import { SettingsProvider } from "../shared/settings/SettingsProvider.tsx";
 import { FeedbackNew } from "./FeedbackNew.tsx";
 
 vi.mock("sonner", () => ({

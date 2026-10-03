@@ -3,8 +3,8 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AdminAdmins } from "./AdminAdmins.tsx";
-import { SettingsProvider } from "../context/SettingsContext.tsx";
-import type { Administrator } from "../types.ts";
+import { SettingsProvider } from "../shared/settings/SettingsProvider.tsx";
+import type { Administrator } from "../shared/types/index.ts";
 
 /**
  * `vi.hoisted` because `vi.mock` is hoisted above every top-level statement:
@@ -17,9 +17,9 @@ const api = vi.hoisted(() => ({
     deleteAdmin: vi.fn(),
 }));
 
-vi.mock("../api.ts", async () => {
-    const actual = await vi.importActual<typeof import("../api.ts")>(
-        "../api.ts",
+vi.mock("../shared/api/index.ts", async () => {
+    const actual = await vi.importActual<typeof import("../shared/api/index.ts")>(
+        "../shared/api/index.ts",
     );
     return { ...actual, api };
 });

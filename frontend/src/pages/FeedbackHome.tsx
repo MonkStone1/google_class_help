@@ -1,7 +1,7 @@
 import { LifeBuoy, MessageSquarePlus } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import { useI18n } from "../i18n.ts";
+import { useI18n } from "../shared/i18n/index.ts";
 
 /**
  * The Feedback entry page (ADR-0035).

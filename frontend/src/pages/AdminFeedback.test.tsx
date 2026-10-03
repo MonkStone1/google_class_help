@@ -2,9 +2,9 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SettingsProvider } from "../context/SettingsContext.tsx";
-import { DEFAULT_SETTINGS } from "../types.ts";
-import type { AdminTicket, AdminTicketPage } from "../types.ts";
+import { SettingsProvider } from "../shared/settings/SettingsProvider.tsx";
+import { DEFAULT_SETTINGS } from "../shared/types/index.ts";
+import type { AdminTicket, AdminTicketPage } from "../shared/types/index.ts";
 import { AdminFeedback } from "./AdminFeedback.tsx";
 
 /**
@@ -16,9 +16,9 @@ const api = vi.hoisted(() => ({
     getAdminTickets: vi.fn(),
 }));
 
-vi.mock("../api.ts", async () => {
-    const actual = await vi.importActual<typeof import("../api.ts")>(
-        "../api.ts",
+vi.mock("../shared/api/index.ts", async () => {
+    const actual = await vi.importActual<typeof import("../shared/api/index.ts")>(
+        "../shared/api/index.ts",
     );
     return { ...actual, api };
 });

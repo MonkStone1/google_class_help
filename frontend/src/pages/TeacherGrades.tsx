@@ -1,13 +1,13 @@
 import { ArrowLeft, GraduationCap } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
-import { api } from "../api.ts";
+import { api } from "../shared/api/index.ts";
 import { SubmissionStatusBadge } from "../components/Badges.tsx";
 import { EmptyState, SectionSkeleton } from "../components/Skeletons.tsx";
-import { formatDateTimeShort, parseDue } from "../dates.ts";
-import { useI18n } from "../i18n.ts";
-import { useResource } from "../lib/resource.ts";
-import type { SubmissionCell } from "../types.ts";
+import { formatDateTimeShort, parseDue } from "../shared/lib/dates.ts";
+import { useI18n } from "../shared/i18n/index.ts";
+import { useResource } from "../shared/hooks/useResource.ts";
+import type { SubmissionCell } from "../shared/types/index.ts";
 
 /**
  * Dedicated teacher grades view (section 6): students as rows, assignments as

@@ -1,10 +1,12 @@
 import { act, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { api } from "../api.ts";
-import { DataProvider } from "../context/DataContext.tsx";
-import { SettingsProvider } from "../context/SettingsContext.tsx";
-import { DEFAULT_SETTINGS, type AppStatus, type AuthStatus } from "../types.ts";
+import { api } from "../shared/api/index.ts";
+import {
+  DataProvider,
+} from "../app/providers/DataProvider.tsx";
+import { SettingsProvider } from "../shared/settings/SettingsProvider.tsx";
+import { DEFAULT_SETTINGS, type AppStatus, type AuthStatus } from "../shared/types/index.ts";
 import { SyncToaster } from "./SyncToaster.tsx";
 
 // The real sonner is deliberately not involved here: this suite tests WHEN the

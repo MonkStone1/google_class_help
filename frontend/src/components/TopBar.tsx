@@ -3,14 +3,16 @@ import { useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { useAuth, useSync, useCourses } from "../context/DataContext.tsx";
-import { useSettings } from "../context/SettingsContext.tsx";
-import { parseDue, toLocalDate } from "../dates.ts";
-import { useI18n } from "../i18n.ts";
-import { cn } from "../lib/cn.ts";
-import { searchAll } from "../lib/search.ts";
-import type { SearchHit } from "../lib/search.ts";
-import type { Assignment } from "../types.ts";
+import { useAuth } from "../entities/user/index.ts";
+import { useSync } from "../features/sync/index.ts";
+import { useCourses } from "../entities/course/index.ts";
+import { useSettings } from "../shared/settings/SettingsProvider.tsx";
+import { parseDue, toLocalDate } from "../shared/lib/dates.ts";
+import { useI18n } from "../shared/i18n/index.ts";
+import { cn } from "../shared/lib/cn.ts";
+import { searchAll } from "../features/global-search/search.ts";
+import type { SearchHit } from "../features/global-search/search.ts";
+import type { Assignment } from "../shared/types/index.ts";
 import { NotificationCenter } from "./NotificationCenter.tsx";
 import { SearchResults } from "./SearchResults.tsx";
 

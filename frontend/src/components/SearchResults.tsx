@@ -1,12 +1,12 @@
 import { BookOpen, ListChecks } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { formatDate, parseDue } from "../dates.ts";
-import { useI18n } from "../i18n.ts";
-import { cn } from "../lib/cn.ts";
-import { courseSubtitle } from "../lib/search.ts";
-import type { SearchHit } from "../lib/search.ts";
-import type { Assignment } from "../types.ts";
+import { formatDate, parseDue } from "../shared/lib/dates.ts";
+import { useI18n } from "../shared/i18n/index.ts";
+import { cn } from "../shared/lib/cn.ts";
+import { courseSubtitle } from "../features/global-search/search.ts";
+import type { SearchHit } from "../features/global-search/search.ts";
+import type { Assignment } from "../shared/types/index.ts";
 
 type Props = {
   query: string;

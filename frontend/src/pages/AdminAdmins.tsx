@@ -8,12 +8,12 @@ import {
 } from "react";
 import { toast } from "sonner";
 
-import { api, type ApiError } from "../api.ts";
+import { api, type ApiError } from "../shared/api/index.ts";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { EmptyState, SectionSkeleton } from "../components/Skeletons.tsx";
-import { formatDateTimeShort, toLocalDate } from "../dates.ts";
-import { useI18n } from "../i18n.ts";
-import type { Administrator } from "../types.ts";
+import { formatDateTimeShort, toLocalDate } from "../shared/lib/dates.ts";
+import { useI18n } from "../shared/i18n/index.ts";
+import type { Administrator } from "../shared/types/index.ts";
 
 /**
  * The administrator registry — Super Admin only (ADR-0036).

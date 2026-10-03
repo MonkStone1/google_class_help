@@ -17,10 +17,14 @@ import { RequireSuperAdmin } from "./components/RequireSuperAdmin.tsx";
 import { SignIn } from "./components/SignIn.tsx";
 import { SyncToaster } from "./components/SyncToaster.tsx";
 import { Toaster } from "./components/Toaster.tsx";
-import { DataProvider, useAuth, useSync } from "./context/DataContext.tsx";
-import { SettingsProvider } from "./context/SettingsContext.tsx";
+import { useAuth } from "./entities/user/index.ts";
+import { useSync } from "./features/sync/index.ts";
+import {
+  DataProvider,
+} from "./app/providers/DataProvider.tsx";
+import { SettingsProvider } from "./shared/settings/SettingsProvider.tsx";
 import { DashboardBoundary } from "./components/ErrorBoundary.tsx";
-import { useI18n } from "./i18n.ts";
+import { useI18n } from "./shared/i18n/index.ts";
 import { AdminAdmins } from "./pages/AdminAdmins.tsx";
 import { AdminDashboard } from "./pages/AdminDashboard.tsx";
 import { AdminFeedback } from "./pages/AdminFeedback.tsx";

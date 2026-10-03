@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 
-import { useAuth } from "../context/DataContext.tsx";
-import { isSuperAdminUser } from "../types.ts";
+import { useAuth } from "../entities/user/index.ts";
+import { isSuperAdminUser } from "../entities/user/index.ts";
 
 /**
  * The gate in front of `/admin/admins` (ADR-0036).

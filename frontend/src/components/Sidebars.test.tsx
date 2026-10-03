@@ -2,22 +2,29 @@ import { render } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SettingsProvider } from "../context/SettingsContext.tsx";
-import type { AuthStatus } from "../types.ts";
+import { SettingsProvider } from "../shared/settings/SettingsProvider.tsx";
+import type { AuthStatus } from "../shared/types/index.ts";
 import { AdminSidebar } from "./AdminSidebar.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 
 const useAuth = vi.fn();
 const useSync = vi.fn();
 
-vi.mock("../context/DataContext.tsx", async () => {
+vi.mock("../entities/user/index.ts", async () => {
     const actual = await vi.importActual<
-        typeof import("../context/DataContext.tsx")
-    >("../context/DataContext.tsx");
+        typeof import("../entities/user/index.ts")
+    >("../entities/user/index.ts");
     return {
         ...actual,
-        DataProvider: ({ children }: { children: React.ReactNode }) => children,
         useAuth: () => useAuth(),
+    };
+});
+vi.mock("../features/sync/index.ts", async () => {
+    const actual = await vi.importActual<
+        typeof import("../features/sync/index.ts")
+    >("../features/sync/index.ts");
+    return {
+        ...actual,
         useSync: () =>
             useSync() ?? {
                 status: null,
@@ -27,6 +34,14 @@ vi.mock("../context/DataContext.tsx", async () => {
                 syncNow: vi.fn(),
                 refresh: vi.fn(),
             },
+    };
+});
+vi.mock("../entities/course/index.ts", async () => {
+    const actual = await vi.importActual<
+        typeof import("../entities/course/index.ts")
+    >("../entities/course/index.ts");
+    return {
+        ...actual,
         useCourses: () => ({ courses: [], assignments: [] }),
     };
 });

@@ -1,9 +1,9 @@
 import { LayoutDashboard, ShieldCheck, Ticket } from "lucide-react";
 
-import { useAuth } from "../context/DataContext.tsx";
-import { useSettings } from "../context/SettingsContext.tsx";
-import { useI18n } from "../i18n.ts";
-import { isSuperAdminUser } from "../types.ts";
+import { useAuth } from "../entities/user/index.ts";
+import { useSettings } from "../shared/settings/SettingsProvider.tsx";
+import { useI18n } from "../shared/i18n/index.ts";
+import { isSuperAdminUser } from "../entities/user/index.ts";
 import { SidebarNav, type NavItem } from "./SidebarNav.tsx";
 
 /**

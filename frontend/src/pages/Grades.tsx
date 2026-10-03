@@ -3,11 +3,12 @@ import { useMemo } from "react";
 
 import { EmptyState, SectionSkeleton } from "../components/Skeletons.tsx";
 import { GradeHistorySparkline } from "../components/SubjectCards.tsx";
-import { useCourses, useSync } from "../context/DataContext.tsx";
-import { useSettings } from "../context/SettingsContext.tsx";
-import { parseDue } from "../dates.ts";
-import { useI18n } from "../i18n.ts";
-import type { CourseGrades } from "../types.ts";
+import { useCourses } from "../entities/course/index.ts";
+import { useSync } from "../features/sync/index.ts";
+import { useSettings } from "../shared/settings/SettingsProvider.tsx";
+import { parseDue } from "../shared/lib/dates.ts";
+import { useI18n } from "../shared/i18n/index.ts";
+import type { CourseGrades } from "../shared/types/index.ts";
 
 function historyPoints(course: CourseGrades) {
   return course.items

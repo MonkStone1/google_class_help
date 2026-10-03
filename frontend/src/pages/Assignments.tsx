@@ -4,38 +4,41 @@ import { useSearchParams } from "react-router-dom";
 
 import { AssignmentCard } from "../components/AssignmentCard.tsx";
 import { AssignmentModal } from "../components/AssignmentModal.tsx";
-import { FilterPanel } from "../components/FilterPanel.tsx";
+import { FilterPanel } from "../features/assignments-filter/ui/FilterPanel.tsx";
 import { EmptyState, SectionSkeleton } from "../components/Skeletons.tsx";
-import { useCourses, useSync } from "../context/DataContext.tsx";
-import { useSettings } from "../context/SettingsContext.tsx";
-import { useI18n } from "../i18n.ts";
+import { useCourses } from "../entities/course/index.ts";
+import { useSync } from "../features/sync/index.ts";
+import { useSettings } from "../shared/settings/SettingsProvider.tsx";
+import { useI18n } from "../shared/i18n/index.ts";
+import {
+  dueCounts,
+  filterAssignments,
+  pruneCourseSelection,
+  sameAssignmentsFilter,
+  sortAssignments,
+  statusCounts,
+} from "../features/assignments-filter/filters.ts";
 import {
   DUE_FILTER_KEYS,
   STATUS_FILTER_KEYS,
   canonicalDue,
   canonicalStatuses,
-  dueCounts,
-  filterAssignments,
   formatCourseFilter,
   formatDueFilter,
   formatStatusFilter,
   parseCourseFilter,
   parseDueFilter,
   parseStatusFilter,
-  pruneCourseSelection,
-  sameAssignmentsFilter,
-  sortAssignments,
-  statusCounts,
-} from "../lib/assignmentFilters.ts";
-import { cn } from "../lib/cn.ts";
+} from "../shared/lib/url.ts";
+import { cn } from "../shared/lib/cn.ts";
 import type {
   Assignment,
   AssignmentDueFilter,
   AssignmentFilterStatus,
   AssignmentsFilter,
   SortKey,
-} from "../types.ts";
-import type { I18nKey } from "../i18n.ts";
+} from "../shared/types/index.ts";
+import type { I18nKey } from "../shared/i18n/index.ts";
 
 const STATUS_LABELS: Record<AssignmentFilterStatus, I18nKey> = {
   todo: "filter.todo",

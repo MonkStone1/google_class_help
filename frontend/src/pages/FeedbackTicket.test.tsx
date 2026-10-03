@@ -2,9 +2,9 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SettingsProvider } from "../context/SettingsContext.tsx";
-import { DEFAULT_SETTINGS } from "../types.ts";
-import type { FeedbackTicketDetail, TicketMessage } from "../types.ts";
+import { SettingsProvider } from "../shared/settings/SettingsProvider.tsx";
+import { DEFAULT_SETTINGS } from "../shared/types/index.ts";
+import type { FeedbackTicketDetail, TicketMessage } from "../shared/types/index.ts";
 import { FeedbackTicket } from "./FeedbackTicket.tsx";
 
 vi.mock("sonner", () => ({
@@ -17,9 +17,9 @@ const api = vi.hoisted(() => ({
     replyToTicket: vi.fn(),
 }));
 
-vi.mock("../api.ts", async () => {
-    const actual = await vi.importActual<typeof import("../api.ts")>(
-        "../api.ts",
+vi.mock("../shared/api/index.ts", async () => {
+    const actual = await vi.importActual<typeof import("../shared/api/index.ts")>(
+        "../shared/api/index.ts",
     );
     return { ...actual, api };
 });

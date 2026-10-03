@@ -13,11 +13,12 @@ import { AssignmentCard } from "../components/AssignmentCard.tsx";
 import { StatCard } from "../components/StatCard.tsx";
 import { EmptyState, SectionSkeleton } from "../components/Skeletons.tsx";
 import { AssignmentModal } from "../components/AssignmentModal.tsx";
-import { useCourses, useSync } from "../context/DataContext.tsx";
-import { useSettings } from "../context/SettingsContext.tsx";
-import { parseDue, startOfDay } from "../dates.ts";
-import { useI18n } from "../i18n.ts";
-import type { Assignment } from "../types.ts";
+import { useCourses } from "../entities/course/index.ts";
+import { useSync } from "../features/sync/index.ts";
+import { useSettings } from "../shared/settings/SettingsProvider.tsx";
+import { parseDue, startOfDay } from "../shared/lib/dates.ts";
+import { useI18n } from "../shared/i18n/index.ts";
+import type { Assignment } from "../shared/types/index.ts";
 
 export function Dashboard() {
   const { assignments } = useCourses();

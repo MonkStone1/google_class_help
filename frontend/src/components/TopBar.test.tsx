@@ -2,8 +2,8 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_SETTINGS, type AppStatus } from "../types.ts";
-import { SettingsProvider } from "../context/SettingsContext.tsx";
+import { DEFAULT_SETTINGS, type AppStatus } from "../shared/types/index.ts";
+import { SettingsProvider } from "../shared/settings/SettingsProvider.tsx";
 import { TopBar } from "./TopBar.tsx";
 
 // The sync actions are context-driven, and this suite is about what the topbar
@@ -13,10 +13,10 @@ import { TopBar } from "./TopBar.tsx";
 const useSync = vi.fn();
 const useCourses = vi.fn();
 
-vi.mock("../context/DataContext.tsx", async () => {
+vi.mock("../entities/user/index.ts", async () => {
   const actual = await vi.importActual<
-    typeof import("../context/DataContext.tsx")
-  >("../context/DataContext.tsx");
+    typeof import("../entities/user/index.ts")
+  >("../entities/user/index.ts");
   return {
     ...actual,
     useAuth: () => ({
@@ -25,7 +25,23 @@ vi.mock("../context/DataContext.tsx", async () => {
       login: vi.fn(),
       logout: vi.fn(),
     }),
+  };
+});
+vi.mock("../features/sync/index.ts", async () => {
+  const actual = await vi.importActual<
+    typeof import("../features/sync/index.ts")
+  >("../features/sync/index.ts");
+  return {
+    ...actual,
     useSync: () => useSync(),
+  };
+});
+vi.mock("../entities/course/index.ts", async () => {
+  const actual = await vi.importActual<
+    typeof import("../entities/course/index.ts")
+  >("../entities/course/index.ts");
+  return {
+    ...actual,
     useCourses: () => useCourses(),
   };
 });

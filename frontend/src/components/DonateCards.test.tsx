@@ -1,8 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { SettingsProvider } from "../context/SettingsContext.tsx";
-import { DEFAULT_SETTINGS, type Language } from "../types.ts";
+import { SettingsProvider } from "../shared/settings/SettingsProvider.tsx";
+import { DEFAULT_SETTINGS, type Language } from "../shared/types/index.ts";
 import { DonateCards } from "./DonateCards.tsx";
 
 function renderCards(language: Language = "en") {

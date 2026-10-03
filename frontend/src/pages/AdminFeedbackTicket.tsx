@@ -3,14 +3,14 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 
-import { api, type ApiError } from "../api.ts";
+import { api, type ApiError } from "../shared/api/index.ts";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { MarkdownField } from "../components/MarkdownField.tsx";
 import { SectionSkeleton } from "../components/Skeletons.tsx";
 import { TicketConversation } from "../components/TicketMessage.tsx";
-import { useI18n } from "../i18n.ts";
-import type { AdminTicketDetail, FeedbackStatus } from "../types.ts";
-import type { I18nKey } from "../i18n.ts";
+import { useI18n } from "../shared/i18n/index.ts";
+import type { AdminTicketDetail, FeedbackStatus } from "../shared/types/index.ts";
+import type { I18nKey } from "../shared/i18n/index.ts";
 import { STATUS_CLASS } from "./FeedbackTickets.tsx";
 
 const STATUSES: FeedbackStatus[] = ["new", "in_progress", "resolved"];

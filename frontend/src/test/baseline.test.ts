@@ -132,7 +132,7 @@ function cssSelectors(): Set<string> {
  * construction.
  */
 async function localeKeys(lang: "en" | "uk" | "ru"): Promise<string[]> {
-  const module = await import(`../i18n/${lang}.ts`);
+  const module = await import(`../shared/i18n/locales/${lang}.ts`);
   return Object.keys(module[lang]).sort();
 }
 

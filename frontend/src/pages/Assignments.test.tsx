@@ -3,8 +3,8 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Assignments } from "./Assignments.tsx";
-import type { AppSettings, Assignment, Course } from "../types.ts";
-import { DEFAULT_SETTINGS } from "../types.ts";
+import type { AppSettings, Assignment, Course } from "../shared/types/index.ts";
+import { DEFAULT_SETTINGS } from "../shared/types/index.ts";
 
 const useCourses = vi.fn();
 const useSync = vi.fn();
@@ -12,18 +12,20 @@ const useSettings = vi.fn();
 
 // A real SettingsProvider owns its own state, so the page is driven through a
 // spy on `useSettings` to observe what the filter writes back (ADR-0006).
-vi.mock("../context/SettingsContext.tsx", async () => {
+vi.mock("../shared/settings/SettingsProvider.tsx", async () => {
  const actual = await vi.importActual<
-  typeof import("../context/SettingsContext.tsx")
- >("../context/SettingsContext.tsx");
+  typeof import("../shared/settings/SettingsProvider.tsx")
+ >("../shared/settings/SettingsProvider.tsx");
  return { ...actual, useSettings: () => useSettings() };
 });
 
 const useSettingsMock = useSettings;
 
-vi.mock("../context/DataContext.tsx", () => ({
- useCourses: () => useCourses(),
+vi.mock("../features/sync/index.ts", () => ({
  useSync: () => useSync(),
+}));
+vi.mock("../entities/course/index.ts", () => ({
+ useCourses: () => useCourses(),
 }));
 
 function makeCourse(overrides: Partial<Course> = {}): Course {

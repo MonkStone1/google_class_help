@@ -6,12 +6,13 @@ import { AssignmentCard } from "../components/AssignmentCard.tsx";
 import { AssignmentModal } from "../components/AssignmentModal.tsx";
 import { EmptyState, SectionSkeleton } from "../components/Skeletons.tsx";
 import { TeacherCourse } from "../components/TeacherCourse.tsx";
-import { useCourses, useSync } from "../context/DataContext.tsx";
-import { useSettings } from "../context/SettingsContext.tsx";
-import { useI18n } from "../i18n.ts";
-import type { I18nKey } from "../i18n.ts";
-import { matchesStatus, sortAssignments } from "../lib/assignmentFilters.ts";
-import type { Assignment, AssignmentStatusFilter, SortKey } from "../types.ts";
+import { useCourses } from "../entities/course/index.ts";
+import { useSync } from "../features/sync/index.ts";
+import { useSettings } from "../shared/settings/SettingsProvider.tsx";
+import { useI18n } from "../shared/i18n/index.ts";
+import type { I18nKey } from "../shared/i18n/index.ts";
+import { matchesStatus, sortAssignments } from "../features/assignments-filter/filters.ts";
+import type { Assignment, AssignmentStatusFilter, SortKey } from "../shared/types/index.ts";
 
 const STATUS_TABS: Array<{
   key: AssignmentStatusFilter | "all";

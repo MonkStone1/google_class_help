@@ -2,19 +2,21 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Grades } from "./Grades.tsx";
-import type { Assignment, Course } from "../types.ts";
-import { DEFAULT_SETTINGS } from "../types.ts";
+import type { Assignment, Course } from "../shared/types/index.ts";
+import { DEFAULT_SETTINGS } from "../shared/types/index.ts";
 
 const useCourses = vi.fn();
 const useSync = vi.fn();
 const useSettings = vi.fn();
 
-vi.mock("../context/DataContext.tsx", () => ({
- useCourses: () => useCourses(),
+vi.mock("../features/sync/index.ts", () => ({
  useSync: () => useSync(),
 }));
+vi.mock("../entities/course/index.ts", () => ({
+ useCourses: () => useCourses(),
+}));
 
-vi.mock("../context/SettingsContext.tsx", () => ({
+vi.mock("../shared/settings/SettingsProvider.tsx", () => ({
  useSettings: () => useSettings(),
 }));
 

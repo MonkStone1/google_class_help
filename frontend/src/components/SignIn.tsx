@@ -1,8 +1,8 @@
 import { GraduationCap } from "lucide-react";
 
-import { useAuth } from "../context/DataContext.tsx";
-import { useI18n } from "../i18n.ts";
-import { useSignInChallenge } from "../lib/signInChallenge.ts";
+import { useAuth } from "../entities/user/index.ts";
+import { useI18n } from "../shared/i18n/index.ts";
+import { useSignInChallenge } from "../widgets/landing/useSignInChallenge.ts";
 
 /**
  * The compact login gate of the hosted service (migration stage 7, §26).

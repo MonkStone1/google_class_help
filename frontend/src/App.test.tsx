@@ -3,28 +3,52 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App.tsx";
-import { DEFAULT_SETTINGS } from "./types.ts";
-import type { AuthStatus } from "./types.ts";
+import { DEFAULT_SETTINGS } from "./shared/types/index.ts";
+import type { AuthStatus } from "./shared/types/index.ts";
 
 const useAuth = vi.fn();
 const useSync = vi.fn();
 
-vi.mock("./context/DataContext.tsx", async () => {
+// The real DataProvider would fire network requests; only the auth and
+// loading state the gate branches on matter here.
+vi.mock("./app/providers/DataProvider.tsx", async () => {
   const actual = await vi.importActual<
-    typeof import("./context/DataContext.tsx")
-  >("./context/DataContext.tsx");
-  // The real DataProvider would fire network requests; only the auth and
-  // loading state the gate branches on matter here.
+    typeof import("./app/providers/DataProvider.tsx")
+  >("./app/providers/DataProvider.tsx");
   return {
     ...actual,
     DataProvider: ({ children }: { children: React.ReactNode }) => children,
+  };
+});
+vi.mock("./entities/user/index.ts", async () => {
+  const actual = await vi.importActual<
+    typeof import("./entities/user/index.ts")
+  >("./entities/user/index.ts");
+  return {
+    ...actual,
     useAuth: () => useAuth(),
+  };
+});
+vi.mock("./features/sync/index.ts", async () => {
+  const actual = await vi.importActual<
+    typeof import("./features/sync/index.ts")
+  >("./features/sync/index.ts");
+  return {
+    ...actual,
     useSync: () => useSync(),
+  };
+});
+vi.mock("./entities/course/index.ts", async () => {
+  const actual = await vi.importActual<
+    typeof import("./entities/course/index.ts")
+  >("./entities/course/index.ts");
+  return {
+    ...actual,
     useCourses: () => ({ courses: [], assignments: [] }),
   };
 });
 
-vi.mock("./lib/signInChallenge.ts", () => ({
+vi.mock("./widgets/landing/useSignInChallenge.ts", () => ({
   useSignInChallenge: () => ({
     token: null,
     required: false,

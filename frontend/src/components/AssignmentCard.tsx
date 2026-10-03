@@ -1,15 +1,15 @@
 import { CalendarDays, ExternalLink, Paperclip } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import { useI18n } from "../i18n.ts";
-import { cn } from "../lib/cn.ts";
+import { useI18n } from "../shared/i18n/index.ts";
+import { cn } from "../shared/lib/cn.ts";
 import {
   formatDateTimeShort,
   formatTime,
   parseDue,
   relativeDayLabel,
-} from "../dates.ts";
-import type { Assignment } from "../types.ts";
+} from "../shared/lib/dates.ts";
+import type { Assignment } from "../shared/types/index.ts";
 import { GradeBadge, PriorityBadge, StatusBadge } from "./Badges.tsx";
 
 type Props = {

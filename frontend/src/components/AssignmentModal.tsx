@@ -1,9 +1,9 @@
 import { ExternalLink, X } from "lucide-react";
 
-import { formatDate, formatTime, parseDue } from "../dates.ts";
-import type { I18nKey } from "../i18n.ts";
-import { useI18n } from "../i18n.ts";
-import type { Assignment } from "../types.ts";
+import { formatDate, formatTime, parseDue } from "../shared/lib/dates.ts";
+import type { I18nKey } from "../shared/i18n/index.ts";
+import { useI18n } from "../shared/i18n/index.ts";
+import type { Assignment } from "../shared/types/index.ts";
 import { GradeBadge, PriorityBadge, StatusBadge } from "./Badges.tsx";
 
 type Props = {

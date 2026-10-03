@@ -1,9 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { api } from "../api.ts";
-import { SettingsProvider } from "../context/SettingsContext.tsx";
-import { DEFAULT_SETTINGS, type AuthStatus, type Language } from "../types.ts";
+import { api } from "../shared/api/index.ts";
+import { SettingsProvider } from "../shared/settings/SettingsProvider.tsx";
+import { DEFAULT_SETTINGS, type AuthStatus, type Language } from "../shared/types/index.ts";
 import { Settings } from "./Settings.tsx";
 
 const toastMock = vi.hoisted(() => ({
@@ -20,15 +20,30 @@ const useSync = vi.fn();
 
 // Only the hooks the page reads: a real DataProvider would fire the network
 // requests this suite has nothing to do with.
-vi.mock("../context/DataContext.tsx", async () => {
+vi.mock("../entities/user/index.ts", async () => {
   const actual = await vi.importActual<
-    typeof import("../context/DataContext.tsx")
-  >("../context/DataContext.tsx");
+    typeof import("../entities/user/index.ts")
+  >("../entities/user/index.ts");
   return {
     ...actual,
-    DataProvider: ({ children }: { children: React.ReactNode }) => children,
     useAuth: () => useAuth(),
+  };
+});
+vi.mock("../features/sync/index.ts", async () => {
+  const actual = await vi.importActual<
+    typeof import("../features/sync/index.ts")
+  >("../features/sync/index.ts");
+  return {
+    ...actual,
     useSync: () => useSync(),
+  };
+});
+vi.mock("../entities/course/index.ts", async () => {
+  const actual = await vi.importActual<
+    typeof import("../entities/course/index.ts")
+  >("../entities/course/index.ts");
+  return {
+    ...actual,
     useCourses: () => ({ courses: [], assignments: [] }),
   };
 });

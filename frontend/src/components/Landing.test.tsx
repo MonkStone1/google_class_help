@@ -2,23 +2,23 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Landing } from "./Landing.tsx";
-import { SettingsProvider } from "../context/SettingsContext.tsx";
-import { DEFAULT_SETTINGS } from "../types.ts";
-import type { Language } from "../types.ts";
+import { SettingsProvider } from "../shared/settings/SettingsProvider.tsx";
+import { DEFAULT_SETTINGS } from "../shared/types/index.ts";
+import type { Language } from "../shared/types/index.ts";
 
 const login = vi.fn();
 const setLanguage = vi.fn();
 const setTheme = vi.fn();
 let currentLanguage: Language = "en";
 
-vi.mock("../context/DataContext.tsx", () => ({
+vi.mock("../entities/user/index.ts", () => ({
   useAuth: () => ({ login }),
 }));
 
-vi.mock("../context/SettingsContext.tsx", async () => {
+vi.mock("../shared/settings/SettingsProvider.tsx", async () => {
   const actual = await vi.importActual<
-    typeof import("../context/SettingsContext.tsx")
-  >("../context/SettingsContext.tsx");
+    typeof import("../shared/settings/SettingsProvider.tsx")
+  >("../shared/settings/SettingsProvider.tsx");
   // Only the hook is driven from here; the real provider still wraps the
   // page, so the select is rendered by the same code the app uses.
   return {
@@ -34,7 +34,7 @@ vi.mock("../context/SettingsContext.tsx", async () => {
 // The challenge hook owns a network call; the landing's own contract is what
 // is under test, so the hook is driven from here.
 const useSignInChallenge = vi.fn();
-vi.mock("../lib/signInChallenge.ts", () => ({
+vi.mock("../widgets/landing/useSignInChallenge.ts", () => ({
   useSignInChallenge: () => useSignInChallenge(),
 }));
 

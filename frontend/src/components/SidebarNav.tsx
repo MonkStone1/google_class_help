@@ -2,8 +2,8 @@ import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 
-import { cn } from "../lib/cn.ts";
-import type { I18nKey } from "../i18n.ts";
+import { cn } from "../shared/lib/cn.ts";
+import type { I18nKey } from "../shared/i18n/index.ts";
 
 /**
  * One navigation entry of the sidebar.

@@ -2,13 +2,14 @@ import { Database, LogOut, RefreshCw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { api } from "../api.ts";
-import { useAuth, useSync } from "../context/DataContext.tsx";
-import { useSettings } from "../context/SettingsContext.tsx";
-import { toLocalDate } from "../dates.ts";
-import { useI18n, LANGUAGE_OPTIONS } from "../i18n.ts";
-import type { I18nKey } from "../i18n.ts";
-import type { AppSettings, ThemeMode } from "../types.ts";
+import { api } from "../shared/api/index.ts";
+import { useAuth } from "../entities/user/index.ts";
+import { useSync } from "../features/sync/index.ts";
+import { useSettings } from "../shared/settings/SettingsProvider.tsx";
+import { toLocalDate } from "../shared/lib/dates.ts";
+import { useI18n, LANGUAGE_OPTIONS } from "../shared/i18n/index.ts";
+import type { I18nKey } from "../shared/i18n/index.ts";
+import type { AppSettings, ThemeMode } from "../shared/types/index.ts";
 import { CollapsibleCard } from "../components/CollapsibleCard.tsx";
 import { DonateCards } from "../components/DonateCards.tsx";
 

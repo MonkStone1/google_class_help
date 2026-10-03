@@ -3,12 +3,13 @@ import { useMemo, useState } from "react";
 
 import { AssignmentModal } from "../components/AssignmentModal.tsx";
 import { EmptyState } from "../components/Skeletons.tsx";
-import { useCourses, useSync } from "../context/DataContext.tsx";
-import { useSettings } from "../context/SettingsContext.tsx";
-import { dayKey, isSameDay, parseDue, startOfDay } from "../dates.ts";
-import { useI18n } from "../i18n.ts";
-import { cn } from "../lib/cn.ts";
-import type { Assignment, CalendarViewMode } from "../types.ts";
+import { useCourses } from "../entities/course/index.ts";
+import { useSync } from "../features/sync/index.ts";
+import { useSettings } from "../shared/settings/SettingsProvider.tsx";
+import { dayKey, isSameDay, parseDue, startOfDay } from "../shared/lib/dates.ts";
+import { useI18n } from "../shared/i18n/index.ts";
+import { cn } from "../shared/lib/cn.ts";
+import type { Assignment, CalendarViewMode } from "../shared/types/index.ts";
 
 type ViewMode = "month" | "week" | "day";
 

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 
-import { useI18n } from "../i18n.ts";
-import type { I18nKey } from "../i18n.ts";
+import { useI18n } from "../shared/i18n/index.ts";
+import type { I18nKey } from "../shared/i18n/index.ts";
 
 /**
  * The two donation destinations, in display order.

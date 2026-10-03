@@ -14,10 +14,10 @@ import {
 import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 
-import { useAuth } from "../context/DataContext.tsx";
-import { useSettings } from "../context/SettingsContext.tsx";
-import { LANGUAGE_OPTIONS, useI18n } from "../i18n.ts";
-import { useSignInChallenge } from "../lib/signInChallenge.ts";
+import { useAuth } from "../entities/user/index.ts";
+import { useSettings } from "../shared/settings/SettingsProvider.tsx";
+import { LANGUAGE_OPTIONS, useI18n } from "../shared/i18n/index.ts";
+import { useSignInChallenge } from "../widgets/landing/useSignInChallenge.ts";
 
 /**
  * The public landing page of the hosted service (ADR-0029).

@@ -8,7 +8,7 @@
  *    One implementation means the guardrails cannot drift apart — a check that
  *    reads a different set of files is a check of something else.
  * 2. **Import extraction through the TypeScript compiler API**, not through
- *    regular expressions. `vi.mock("../api.ts")` and `from "../api.ts"` are both
+ *    regular expressions. `vi.mock("../shared/api/index.ts")` and `from "../shared/api/index.ts"` are both
  *    string literals, and both matter for the guardrails; a regex that also
  *    matches inside a comment or a doc string produces a violation that is not
  *    there, and a guardrail that cries wolf is a guardrail people disable.
@@ -292,7 +292,7 @@ export function collectImports(file: SourceFile): ImportRef[] {
       node.expression.text === "vi" &&
       node.arguments.length === 1
     ) {
-      // `vi.mock("../api.ts", factory)` — the factory argument is optional.
+      // `vi.mock("../shared/api/index.ts", factory)` — the factory argument is optional.
       const [first] = node.arguments;
       if (first && ts.isStringLiteral(first)) {
         add(first.text);

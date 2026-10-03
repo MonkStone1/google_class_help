@@ -3,11 +3,11 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
-import { api, type ApiError } from "../api.ts";
+import { api, type ApiError } from "../shared/api/index.ts";
 import { MarkdownField } from "../components/MarkdownField.tsx";
-import { useI18n } from "../i18n.ts";
-import type { I18nKey } from "../i18n.ts";
-import type { FeedbackCategory } from "../types.ts";
+import { useI18n } from "../shared/i18n/index.ts";
+import type { I18nKey } from "../shared/i18n/index.ts";
+import type { FeedbackCategory } from "../shared/types/index.ts";
 
 const CATEGORIES: FeedbackCategory[] = [
     "bug",

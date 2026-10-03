@@ -1,7 +1,7 @@
 import { ArrowLeft, ExternalLink, Paperclip } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
-import { api } from "../api.ts";
+import { api } from "../shared/api/index.ts";
 import { SubmissionStatusBadge } from "../components/Badges.tsx";
 import { EmptyState, SectionSkeleton } from "../components/Skeletons.tsx";
 import {
@@ -9,10 +9,10 @@ import {
  formatDateTimeShort,
  formatTime,
  parseDue,
-} from "../dates.ts";
-import { useI18n } from "../i18n.ts";
-import { useResource } from "../lib/resource.ts";
-import type { StudentGradeItem } from "../types.ts";
+} from "../shared/lib/dates.ts";
+import { useI18n } from "../shared/i18n/index.ts";
+import { useResource } from "../shared/hooks/useResource.ts";
+import type { StudentGradeItem } from "../shared/types/index.ts";
 
 /**
  * One student's coursework and submission state inside a teacher course

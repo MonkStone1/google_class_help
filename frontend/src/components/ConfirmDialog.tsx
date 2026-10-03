@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { AlertTriangle } from "lucide-react";
 
-import { useI18n } from "../i18n.ts";
+import { useI18n } from "../shared/i18n/index.ts";
 
 type Props = {
     open: boolean;

@@ -7,13 +7,13 @@ import {
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
-import { api } from "../api.ts";
+import { api } from "../shared/api/index.ts";
 import { AssignmentCard } from "./AssignmentCard.tsx";
 import { EmptyState, SectionSkeleton } from "./Skeletons.tsx";
-import { useSettings } from "../context/SettingsContext.tsx";
-import { useI18n } from "../i18n.ts";
-import { useResource } from "../lib/resource.ts";
-import type { Assignment, Course, StudentGradeRow } from "../types.ts";
+import { useSettings } from "../shared/settings/SettingsProvider.tsx";
+import { useI18n } from "../shared/i18n/index.ts";
+import { useResource } from "../shared/hooks/useResource.ts";
+import type { Assignment, Course, StudentGradeRow } from "../shared/types/index.ts";
 
 type Tab = "assignments" | "students" | "grades";
 

@@ -1,7 +1,7 @@
 import { Download } from "lucide-react";
 
-import { useI18n } from "../i18n.ts";
-import type { TicketAttachment } from "../types.ts";
+import { useI18n } from "../shared/i18n/index.ts";
+import type { TicketAttachment } from "../shared/types/index.ts";
 
 /**
  * The files of one message (ADR-0035).

@@ -3,11 +3,11 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AssignmentDetail } from "./AssignmentDetail.tsx";
-import { api } from "../api.ts";
-import { SettingsProvider } from "../context/SettingsContext.tsx";
-import { invalidateAllResources } from "../lib/resource.ts";
-import type { AssignmentDetail as AssignmentDetailData } from "../types.ts";
-import { DEFAULT_SETTINGS } from "../types.ts";
+import { api } from "../shared/api/index.ts";
+import { SettingsProvider } from "../shared/settings/SettingsProvider.tsx";
+import { invalidateAllResources } from "../shared/hooks/useResource.ts";
+import type { AssignmentDetail as AssignmentDetailData } from "../shared/types/index.ts";
+import { DEFAULT_SETTINGS } from "../shared/types/index.ts";
 
 const getAssignmentDetail = vi.spyOn(api, "getAssignmentDetail");
 
