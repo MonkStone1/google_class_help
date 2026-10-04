@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Baseline snapshots of the restructure (ADR-0040, plan stage 0, step 4).
  *
  * The layer guardrails in `structure.test.ts` say "do not break the rules";
@@ -151,13 +151,17 @@ async function localeKeys(lang: "en" | "uk" | "ru"): Promise<string[]> {
  *
  * 395 before the Excel-export domain (ADR-0041) added its 19 `export.*` keys,
  * 414 after it. ADR-0042 added the `grades.chart.*` keys of the grade-trend
- * chart; that chart was then reduced to ONE line on the 1…12 mark scale, so the
- * keys for the legend, the second axis and the separate percent column went with
- * it — a string nobody can reach is not a translation, it is dead weight.
+ * chart; that chart was then reduced to ONE line of raw points on a scale the
+ * user picks in Settings, so the keys for the legend, the second axis and the
+ * separate percent column went with it — a string nobody can reach is not a
+ * translation, it is dead weight. Four `grades.chart.*grade*` keys were RENAMED
+ * to `*score*` ones when the derived mark was dropped (a rename keeps the count),
+ * and five `settings.grading*` keys arrived for the scale choice, which is what
+ * took it from 431 to 436.
  * A new domain moves this number in the SAME commit as the dictionary files —
  * see the note at the top of this file.
  */
-const I18N_KEY_COUNT = 431;
+const I18N_KEY_COUNT = 436;
 
 describe("baseline: routes", () => {
   it("keeps every declared route, in order", () => {
@@ -224,15 +228,15 @@ describe("baseline: translations", () => {
   // The names quote 433 and not the constant on purpose: a failure message that
   // says "expected 414 to be 433" tells you what the number used to be, which
   // is exactly the question a baseline failure raises.
-  it("keeps 431 keys in English", async () => {
+  it("keeps 432 keys in English", async () => {
     expect((await localeKeys("en")).length).toBe(I18N_KEY_COUNT);
   });
 
-  it("keeps 431 keys in Ukrainian", async () => {
+  it("keeps 432 keys in Ukrainian", async () => {
     expect((await localeKeys("uk")).length).toBe(I18N_KEY_COUNT);
   });
 
-  it("keeps 431 keys in Russian", async () => {
+  it("keeps 432 keys in Russian", async () => {
     expect((await localeKeys("ru")).length).toBe(I18N_KEY_COUNT);
   });
 

@@ -36,6 +36,14 @@ export type CalendarViewMode = "month" | "week" | "day";
 
 export type ThemeMode = "light" | "dark" | "system";
 
+/**
+ * The scales a school grades on. Classroom stores raw points per assignment, so
+ * the chart needs to be told what the top of the axis means — and it must be
+ * the USER who says so, because the app has no way to know that one course is
+ * marked out of 12 and the next out of 100 (ADR-0042).
+ */
+export type GradeScale = 12 | 100;
+
 export type Language = "en" | "uk" | "ru";
 
 export type DashboardSections = {
@@ -73,6 +81,8 @@ export type AppSettings = {
     collapsedGradeCourses: string[];
     /** Last used status tab on the subject detail page. */
     subjectTab: AssignmentStatusFilter | "all";
+    /** Top of the grade axis. 12 in a Ukrainian school, 100 on a percentage one. */
+    gradeScale: GradeScale;
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -103,4 +113,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
     calendarView: "month",
     collapsedGradeCourses: [],
     subjectTab: "all",
+    gradeScale: 12,
 };

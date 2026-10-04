@@ -23,7 +23,6 @@ import {
   AXIS_TITLE_GAP,
   CHART_HEIGHT,
   CHART_WIDTH,
-  GRADE_MIN,
   HIT_RADIUS,
   MAX_X_LABELS,
   PAD_TOP,
@@ -47,18 +46,18 @@ export function GradeChartSvg({ series, courseName }: Props) {
   // page has no reason to know, and the modal owns nothing else either.
   const [active, setActive] = useState<number | null>(null);
 
-  const { points, ticks, xLabels } = series;
+  const { points, ticks, xLabels, scale } = series;
   const count = points.length;
   const stride = Math.max(1, Math.ceil(count / MAX_X_LABELS));
 
-  // The polyline joins only the points that HAVE a mark, so a gap is drawn as a
+  // The polyline joins only the points that HAVE a score, so a gap is drawn as a
   // gap rather than bridged — a bridged gap would claim a trend the data does
   // not show.
   const linePath = points
     .map((point, index) =>
-      point.grade === null
+      point.score === null
         ? null
-        : `${bandCenter(index, count).toFixed(1)},${yScale(point.grade).toFixed(1)}`,
+        : `${bandCenter(index, count).toFixed(1)},${yScale(point.score, scale).toFixed(1)}`,
     )
     .filter((pair): pair is string => pair !== null)
     .join(" ");
@@ -117,22 +116,22 @@ export function GradeChartSvg({ series, courseName }: Props) {
               circle is not a keyboard target, so an invisible one the size of a
               fingertip sits on top of it. */}
           {points.map((point, index) =>
-            point.grade === null ? null : (
+            point.score === null ? null : (
               <g key={`dot-${point.key}`}>
                 <circle
                   className="grade-chart-dot"
                   cx={bandCenter(index, count)}
-                  cy={yScale(point.grade)}
+                  cy={yScale(point.score, scale)}
                   r={POINT_RADIUS}
                 />
                 <circle
                   className="grade-chart-hit"
                   cx={bandCenter(index, count)}
-                  cy={yScale(point.grade)}
+                  cy={yScale(point.score, scale)}
                   r={HIT_RADIUS}
                   tabIndex={0}
                   role="button"
-                  aria-label={`${point.title} — ${point.grade}`}
+                  aria-label={`${point.title} — ${point.score}`}
                   onMouseEnter={() => setActive(index)}
                   onMouseLeave={() => setActive(null)}
                   onFocus={() => setActive(index)}
@@ -152,7 +151,7 @@ export function GradeChartSvg({ series, courseName }: Props) {
             y={PAD_TOP - AXIS_TITLE_GAP}
             textAnchor="end"
           >
-            {t("grades.chart.axis.grade")}
+            {t("grades.chart.axis.score")}
           </text>
           <text
             className="grade-chart-axis-title"
@@ -193,21 +192,21 @@ export function GradeChartSvg({ series, courseName }: Props) {
           <ChartTooltip
             point={points[active]}
             x={bandCenter(active, count)}
-            y={yScale(points[active].grade ?? GRADE_MIN)}
+            y={yScale(points[active].score ?? 0, scale)}
           />
         )}
       </div>
 
       {/* The exact numbers. A chart a screen reader walks through as anonymous
           SVG elements says nothing about the grades, and the line answers "how
-          well" only to the nearest mark — so the table states it outright. */}
+          well" only to the nearest pixel — so the table states it outright. */}
       <table className="sr-only">
         <caption>{t("grades.chart.table.caption")}</caption>
         <thead>
           <tr>
             <th scope="col">{t("grades.chart.table.task")}</th>
             <th scope="col">{t("grades.chart.table.date")}</th>
-            <th scope="col">{t("grades.chart.table.grade")}</th>
+            <th scope="col">{t("grades.chart.table.score")}</th>
           </tr>
         </thead>
         <tbody>
@@ -216,11 +215,10 @@ export function GradeChartSvg({ series, courseName }: Props) {
               <th scope="row">{point.title}</th>
               <td>{point.label}</td>
               <td>
-                {point.grade === null
+                {point.score === null
                   ? "—"
-                  : t("grades.chart.table.gradeValue", {
-                      grade: point.grade,
-                      points: point.points ?? "—",
+                  : t("grades.chart.table.scoreValue", {
+                      score: point.score,
                       max: point.maxPoints ?? "—",
                     })}
               </td>

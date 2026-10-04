@@ -30,12 +30,12 @@ export const CHART_HEIGHT = 488;
  * label, AND the tallest tooltip.
  *
  * The tooltip is the reason this is generous. A tooltip hangs a fixed distance
- * above its dot, so over mark 12 — the highest dot there is — it would hang
- * clear over the top edge of the frame. Sizing the inset for the tallest
- * tooltip is what lets the anchor stay simple ("above my own dot") without a
- * flip rule for the top of the chart.
+ * above its dot, so over the top of the scale — the highest dot there is — it
+ * would hang clear over the top edge of the frame. Sizing the inset for the
+ * tallest tooltip is what lets the anchor stay simple ("above my own dot")
+ * without a flip rule for the top of the chart.
  */
-export const PAD_TOP = 96;
+export const PAD_TOP = 82;
 /** Space below it: the date labels AND the "Date" axis title under them. */
 export const PAD_BOTTOM = 64;
 /**
@@ -84,8 +84,8 @@ export const AXIS_TITLE_GAP = 30;
  * on the highest dot, and a change here has to be seen there.
  */
 export const TOOLTIP_HOVER_OFFSET = 14;
-/** Tallest a tooltip gets: four rows of text plus its own padding. */
-export const TOOLTIP_HEIGHT = 70;
+/** Tallest a tooltip gets: three rows of text plus its own padding. */
+export const TOOLTIP_HEIGHT = 56;
 
 /** Plot area: the rectangle the axis and the line are drawn inside. */
 export const PLOT_TOP = PAD_TOP;
@@ -96,19 +96,26 @@ export const PLOT_HEIGHT = PLOT_BOTTOM - PLOT_TOP;
 export const PLOT_WIDTH = PLOT_RIGHT - PLOT_LEFT;
 
 /**
- * The scale, in marks: 1 is the lowest mark a teacher gives and 12 the highest.
- * Both ends are real grades, so the axis starts at 1 and not at 0 — a line
- * pinned to zero would be read as "somebody scored nothing", which on a 12-point
- * scale is not what 0 means.
+ * Below this the chart says nothing, so the button is disabled: one graded work
+ * is a number, not a trend.
  */
-export const GRADE_MIN = 1;
-export const GRADE_MAX = 12;
-/** One label and one gridline per mark, because the reader counts in marks. */
-export const TICK_COUNT = GRADE_MAX - GRADE_MIN + 1;
-/** Below this the chart says nothing, so the button is disabled. */
 export const MIN_CHART_POINTS = 2;
 /** A course with 60 assignments would write 60 dates into 570px. */
 export const MAX_X_LABELS = 10;
+/**
+ * How many intervals the score axis aims for. Seven is the ceiling: past that
+ * the labels crowd each other on a narrow window and neither the count nor the
+ * grid is readable any more.
+ */
+export const MAX_TICKS = 7;
+/**
+ * The steps an axis is allowed to use, coarsest last.
+ *
+ * Only whole numbers a reader can count by, and only steps that divide both
+ * supported scales: 12 divides by 1 and 2, 100 by 1/2/4/5/10/20/25/50. Anything
+ * else would print 16.7 on the axis — see `tickStep`.
+ */
+export const TICK_STEPS: readonly number[] = [1, 2, 4, 5, 10, 20, 25, 50];
 /** Radius of a point on the line, and the half-width of its hit area. */
 export const POINT_RADIUS = 3.5;
 export const HIT_RADIUS = 10;

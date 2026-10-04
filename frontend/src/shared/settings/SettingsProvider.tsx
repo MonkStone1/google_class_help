@@ -19,6 +19,7 @@ import {
   type AppSettings,
   type AssignmentStatusFilter,
   type CalendarViewMode,
+  type GradeScale,
   type Language,
   type ThemeMode,
 } from "../../shared/types/index.ts";
@@ -29,6 +30,8 @@ const STORAGE_KEY = "gc-settings";
 const CALENDAR_VIEWS: readonly CalendarViewMode[] = ["month", "week", "day"];
 
 const LANGUAGES: readonly Language[] = ["en", "uk", "ru"];
+
+const GRADE_SCALES: readonly GradeScale[] = [12, 100];
 
 /**
  * The theme actually painted on `<html>`, as opposed to the `system` /
@@ -66,6 +69,21 @@ function normalizeSubjectTab(
   return SUBJECT_TABS.includes(value as AssignmentStatusFilter)
     ? (value as AssignmentStatusFilter | "all")
     : DEFAULT_SETTINGS.subjectTab;
+}
+
+/**
+ * A saved grade scale that is not one of the two falls back to the default.
+ *
+ * This one feeds the chart's axis, so a stray value from localStorage (a hand
+ * edit, a settings file from a future version) would otherwise put the top of
+ * the scale at 37 with ticks nobody asked for.
+ */
+function normalizeGradeScale(
+  value: AppSettings["gradeScale"] | undefined,
+): GradeScale {
+  return GRADE_SCALES.includes(value as GradeScale)
+    ? (value as GradeScale)
+    : DEFAULT_SETTINGS.gradeScale;
 }
 
 /**
@@ -130,6 +148,7 @@ function loadSettings(): AppSettings {
         parsed.collapsedGradeCourses,
       ),
       subjectTab: normalizeSubjectTab(parsed.subjectTab),
+      gradeScale: normalizeGradeScale(parsed.gradeScale),
     };
   } catch {
     return { ...DEFAULT_SETTINGS, language: detectLanguage() };

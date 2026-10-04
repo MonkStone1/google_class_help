@@ -103,6 +103,24 @@ describe("document language", () => {
     });
   });
 
+  it("remembers the grading scale the reader picks, for every chart", () => {
+    // ADR-0042: Classroom never says what the points are out of, so the user
+    // declares it once. It has to SURVIVE a reload — a setting that reset itself
+    // would silently put every chart back on the wrong axis.
+    renderSettings();
+
+    expect(screen.getByRole("button", { name: "12 points" })).toHaveClass(
+      "active",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "100 points" }));
+
+    expect(screen.getByRole("button", { name: "100 points" })).toHaveClass(
+      "active",
+    );
+    const stored = JSON.parse(localStorage.getItem("gc-settings") ?? "{}");
+    expect(stored.gradeScale).toBe(100);
+  });
+
   it("declares the stored language on the document element", () => {
     renderSettingsIn("uk");
     expect(document.documentElement.lang).toBe("uk");

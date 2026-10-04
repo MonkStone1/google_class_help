@@ -56,7 +56,7 @@ function renderDialog(
         <GradeChartDialog
           open={overrides.open ?? true}
           source={source}
-          series={buildSeries(source, t)}
+          series={buildSeries(source, t, 12)}
           onClose={onClose}
         />
       </SettingsProvider>,

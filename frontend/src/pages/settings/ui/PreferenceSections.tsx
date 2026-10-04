@@ -145,6 +145,34 @@ export function PreferenceSections() {
         </div>
       </section>
 <section className="card settings-card">
+        <h2>{t("settings.grading")}</h2>
+        <div className="settings-row">
+          <div>
+            <div className="settings-label">{t("settings.gradeScale")}</div>
+            <div className="settings-hint">{t("settings.gradeScaleHint")}</div>
+          </div>
+          <div className="tabs">
+            {/* Only two scales exist, and the chart's axis is meaningless
+                without one of them, so this is a tab pair rather than a select
+                with two options (ADR-0042). */}
+            {([12, 100] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                className={
+                  settings.gradeScale === value ? "tab active" : "tab"
+                }
+                onClick={() => settings.update({ gradeScale: value })}
+              >
+                {value === 12
+                  ? t("settings.gradeScale12")
+                  : t("settings.gradeScale100")}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+      <section className="card settings-card">
         <h2>{t("settings.reminders")}</h2>
         <div className="settings-toggles">
           {(

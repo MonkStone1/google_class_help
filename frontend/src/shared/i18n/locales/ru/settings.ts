@@ -38,6 +38,13 @@ export const ru_settings = {
   "settings.upcoming": "Ближайшие",
   "settings.stats": "Статистика",
   "settings.reminders": "Напоминания",
+  // Шкала, по которой считается ось графика оценок (ADR-0042). Classroom хранит
+  // сырые баллы и не сообщает, что они из, поэтому пользователь задаёт это сам.
+  "settings.grading": "Оценивание",
+  "settings.gradeScale": "Шкала оценивания",
+  "settings.gradeScale12": "12 баллов",
+  "settings.gradeScale100": "100 баллов",
+  "settings.gradeScaleHint": "Применяется ко всем графикам оценок. Google Classroom хранит сырые баллы и не сообщает, что они из.",
   "settings.remindOverdue": "Напоминать о просроченных заданиях",
   "settings.remindToday": "Напоминать о заданиях на сегодня",
   "settings.remindTomorrow": "Напоминать о заданиях на завтра",

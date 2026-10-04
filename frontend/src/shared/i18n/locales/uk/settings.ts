@@ -38,6 +38,13 @@ export const uk_settings = {
   "settings.upcoming": "Найближчі",
   "settings.stats": "Статистика",
   "settings.reminders": "Нагадування",
+  // Шкала, за якою рахується вісь графіка оцінок (ADR-0042). Classroom зберігає
+  // сирі бали й не каже, з чого вони, тож користувач задає це сам.
+  "settings.grading": "Оцінювання",
+  "settings.gradeScale": "Шкала оцінювання",
+  "settings.gradeScale12": "12 балів",
+  "settings.gradeScale100": "100 балів",
+  "settings.gradeScaleHint": "Застосовується до всіх графіків оцінок. Google Classroom зберігає сирі бали й не каже, з чого вони.",
   "settings.remindOverdue": "Нагадувати про прострочені завдання",
   "settings.remindToday": "Нагадувати про завдання на сьогодні",
   "settings.remindTomorrow": "Нагадувати про завдання на завтра",

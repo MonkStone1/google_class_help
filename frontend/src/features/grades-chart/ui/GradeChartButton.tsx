@@ -16,6 +16,7 @@ import { ChartNoAxesCombined } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { useI18n } from "../../../shared/i18n/index.ts";
+import { useSettings } from "../../../shared/settings/index.ts";
 import { buildSeries } from "../chart/series.ts";
 import type { ChartSource } from "../chart/types.ts";
 import { GradeChartDialog } from "./GradeChartDialog.tsx";
@@ -29,6 +30,10 @@ export function GradeChartButton({
   items,
 }: Props) {
   const { t } = useI18n();
+  // The scale the reader grades on. Classroom says nothing about it — it stores
+  // raw points per assignment and lets the maximum be anything — so the user
+  // declares it once in Settings and every course's chart follows (ADR-0042).
+  const { gradeScale } = useSettings();
   const [open, setOpen] = useState(false);
 
   const source = useMemo(
@@ -39,7 +44,7 @@ export function GradeChartButton({
   // dependency array could not honestly include it, and `buildSeries` is a sort
   // and a map over one course's graded work — cheaper than the render it
   // happens inside.
-  const series = buildSeries(source, t);
+  const series = buildSeries(source, t, gradeScale);
 
   return (
     <>

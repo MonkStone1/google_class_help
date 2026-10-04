@@ -7,7 +7,6 @@ import {
   AXIS_TITLE_GAP,
   CHART_HEIGHT,
   CHART_WIDTH,
-  GRADE_MAX,
   PAD_BOTTOM,
   PAD_TOP,
   PLOT_LEFT,
@@ -43,29 +42,34 @@ function item(overrides: Partial<GradeItem> = {}): GradeItem {
   return {
     assignment_id: "a1",
     title: "Homework 1",
-    points: 87,
-    max_points: 100,
-    percent: 87,
+    points: 11,
+    max_points: 12,
+    percent: 91.7,
     graded_at: null,
     due_at: "2026-01-12T12:00:00",
     ...overrides,
   };
 }
 
+/**
+ * Three works out of TWELVE, matching the default axis. The fixtures used to be
+ * percentages out of 100, which on a 12-point axis put every dot at the very top
+ * � a test that passed while drawing a flat line pinned to the ceiling.
+ */
 const THREE: GradeItem[] = [
-  item({ assignment_id: "a1", title: "HW 1", points: 70, percent: 70 }),
+  item({ assignment_id: "a1", title: "HW 1", points: 9, percent: 75 }),
   item({
     assignment_id: "a2",
     title: "HW 2",
-    points: 87,
-    percent: 87,
+    points: 11,
+    percent: 91.7,
     due_at: "2026-02-02T12:00:00",
   }),
   item({
     assignment_id: "a3",
     title: "HW 3",
-    points: 54,
-    percent: 54,
+    points: 7,
+    percent: 58.3,
     due_at: "2026-03-05T12:00:00",
   }),
 ];
@@ -89,7 +93,7 @@ function pinEnglish(): void {
 }
 
 function draw(current: ChartSource) {
-  const series = buildSeries(current, t);
+  const series = buildSeries(current, t, 12);
   if (!series) throw new Error("the fixture must produce a chart");
   return (
     <SettingsProvider>
@@ -109,19 +113,20 @@ function svgTexts(container: HTMLElement): Array<string | null> {
 }
 
 describe("the chart picture", () => {
-  it("labels ONE axis, with every mark from 1 to 12", () => {
+  it("labels ONE axis, from 0 up to the scale", () => {
     const { container } = renderChart();
 
-    // The whole axis, start to finish: 12 is the best mark and 1 the lowest, and
-    // nothing between them is skipped.
+    // The whole axis, start to finish: 12 is the top of the 12-point scale and 0
+    // the floor, and nothing between them is skipped.
     const texts = svgTexts(container);
-    for (let mark = 1; mark <= 12; mark += 1) {
-      expect(texts.filter((text) => text === String(mark))).toHaveLength(1);
+    for (const tick of [0, 2, 4, 6, 8, 10, 12]) {
+      expect(texts.filter((text) => text === String(tick))).toHaveLength(1);
     }
-    expect(texts).toContain("Mark");
+    expect(texts).toContain("Points");
     expect(texts).toContain("Date");
-    // No percentages anywhere on the picture: the axis is in marks, not in %.
-    expect(texts).not.toContain("Score, %");
+    // No percentages anywhere on the picture: the axis counts the points
+    // Classroom stores, and 87 % of what is not in the data.
+    expect(texts).not.toContain("87%");
   });
 
   it("draws no bars at all, only the line and its dots", () => {
@@ -154,7 +159,7 @@ describe("the chart picture", () => {
     }
   });
 
-  it("skips a point that has no mark instead of dropping it to the bottom", () => {
+  it("skips a point that has no score instead of dropping it to zero", () => {
     pinEnglish();
     const { container } = renderChart({
       items: [
@@ -163,8 +168,8 @@ describe("the chart picture", () => {
       ],
     });
 
-    // Three dots for four assignments: an ungraded work has no mark, and a dot
-    // at 1 would be a mark the teacher never gave.
+    // Three dots for four assignments: an ungraded work has no score, and a dot
+    // on the floor would claim the teacher awarded nothing.
     expect(container.querySelectorAll("circle.grade-chart-dot")).toHaveLength(3);
     const pairs = (
       container.querySelector("polyline.grade-chart-line")?.getAttribute("points") ??
@@ -218,7 +223,7 @@ describe("the chart picture", () => {
   it("keeps the axis title on its own row, clear of the tick numbers", () => {
     const { container } = renderChart();
 
-    // The bug this guards: "Оценка" used to sit ~6 units above the "12" label,
+    // The bug this guards: "������" used to sit ~6 units above the "12" label,
     // so the two 11px texts read as one crowded line stuck to the scale.
     const title = container.querySelector("text.grade-chart-axis-title");
     const topTick = container.querySelector("text.grade-chart-tick");
@@ -240,7 +245,7 @@ describe("the chart picture", () => {
     // One column: the NUMBERS must line up with each other and with the title,
     // not drift toward and away from the line at different distances. The date
     // labels share the class but sit on their own X positions, so they are
-    // picked out by the vertical gap — a tick is centred on a gridline, a date
+    // picked out by the vertical gap � a tick is centred on a gridline, a date
     // is not.
     const axisLabels = [
       ...container.querySelectorAll("text.grade-chart-tick"),
@@ -248,7 +253,10 @@ describe("the chart picture", () => {
       const y = Number(node.getAttribute("y"));
       return y >= PAD_TOP && y <= PAD_TOP + (CHART_HEIGHT - PAD_TOP - PAD_BOTTOM);
     });
-    expect(axisLabels).toHaveLength(12);
+    // Seven ticks on a 12-point axis (0…12, stepping by 2). The count is not
+    // hardcoded in the assertion on purpose: `scaleTicks` decides it, and this
+    // test is about their ALIGNMENT, not about how many there are.
+    expect(axisLabels.length).toBeGreaterThan(1);
 
     const titleX = container
       .querySelector("text.grade-chart-axis-title")
@@ -288,7 +296,7 @@ describe("the chart picture", () => {
       fireEvent.mouseLeave(hits[index]);
     }
 
-    // Every dot gets its OWN height — two identical percentages would mean the
+    // Every dot gets its OWN height � two identical percentages would mean the
     // tooltip is pinned to the frame rather than following the point.
     expect(new Set(tops).size).toBe(THREE.length);
     // And each one matches its dot's Y exactly.
@@ -302,7 +310,7 @@ describe("the chart picture", () => {
     // The tooltip hangs above its own dot, so over mark 12 it would hang over
     // the top edge unless PAD_TOP is sized for it. This is the check that keeps
     // the anchor simple: no flip rule, just enough headroom.
-    const tallest = yScale(GRADE_MAX);
+    const tallest = yScale(12, 12);
     // The VISIBLE dot is what the tooltip must clear, not the 10-unit hit circle
     // underneath it: the box floats just above the mark the reader can see.
     const tooltipTop = tallest - POINT_RADIUS - TOOLTIP_HOVER_OFFSET - TOOLTIP_HEIGHT;
@@ -333,12 +341,12 @@ it("keeps a tooltip at the frame edge inside the frame", () => {
   it("states every mark in a table a screen reader can walk", () => {
     renderChart();
 
-    // The line answers "how well" only to the nearest mark; the table gives the
-    // exact one, and the raw points behind it.
+    // The line answers "how well" only to the nearest pixel; the table gives the
+    // exact score, and the maximum it was out of.
     const rows = screen.getAllByRole("row");
     expect(rows).toHaveLength(THREE.length + 1);
     expect(rows[2]).toHaveTextContent("HW 2");
-    expect(rows[2]).toHaveTextContent("11 (87 / 100)");
+    expect(rows[2]).toHaveTextContent("11 / 12");
   });
 
   it("shows a dot's numbers on hover AND on keyboard focus", () => {
@@ -357,7 +365,7 @@ it("keeps a tooltip at the frame edge inside the frame", () => {
     expect(screen.queryByRole("status")).toBeNull();
 
     fireEvent.mouseEnter(hits[1]);
-    expect(screen.getByRole("status")).toHaveTextContent("87 / 100");
+    expect(screen.getByRole("status")).toHaveTextContent("11 / 12");
     fireEvent.mouseLeave(hits[1]);
     expect(screen.queryByRole("status")).toBeNull();
   });

@@ -38,6 +38,13 @@ export const en_settings = {
   "settings.upcoming": "Upcoming",
   "settings.stats": "Statistics",
   "settings.reminders": "Reminders",
+  // The scale the grade chart's axis counts in (ADR-0042). Classroom stores raw
+  // points and never says what the maximum means, so the user declares it once.
+  "settings.grading": "Grading",
+  "settings.gradeScale": "Grading scale",
+  "settings.gradeScale12": "12 points",
+  "settings.gradeScale100": "100 points",
+  "settings.gradeScaleHint": "Applied to every grade chart. Google Classroom stores raw points and does not say what they are out of.",
   "settings.remindOverdue": "Remind about overdue assignments",
   "settings.remindToday": "Remind about assignments due today",
   "settings.remindTomorrow": "Remind about assignments due tomorrow",

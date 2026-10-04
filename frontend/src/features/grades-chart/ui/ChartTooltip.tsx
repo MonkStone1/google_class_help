@@ -45,14 +45,16 @@ export function ChartTooltip({ point, x, y }: Props) {
     >
       <span className="grade-chart-tooltip-title">{point.title}</span>
       <span className="grade-chart-tooltip-row">
-        {t("grades.chart.tooltip.grade", { grade: point.grade ?? "—" })}
+        {t("grades.chart.tooltip.score", { score: point.score ?? "—" })}
       </span>
-      <span className="grade-chart-tooltip-row">
-        {t("grades.chart.tooltip.points", {
-          points: point.points ?? "—",
-          max: point.maxPoints ?? "—",
-        })}
-      </span>
+      {point.maxPoints === null ? null : (
+        <span className="grade-chart-tooltip-row">
+          {t("grades.chart.tooltip.points", {
+            points: point.score ?? "—",
+            max: point.maxPoints,
+          })}
+        </span>
+      )}
       <span className="grade-chart-tooltip-row">
         {point.due === null
           ? t("grades.chart.tooltip.noDue")

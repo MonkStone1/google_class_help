@@ -13,7 +13,7 @@ import { formatDateTimeShort, parseDue } from "../../../shared/lib/index.ts";
 import type { I18nKey, I18nVars } from "../../../shared/i18n/index.ts";
 import type { GradeItem } from "../../../shared/types/index.ts";
 import { MIN_CHART_POINTS } from "./layout.ts";
-import { bandCenter, gradeTicks, percentToGrade } from "./scales.ts";
+import { bandCenter, scaleTicks } from "./scales.ts";
 import type { ChartPoint, ChartSeries, ChartSource } from "./types.ts";
 
 /**
@@ -53,12 +53,21 @@ function byDeadline(items: readonly GradeItem[]): GradeItem[] {
  * plot.
  *
  * `null` rather than an empty chart on purpose: a single graded work has no
- * trend, and drawing one bar next to an empty axis would be a claim the data
+ * trend, and drawing one dot next to an empty axis would be a claim the data
  * does not support. The caller turns `null` into a disabled button.
+ *
+ * `scale` is the top of the axis in POINTS, chosen by the user in Settings —
+ * 12 for a Ukrainian school, 100 for a percentage-style course. The points are
+ * plotted exactly as Classroom stores them, with no percentage in between: an
+ * earlier version converted them to a mark on a 1…12 scale, and because that
+ * conversion capped the mark at each task's own maximum, a full 11/11 landed
+ * BELOW a one-point-short 11/12. Nothing is derived here, so nothing can be
+ * derived wrongly (ADR-0042).
  */
 export function buildSeries(
   source: ChartSource,
   translate: Translate,
+  scale: number,
 ): ChartSeries | null {
   const items = byDeadline(source.items);
   if (items.length < MIN_CHART_POINTS) {
@@ -75,21 +84,17 @@ export function buildSeries(
         ? formatDateTimeShort(due)
         : translate("grades.chart.noAxisTask", { n: index + 1 }),
       due,
-      // The percentage becomes a mark HERE and nowhere else: above this point
-      // the chart works in marks, which is the scale the reader thinks in.
-      // The task's own maximum caps the answer — 11/11 out of 11 is an 11,
-      // because a 12 was never on offer.
-      grade: percentToGrade(item.percent, item.max_points),
-      // `null` stays `null`: showing 0 would be showing a mark no teacher gives.
-      points: item.points ?? null,
+      // The points as they were graded — the ONLY value the chart plots.
+      score: item.points ?? null,
+      /** The denominator, for the tooltip and the hidden table only. */
       maxPoints: item.max_points ?? null,
-      percent: item.percent ?? null,
     };
   });
 
   return {
+    scale,
     points,
-    ticks: gradeTicks(),
+    ticks: scaleTicks(scale),
     xLabels: points.map((point, index) => ({
       text: point.label,
       x: bandCenter(index, count),

@@ -14,14 +14,15 @@ export const uk_grades = {
   "grades.average": "Середній бал: {value}%",
   "grades.noGrades": "Оцінок ще немає",
   "studentGrades.attachments": "Вкладення ({count})",
-  // Графік динаміки оцінок (ADR-0042): одна лінія за шкалою оцінок 1…12.
+  // Графік динаміки оцінок (ADR-0042): одна лінія сирих балів Classroom за
+  // шкалою, яку обрав користувач у налаштуваннях, і дати внизу.
   "grades.chart.open": "Графік",
   "grades.chart.title": "Динаміка оцінок",
   "grades.chart.close": "Закрити",
   "grades.chart.ariaLabel": "Динаміка оцінок — {course}",
-  "grades.chart.axis.grade": "Оцінка",
+  "grades.chart.axis.score": "Бал",
   "grades.chart.axis.date": "Дата",
-  "grades.chart.tooltip.grade": "Оцінка {grade}",
+  "grades.chart.tooltip.score": "{score} бал.",
   "grades.chart.tooltip.points": "{points} / {max}",
   "grades.chart.tooltip.due": "Термін {date}",
   "grades.chart.tooltip.noDue": "Без терміну",
@@ -29,7 +30,7 @@ export const uk_grades = {
   "grades.chart.table.caption": "Дані динаміки оцінок",
   "grades.chart.table.task": "Завдання",
   "grades.chart.table.date": "Дата",
-  "grades.chart.table.grade": "Оцінка",
-  "grades.chart.table.gradeValue": "{grade} ({points} / {max})",
+  "grades.chart.table.score": "Бал",
+  "grades.chart.table.scoreValue": "{score} / {max}",
   "grades.chart.noAxisTask": "№{n}",
 } as const;

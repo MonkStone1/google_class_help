@@ -14,14 +14,15 @@ export const ru_grades = {
   "grades.average": "Средний балл: {value}%",
   "grades.noGrades": "Оценок пока нет",
   "studentGrades.attachments": "Вложения ({count})",
-  // График динамики оценок (ADR-0042): одна линия по шкале оценок 1…12.
+  // График динамики оценок (ADR-0042): одна линия сырых баллов Classroom по
+  // шкале, которую пользователь выбрал в настройках, и даты внизу.
   "grades.chart.open": "График",
   "grades.chart.title": "Динамика оценок",
   "grades.chart.close": "Закрыть",
   "grades.chart.ariaLabel": "Динамика оценок — {course}",
-  "grades.chart.axis.grade": "Оценка",
+  "grades.chart.axis.score": "Балл",
   "grades.chart.axis.date": "Дата",
-  "grades.chart.tooltip.grade": "Оценка {grade}",
+  "grades.chart.tooltip.score": "{score} балл.",
   "grades.chart.tooltip.points": "{points} / {max}",
   "grades.chart.tooltip.due": "Срок {date}",
   "grades.chart.tooltip.noDue": "Без срока",
@@ -29,7 +30,7 @@ export const ru_grades = {
   "grades.chart.table.caption": "Данные динамики оценок",
   "grades.chart.table.task": "Задание",
   "grades.chart.table.date": "Дата",
-  "grades.chart.table.grade": "Оценка",
-  "grades.chart.table.gradeValue": "{grade} ({points} / {max})",
+  "grades.chart.table.score": "Балл",
+  "grades.chart.table.scoreValue": "{score} / {max}",
   "grades.chart.noAxisTask": "№{n}",
 } as const;

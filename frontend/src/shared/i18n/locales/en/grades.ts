@@ -14,16 +14,16 @@ export const en_grades = {
   "grades.average": "Average: {value}%",
   "grades.noGrades": "No grades yet",
   "studentGrades.attachments": "Attachments ({count})",
-  // The grade-trend chart (ADR-0042). The chart is ONE line on the 1…12 mark
-  // scale with dates underneath, so it needs no legend: there is nothing to
-  // tell apart.
+  // The grade-trend chart (ADR-0042). The chart is ONE line of the RAW points
+  // Classroom stores, on the scale the user picked in Settings, with dates
+  // underneath — so it needs no legend: there is nothing to tell apart.
   "grades.chart.open": "Chart",
   "grades.chart.title": "Grade trend",
   "grades.chart.close": "Close",
   "grades.chart.ariaLabel": "Grade trend for {course}",
-  "grades.chart.axis.grade": "Mark",
+  "grades.chart.axis.score": "Points",
   "grades.chart.axis.date": "Date",
-  "grades.chart.tooltip.grade": "Mark {grade}",
+  "grades.chart.tooltip.score": "{score} points",
   "grades.chart.tooltip.points": "{points} / {max}",
   "grades.chart.tooltip.due": "Due {date}",
   "grades.chart.tooltip.noDue": "No deadline",
@@ -31,7 +31,7 @@ export const en_grades = {
   "grades.chart.table.caption": "Grade trend data",
   "grades.chart.table.task": "Assignment",
   "grades.chart.table.date": "Date",
-  "grades.chart.table.grade": "Mark",
-  "grades.chart.table.gradeValue": "{grade} ({points} / {max})",
+  "grades.chart.table.score": "Points",
+  "grades.chart.table.scoreValue": "{score} / {max}",
   "grades.chart.noAxisTask": "#{n}",
 } as const;

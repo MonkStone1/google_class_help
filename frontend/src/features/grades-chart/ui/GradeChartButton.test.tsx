@@ -18,6 +18,14 @@ function item(overrides: Partial<GradeItem> = {}): GradeItem {
   };
 }
 
+/** English is pinned, and with it the grading scale the axis is drawn on. */
+function pinScale(gradeScale: 12 | 100): void {
+  localStorage.setItem(
+    "gc-settings",
+    JSON.stringify({ language: "en", theme: "light", gradeScale }),
+  );
+}
+
 const TWO: GradeItem[] = [
   item({ assignment_id: "a1", title: "HW 1" }),
   item({
@@ -29,16 +37,8 @@ const TWO: GradeItem[] = [
   }),
 ];
 
-/** English is pinned: the assertions read the English labels. */
-function pinEnglish(): void {
-  localStorage.setItem(
-    "gc-settings",
-    JSON.stringify({ language: "en", theme: "light" }),
-  );
-}
-
-function renderButton(items: GradeItem[] = TWO) {
-  pinEnglish();
+function renderButton(items: GradeItem[] = TWO, gradeScale: 12 | 100 = 12) {
+  pinScale(gradeScale);
   return render(
     <SettingsProvider>
       <GradeChartButton
@@ -96,5 +96,53 @@ describe("the chart button on the grades page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Chart" }));
 
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  });
+
+  it("draws the axis on the scale the user chose in Settings", () => {
+    // Classroom never says what the points are out of, so the top of the axis is
+    // the user's call. 12 and 100 must produce DIFFERENT axes from the same data —
+    // if they did not, the setting would be decoration.
+    const on12 = renderButton(TWO, 12);
+    openButton();
+    const texts12 = [
+      ...on12.container.querySelectorAll("svg text"),
+    ].map((node) => node.textContent);
+    expect(texts12).toContain("12");
+    expect(texts12).not.toContain("100");
+    on12.unmount();
+
+    const on100 = renderButton(TWO, 100);
+    openButton();
+    const texts100 = [
+      ...on100.container.querySelectorAll("svg text"),
+    ].map((node) => node.textContent);
+    expect(texts100).toContain("100");
+    expect(texts100).not.toContain("12");
+  });
+
+  it("falls back to 12 when the stored scale is nonsense", () => {
+    // A hand-edited or stale localStorage must not put the top of the axis at 37
+    // with ticks nobody asked for (the `normalizeGradeScale` guard).
+    localStorage.setItem(
+      "gc-settings",
+      JSON.stringify({ language: "en", theme: "light", gradeScale: 37 }),
+    );
+    render(
+      <SettingsProvider>
+        <GradeChartButton
+          courseId="c1"
+          courseName="Algebra"
+          average={80}
+          items={TWO}
+        />
+      </SettingsProvider>,
+    );
+    openButton();
+
+    const texts = [
+      ...document.querySelectorAll("svg text"),
+    ].map((node) => node.textContent);
+    expect(texts).toContain("12");
+    expect(texts).not.toContain("37");
   });
 });

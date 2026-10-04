@@ -5,7 +5,7 @@ import type { ChartSource } from "./types.ts";
 import type { GradeItem } from "../../../shared/types/index.ts";
 
 /**
- * English is not what is under test here — the LABELS are — so the fake
+ * English is not what is under test here ? the LABELS are ? so the fake
  * dictionary returns the key itself. That makes an untranslated label fail
  * loudly instead of quietly reading as a date.
  */
@@ -35,6 +35,7 @@ function source(items: GradeItem[], overrides: Partial<ChartSource> = {}) {
   };
 }
 
+const TWELVE = 12;
 describe("what one render of the chart is built from", () => {
   it("leaves the caller's items exactly as they were", () => {
     // The items belong to the cached courses state, which the dashboard and the
@@ -45,7 +46,7 @@ describe("what one render of the chart is built from", () => {
     ];
     const snapshot = JSON.stringify(items);
 
-    buildSeries(source(items), t);
+    buildSeries(source(items), t, TWELVE);
 
     expect(JSON.stringify(items)).toBe(snapshot);
     expect(items[0].assignment_id).toBe("a2");
@@ -59,6 +60,7 @@ describe("what one render of the chart is built from", () => {
         item({ assignment_id: "second", due_at: "2026-02-01T12:00:00" }),
       ]),
       t,
+      TWELVE,
     );
 
     expect(series?.points.map((point) => point.key)).toEqual([
@@ -76,6 +78,7 @@ describe("what one render of the chart is built from", () => {
         item({ assignment_id: "noDue-2", due_at: null }),
       ]),
       t,
+      TWELVE,
     );
 
     expect(series?.points.map((point) => point.key)).toEqual([
@@ -89,55 +92,60 @@ describe("what one render of the chart is built from", () => {
     expect(series?.xLabels[1].text).toBe('grades.chart.noAxisTask:{"n":2}');
     expect(series?.xLabels[2].text).toBe('grades.chart.noAxisTask:{"n":3}');
   });
-
-  it("turns each percentage into the mark the line will show", () => {
-    // The percentage is converted ONCE, here: 87 % is an 11 and 87 itself is
-    // never plotted, because the axis is a 12-point scale.
+});
+describe("what the line plots", () => {
+  it("plots the points exactly as Classroom stored them", () => {
+    // No percentage in the middle: what the teacher awarded is what the line
+    // shows, and what the tooltip and the hidden table quote.
     const series = buildSeries(
       source([
-        item({ assignment_id: "a", percent: 87 }),
-        item({ assignment_id: "b", percent: 100 }),
+        item({ assignment_id: "a", points: 9, max_points: 12 }),
+        item({ assignment_id: "b", points: 11, max_points: 12 }),
       ]),
       t,
+      TWELVE,
     );
     if (!series) throw new Error("two items must produce a series");
 
-    expect(series.points.map((point) => point.grade)).toEqual([11, 12]);
-    // The percentage itself survives for the tooltip, just not for the axis.
-    expect(series.points.map((point) => point.percent)).toEqual([87, 100]);
+    expect(series.points.map((point) => point.score)).toEqual([9, 11]);
+    expect(series.points.map((point) => point.maxPoints)).toEqual([12, 12]);
   });
 
-  it("caps each mark at the maximum its own task was worth", () => {
-    // The end-to-end version of the rule: a task out of 11 points cannot be
-    // worth a 12, however well it was answered.
+  it("keeps a full 11/11 level with a near-full 11/12, as the bug report demanded", () => {
+    // THE regression. Deriving a mark from a percentage capped it at each task's
+    // own maximum, so 11/11 (every single point) was drawn BELOW 11/12 (one
+    // short) and the line claimed the student got worse on the work they nailed.
     const series = buildSeries(
       source([
-        item({
-          assignment_id: "out-of-11",
-          title: "Essay",
-          points: 11,
-          max_points: 11,
-          percent: 100,
-        }),
         item({
           assignment_id: "out-of-12",
-          title: "Exam",
-          points: 12,
+          title: "First",
+          points: 11,
           max_points: 12,
-          percent: 100,
+        }),
+        item({
+          assignment_id: "out-of-11",
+          title: "Second",
+          points: 11,
+          max_points: 11,
         }),
       ]),
       t,
+      TWELVE,
     );
     if (!series) throw new Error("two items must produce a series");
 
-    expect(series.points.map((point) => point.grade)).toEqual([11, 12]);
+    // Both are 11 points, so both sit at the same height: equal scores, equal marks.
+    expect(series.points.map((point) => point.score)).toEqual([11, 11]);
+    // The maxima DIFFER and the scores do not — that is the whole point. They are
+    // context for the reader now, never an input to the plotted value.
+    expect(series.points.map((point) => point.maxPoints)).toEqual([12, 11]);
   });
 
-  it("keeps a missing score missing instead of drawing the lowest mark", () => {
+  it("keeps a missing score missing instead of drawing it at zero", () => {
     const series = buildSeries(
       source([
-        item({ assignment_id: "with", points: 80, percent: 80 }),
+        item({ assignment_id: "with", points: 8 }),
         item({
           assignment_id: "without",
           points: null,
@@ -146,35 +154,42 @@ describe("what one render of the chart is built from", () => {
         }),
       ]),
       t,
+      TWELVE,
     );
     if (!series) throw new Error("two items must produce a series");
 
-    // No mark at all: a dot at the bottom of a 1…12 scale would be a claim the
-    // teacher never made.
-    expect(series.points[1].grade).toBeNull();
+    // No dot at all: a dot on the floor would be a claim the teacher never made.
+    expect(series.points[1].score).toBeNull();
     // And the graded work is untouched by its ungraded neighbour.
-    expect(series.points[0].grade).toBe(10);
+    expect(series.points[0].score).toBe(8);
   });
 
   it("returns nothing at all for a course with fewer than two graded works", () => {
     // Not an empty chart: one mark is not a trend, and the caller turns `null`
     // into a disabled button.
-    expect(buildSeries(source([]), t)).toBeNull();
-    expect(buildSeries(source([item()]), t)).toBeNull();
+    expect(buildSeries(source([]), t, TWELVE)).toBeNull();
+    expect(buildSeries(source([item()]), t, TWELVE)).toBeNull();
   });
 
-  it("labels the axis with the twelve marks and nothing else", () => {
-    const series = buildSeries(
-      source([item({ assignment_id: "a" }), item({ assignment_id: "b" })]),
-      t,
-    );
+  it("labels the axis from 0 up to the scale the user chose", () => {
+    const two = () => [
+      item({ assignment_id: "a" }),
+      item({ assignment_id: "b" }),
+    ];
+    const twelve = buildSeries(source(two()), t, TWELVE);
+    const hundred = buildSeries(source(two()), t, 100);
 
-    expect(series?.ticks.map((tick) => tick.value)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+    expect(twelve?.scale).toBe(12);
+    expect(twelve?.ticks.map((tick) => tick.value)).toEqual([
+      0, 2, 4, 6, 8, 10, 12,
+    ]);
+    expect(hundred?.scale).toBe(100);
+    expect(hundred?.ticks.map((tick) => tick.value)).toEqual([
+      0, 20, 40, 60, 80, 100,
     ]);
     // One axis, not two: the same fact on a second scale is a second thing to
     // misread, not a second fact.
-    expect(series).not.toHaveProperty("rightTicks");
-    expect(series).not.toHaveProperty("averageY");
+    expect(twelve).not.toHaveProperty("rightTicks");
+    expect(twelve).not.toHaveProperty("averageY");
   });
 });

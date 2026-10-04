@@ -2,98 +2,44 @@
  * Pure scales for the grade chart (ADR-0042).
  *
  * No React and no DOM: a scale that could only be checked by rendering is a
- * scale nobody checks, and the arithmetic here is exactly the part a chart
- * library would have got subtly wrong.
+ * scale nobody checks.
  *
- * The one rule with a real decision in it is {@link percentToGrade}: Google
- * Classroom speaks percentages (ADR-0008) and a school reads marks on a
- * 12-point scale, so the chart converts between them ONCE, here, and every
- * layer above works in marks.
+ * There is NO percentage-to-mark table here, and that is the point. The chart
+ * plots the points Classroom stores, unchanged. An earlier version converted
+ * `percent` into a mark on the 1…12 scale through a table of thresholds, and it
+ * was wrong in a way that read as a feature: a task worth 11 points capped the
+ * answer at 11, so 11/11 (a full score) sat BELOW 11/12 (one point short of
+ * full). Raw points cannot do that — 11 is 11 whatever the task was worth, and
+ * the order of the marks is the order of the work.
+ *
+ * What the top of the axis means is the user's to say, in Settings: a Ukrainian
+ * school marks out of 12, a percentage-style course out of 100 (ADR-0042).
  */
 
 import {
-  GRADE_MAX,
-  GRADE_MIN,
   HIT_RADIUS,
+  MAX_TICKS,
   MAX_X_LABELS,
   PLOT_BOTTOM,
   PLOT_LEFT,
   PLOT_RIGHT,
   PLOT_TOP,
   PLOT_WIDTH,
-  TICK_COUNT,
+  TICK_STEPS,
 } from "./layout.ts";
 
 /**
- * Percentage → mark, on the 12-point scale used in Ukrainian schools.
+ * Vertical position of a score on the 0…`scale` axis.
  *
- * The table is thresholds, not arithmetic: `round(percent / 100 × 12)` would
- * make 89 % and 90 % the same mark, and those are 11 and 12. Each row is the
- * lowest percentage that earns that mark, walked from the top down.
- *
- * Below 20 % the answer is 1 rather than "nothing" — on this scale there is no
- * zero, and a chart showing 0 would be showing a mark no teacher gives.
+ * Y grows downward in SVG, so the top of the scale is at {@link PLOT_TOP} and
+ * zero at {@link PLOT_BOTTOM}. A score outside the scale is pinned to the
+ * nearest end rather than drawn outside the plot — which is what a 100-point
+ * course looks like on a 12-point axis until the setting is changed.
  */
-const GRADE_THRESHOLDS: ReadonlyArray<readonly [number, number]> = [
-  [90, 12],
-  [85, 11],
-  [80, 10],
-  [75, 9],
-  [70, 8],
-  [65, 7],
-  [60, 6],
-  [50, 5],
-  [45, 4],
-  [35, 3],
-  [20, 2],
-];
-
-/**
- * The mark a percentage earns, never above what the task could award.
- *
- * `maxPoints` is the ceiling, not a detail: a task graded out of 11 points has
- * no way to earn a 12, so 11/11 is an 11 — capping the answer at the task's own
- * maximum is what keeps the line from claiming a mark that was unreachable.
- * `null`/`undefined` means the task declared no maximum, and then the scale's own
- * top applies.
- *
- * `null` percentage in, `null` out: an ungraded assignment has no mark, and
- * inventing one would draw a point the teacher never gave.
- */
-export function percentToGrade(
-  percent: number | null | undefined,
-  maxPoints: number | null | undefined = null,
-): number | null {
-  if (percent === null || percent === undefined) {
-    return null;
-  }
-  const value = Math.min(100, Math.max(0, percent));
-  let mark = GRADE_MIN;
-  for (const [threshold, grade] of GRADE_THRESHOLDS) {
-    if (value >= threshold) {
-      mark = grade;
-      break;
-    }
-  }
-  // A zero or negative maximum is not a ceiling, it is missing data, so it must
-  // not collapse every mark to zero.
-  if (maxPoints === null || maxPoints === undefined || maxPoints <= 0) {
-    return mark;
-  }
-  return Math.min(mark, Math.floor(maxPoints));
-}
-
-/**
- * Vertical position of a mark on the 1…12 axis.
- *
- * Y grows downward in SVG, so mark 12 is at {@link PLOT_TOP} and mark 1 at
- * {@link PLOT_BOTTOM}. A mark outside 1…12 is pinned to the nearest end instead
- * of being drawn outside the plot.
- */
-export function yScale(grade: number): number {
-  const clamped = Math.min(GRADE_MAX, Math.max(GRADE_MIN, grade));
-  const ratio = (clamped - GRADE_MIN) / (GRADE_MAX - GRADE_MIN);
-  return PLOT_BOTTOM - ratio * (PLOT_BOTTOM - PLOT_TOP);
+export function yScale(score: number, scale: number): number {
+  if (scale <= 0) return PLOT_BOTTOM;
+  const clamped = Math.min(scale, Math.max(0, score));
+  return PLOT_BOTTOM - (clamped / scale) * (PLOT_BOTTOM - PLOT_TOP);
 }
 
 /** Width of one category band. Zero bands are impossible (see `bandCenter`). */
@@ -144,15 +90,50 @@ export function labelStride(count: number): number {
   return Math.max(1, Math.ceil(count / MAX_X_LABELS));
 }
 
-/** Ticks of the grade axis, from mark 1 at the bottom up to mark 12. */
-export function gradeTicks(): Array<{ value: number; y: number }> {
-  return Array.from({ length: TICK_COUNT }, (_unused, index) => {
-    const value = GRADE_MIN + index;
-    return { value, y: yScale(value) };
-  });
+/**
+ * Distance between neighbouring ticks on a 0…`scale` axis.
+ *
+ * Chosen from a fixed ladder of round steps so the labels stay countable: 2 on
+ * a 12-point scale gives 0/2/4/6/8/10/12, and 20 on a 100-point one gives
+ * 0/20/40/60/80/100. A step outside the ladder would print 16.7 on the axis, and
+ * an axis nobody can count along is worse than a coarse one.
+ */
+export function tickStep(scale: number): number {
+  const usable = TICK_STEPS.filter((step) => scale % step === 0);
+  // The finest step that still keeps the labels from crowding: 12 steps by 2
+  // rather than 1 (twelve labels is a wall) and 100 steps by 20 rather than 10.
+  // Going coarser than this would leave a nearly empty axis, which reads as
+  // "there is nothing between 0 and 12".
+  for (const step of usable) {
+    if (scale / step <= MAX_TICKS) {
+      return step;
+    }
+  }
+  // A scale no ladder step divides (a future one, say) still gets a usable
+  // axis: fall back to the largest step that fits inside MAX_TICKS intervals.
+  return Math.max(1, Math.floor(scale / MAX_TICKS));
 }
 
-/** Axis labels: the marks are whole numbers, so no rounding is involved. */
+/**
+ * Ticks of the score axis, from 0 at the bottom up to `scale`.
+ *
+ * The TOP of the scale is always a tick: an axis that stopped short of its own
+ * maximum would make the highest possible mark look like it falls off the chart.
+ */
+export function scaleTicks(scale: number): Array<{ value: number; y: number }> {
+  if (scale <= 0) {
+    return [{ value: 0, y: yScale(0, scale) }];
+  }
+  const step = tickStep(scale);
+  const ticks: Array<{ value: number; y: number }> = [];
+  for (let value = 0; value < scale; value += step) {
+    ticks.push({ value, y: yScale(value, scale) });
+  }
+  ticks.push({ value: scale, y: yScale(scale, scale) });
+  return ticks;
+}
+
+/** Axis labels: the points are whole numbers, so no rounding is involved. */
 export function formatTick(value: number): string {
   return String(value);
 }

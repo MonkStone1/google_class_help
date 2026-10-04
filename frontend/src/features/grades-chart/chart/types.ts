@@ -23,16 +23,14 @@ export type ChartPoint = {
   /** Parsed `due_at`, kept for the tooltip and for sorting. */
   due: Date | null;
   /**
-   * The mark on the 1…12 scale, or `null` when the work carries no percentage.
-   * This is the ONLY value the chart plots — see {@link ChartSeries}.
+   * The points Classroom stored for the work, plotted unchanged, or `null` when
+   * the work carries no score. This is the ONLY value on the axis — see
+   * {@link ChartSeries}. There is no percentage in the middle: deriving one
+   * (see the history in `scales.ts`) is what made the line contradict itself.
    */
-  grade: number | null;
-  /** Earned points: shown in the tooltip and the table, never on an axis. */
-  points: number | null;
-  /** The denominator behind `points`. */
+  score: number | null;
+  /** The denominator behind `score`, shown in the tooltip and the table. */
   maxPoints: number | null;
-  /** The percentage the mark was derived from, kept for the tooltip. */
-  percent: number | null;
 };
 
 /** What the page hands the feature: a course and the grades it already holds. */
@@ -58,8 +56,14 @@ export type AxisTick = {
  * on two scales, and a second scale is a second thing to misread.
  */
 export type ChartSeries = {
+  /**
+   * The top of the axis, in points. The user's choice from Settings (ADR-0042):
+   * the app cannot tell whether a course is marked out of 12 or out of 100, and
+   * guessing wrong puts every point at the wrong height.
+   */
+  scale: number;
   points: ChartPoint[];
-  /** The grade axis, every mark from 1 to 12. */
+  /** The score axis, from 0 at the bottom up to `scale`. */
   ticks: AxisTick[];
   /** Date labels under the plot, one per point. */
   xLabels: Array<{ text: string; x: number }>;
