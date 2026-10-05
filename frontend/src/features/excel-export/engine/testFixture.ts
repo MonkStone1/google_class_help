@@ -26,6 +26,9 @@ export const testPreset: ExportPreset = {
   headerFill: { fg: { argb: "FFE0E0E0" }, font: { bold: true } },
   sort: { primary: "createdAt", tiebreak: "id" },
   filenameSuffix: "_fixture",
+  // Deliberately NOT `.xls`: the fixture is here to prove the engine follows the
+  // preset, so it must differ from the shipped one in this too.
+  fileExtension: "xlsx",
   defaultDate: (createdAt) => {
     if (!createdAt) return null;
     const date = new Date(createdAt);

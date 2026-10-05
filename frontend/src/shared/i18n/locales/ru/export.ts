@@ -3,7 +3,8 @@
  *
  * The `dateHint` text is verbatim the wording the task specified, in Russian —
  * the same reason as in `uk`: the sentence tells the teacher where the date
- * came from and that they may change it, so it is not reworded here.
+ * came from and that they may change it, so it is not reworded here. The
+ * reminder that changes are remembered is `dateMemory`, a separate key.
  */
 export const ru_export = {
   "export.button": "Экспортировать в Excel",
@@ -12,6 +13,8 @@ export const ru_export = {
   "export.preset.ukranian_dictionary_nz": "ukranian-dictionary-nz.ua",
   "export.dateHint":
     "Дата по умолчанию берётся с даты создания задания в Google Classroom. При необходимости её можно изменить перед экспортом.",
+  "export.dateMemory":
+    "Изменённые даты запоминаются на этом компьютере, поэтому следующий экспорт начинается с них. Если очистить поле, снова будет дата создания задания.",
   "export.dateColumn": "Дата",
   "export.cancel": "Отмена",
   "export.submit": "Экспортировать",

@@ -78,6 +78,7 @@ export function TeacherCourse({ course }: { course: Course }) {
           {/* ADR-0041: the export reads the coursework this page has already
               loaded, so it adds no request and no state of its own here. */}
           <ExcelExportButton
+            courseId={course.id}
             courseName={course.name}
             assignments={coursework.data ?? []}
           />

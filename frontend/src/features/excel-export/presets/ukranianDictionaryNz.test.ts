@@ -92,13 +92,13 @@ describe("ДЗ: the description is cleaned", () => {
   it("replaces a link with the site's own wording", () => {
     expect(
       transformHomework("Прочитати матеріал https://example.com/test"),
-    ).toBe("Прочитати матеріал (google classroom)");
+    ).toBe("Прочитати матеріал (Google classroom)");
   });
 
   it("replaces EVERY link, not just the first", () => {
     expect(
       transformHomework("Дивитись https://a.test/1 та http://b.test/2"),
-    ).toBe("Дивитись (google classroom) та (google classroom)");
+    ).toBe("Дивитись (Google classroom) та (Google classroom)");
   });
 
   it("leaves a description without links untouched", () => {
@@ -124,14 +124,17 @@ describe("ДЗ: the description is cleaned", () => {
   });
 });
 describe("the preset declares the format the importer expects", () => {
-  it("writes the four headers in the order the site reads them", () => {
+  it("writes the five headers in the order the site reads them", () => {
     // `№` and the full homework name are what the importer reads; shortening
-    // either back to a header word would make the file unimportable.
+    // either back to a header word would make the file unimportable. `Заміна`
+    // is the teacher's own column, present but filled in by hand — the
+    // reference file carries it in the header row of every sheet.
     expect(preset.columns.map((column) => column.header)).toEqual([
       "№",
       "Дата",
       "Зміст",
       "Домашнє завдання",
+      "Заміна",
     ]);
   });
 
@@ -141,7 +144,18 @@ describe("the preset declares the format the importer expects", () => {
       "date",
       "content",
       "homework",
+      "substitute",
     ]);
+  });
+
+  it("leaves `Заміна` empty, because the teacher fills it in by hand", () => {
+    // The reference file has the column and writes NOTHING into it: a lesson
+    // that was moved is annotated after the export, not before it.
+    const [row] = buildRows(preset, [
+      source({ title: "Урок 1. 04.09.2026 Теми", description: "Прочитати" }),
+    ]);
+
+    expect(row.values.substitute).toBe("");
   });
 
   it("numbers rows as numbers, not as text", () => {
@@ -151,12 +165,28 @@ describe("the preset declares the format the importer expects", () => {
     expect(row.values.number).toBe(1);
   });
 
-  it("writes a real Date with the dd.mm.yyyy format", () => {
+  it("keeps a real Date in the row, so the day stays editable in the preview", () => {
     const [row] = buildRows(preset, [source()]);
 
+    // The ROW is an internal model and holds a real date; only what the
+    // workbook writes is text. That split is what lets the teacher still fix a
+    // date in the preview while the file gets a plain `DD.MM.YYYY` string.
     expect(row.values.date).toBeInstanceOf(Date);
     expect(formatDayInput(row.values.date as Date)).toBe("2026-09-20");
-    expect(preset.numberFormat.date).toBe("dd.mm.yyyy");
+  });
+
+  it("asks for the date column to be written as text", () => {
+    const column = preset.columns.find((item) => item.key === "date");
+
+    expect(column?.kind).toBe("date");
+    expect(column?.writeAsText).toBe(true);
+    // Text cells are not numbers, so no number format is declared for them:
+    // `dd.mm.yyyy` would be a format for a number the cell does not hold.
+    expect(preset.numberFormat.date).toBe("General");
+  });
+
+  it("names the file with the extension the portal takes", () => {
+    expect(preset.fileExtension).toBe("xls");
   });
 
   it("fills the columns from the cleaned title and description", () => {
@@ -165,7 +195,7 @@ describe("the preset declares the format the importer expects", () => {
     ]);
 
     expect(row.values.content).toBe("15. Алгоритми");
-    expect(row.values.homework).toBe("Прочитати (google classroom)");
+    expect(row.values.homework).toBe("Прочитати (Google classroom)");
   });
 
   it("sorts by the creation date, oldest lesson first", () => {
@@ -193,7 +223,7 @@ describe("the generated file, read back as a workbook", () => {
     expect(sheet).toBeDefined();
   });
 
-  it("carries the four headers in the order the importer reads them", async () => {
+  it("carries the five headers in the order the importer reads them", async () => {
     const sheet = await reopen(
       await buildWorkbookBuffer(preset, buildRows(preset, [source()])),
     );
@@ -204,20 +234,52 @@ describe("the generated file, read back as a workbook", () => {
       "Дата",
       "Зміст",
       "Домашнє завдання",
+      "Заміна",
     ]);
   });
 
-  it("writes the date as a real Date cell formatted dd.mm.yyyy", async () => {
+  it("writes the day as the text DD.MM.YYYY, with no time of day", async () => {
+    // An EVENING creation stamp is the case that matters: `21:00:00` is what the
+    // column showed when the cell was a real date. A text cell cannot hold it.
     const sheet = await reopen(
-      await buildWorkbookBuffer(preset, buildRows(preset, [source()])),
+      await buildWorkbookBuffer(
+        preset,
+        buildRows(preset, [
+          source({ created_at: "2026-09-20T21:00:00" }),
+        ]),
+      ),
     );
     const cell = sheet.getRow(2).getCell(2);
 
-    expect(cell.value).toBeInstanceOf(Date);
-    expect(cell.numFmt).toBe("dd.mm.yyyy");
-    // 20.09.2026 in every zone: ExcelJS serializes by UTC, so a naive
-    // `new Date("2026-09-20")` would read back as 19.09 east of Greenwich.
-    expect(formatDayInput(cell.value as Date)).toBe("2026-09-20");
+    expect(cell.value).toBe("20.09.2026");
+    expect(typeof cell.value).toBe("string");
+    expect(String(cell.value)).not.toContain(":");
+  });
+
+  it("writes an edited date as text too, and never as the creation time", async () => {
+    const sheet = await reopen(
+      await buildWorkbookBuffer(
+        preset,
+        buildRows(preset, [source({ created_at: "2026-09-20T21:00:00" })], {
+          w1: "2026-10-01",
+        }),
+      ),
+    );
+
+    expect(sheet.getRow(2).getCell(2).value).toBe("01.10.2026");
+  });
+
+  it("leaves the day cell empty when there is no date at all", async () => {
+    // Not `Invalid Date` and not a stray `NaN`: an empty cell the teacher can
+    // still fill in.
+    const sheet = await reopen(
+      await buildWorkbookBuffer(
+        preset,
+        buildRows(preset, [source({ created_at: null })]),
+      ),
+    );
+
+    expect(sheet.getRow(2).getCell(2).value).toBeNull();
   });
 
   it("numbers rows as numbers, 1, 2, 3 …", async () => {
@@ -264,7 +326,7 @@ describe("the generated file, read back as a workbook", () => {
     // must hold is that NO cell brings a weight, a slant, a colour or a size of
     // its own, on the header row or on the data rows.
     const cells = [sheet.getRow(1), sheet.getRow(2)].flatMap((row) =>
-      [1, 2, 3, 4].map((column) => row.getCell(column)),
+      [1, 2, 3, 4, 5].map((column) => row.getCell(column)),
     );
     // "One size" is checked against the workbook's own default: a cell that
     // declares no size resolves to Calibri 11 on read-back, and a cell that
@@ -296,11 +358,11 @@ describe("the generated file, read back as a workbook", () => {
 
   it("names the file after the course, sanitized", () => {
     expect(buildFilename("Математика 8/А", preset)).toBe(
-      "Математика 8_А_електронний_щоденник.xlsx",
+      "Математика 8_А_електронний_щоденник.xls",
     );
   });
 
   it("names the file defensively when the course name sanitizes to nothing", () => {
-    expect(buildFilename("", preset)).toBe("_course_електронний_щоденник.xlsx");
+    expect(buildFilename("", preset)).toBe("_course_електронний_щоденник.xls");
   });
 });

@@ -10,7 +10,7 @@ import type { ExportPreset } from "./types.ts";
  * - **sanitize** every character Windows, macOS or Linux treats specially, and
  *   collapse what is left so the name cannot end in a space or a dot;
  * - **fall back** to a constant instead of an empty name, because browsers
- *   treat `".xlsx"` as a dotfile with no extension.
+ *   treat `".xls"` as a dotfile with no extension.
  *
  * The length cap is not cosmetic: Windows Explorer refuses paths over 260
  * characters, and the suffix is appended on top of the course name.
@@ -62,11 +62,15 @@ export function sanitizeFilename(raw: string | null | undefined): string {
 }
 
 /**
- * `<course>_<preset suffix>.xlsx`, both halves sanitized.
+ * `<course>_<preset suffix>.<preset extension>`, both halves sanitized.
  *
  * The suffix goes through the same sanitizer, but its leading underscore is
  * dropped before it is joined: that underscore is the separator between the two
  * halves, not a stray character a preset author had to escape.
+ *
+ * The EXTENSION is the preset's too, not a constant here. A portal that takes
+ * only `.xls` rejects a workbook over its name alone, and "the engine happens to
+ * write `.xlsx`" is not a decision the engine is entitled to make.
  */
 export function buildFilename(
   courseName: string | null | undefined,
@@ -74,5 +78,8 @@ export function buildFilename(
 ): string {
   const stem = sanitizeFilename(courseName);
   const suffix = sanitizeFilename(preset.filenameSuffix).replace(/^_+/, "");
-  return `${stem}_${suffix}.xlsx`;
+  // Sanitized like the rest of the name: a preset must not be able to inject a
+  // dot, a slash or a second extension into the file the browser is handed.
+  const extension = sanitizeFilename(preset.fileExtension).replace(/^\.+/, "");
+  return `${stem}_${suffix}.${extension}`;
 }

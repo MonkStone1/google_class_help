@@ -1,6 +1,7 @@
 import type { Cell, Worksheet } from "exceljs";
 
-import type { ExportPreset, ExportRow } from "./types.ts";
+import { formatDayCell } from "./rows.ts";
+import type { ExportCellValue, ExportColumn, ExportPreset, ExportRow } from "./types.ts";
 
 /**
  * The ExcelJS workbook (ADR-0041).
@@ -47,6 +48,21 @@ function styleHeader(cell: Cell, preset: ExportPreset): void {
 }
 
 /**
+ * The value one cell is given.
+ *
+ * A `date` column whose preset asked for `writeAsText` becomes the string
+ * `DD.MM.YYYY` instead of a `Date`: text is what the diary at
+ * `ukranian-dictionary-nz.ua` reads, and — the reason this is not a detail —
+ * a text cell cannot leak a time of day into a column that holds a lesson DAY.
+ * Every other column keeps the value the row already holds, and a real `Date`
+ * stays a real `Date` with its `dd.mm.yyyy` format.
+ */
+function cellValue(column: ExportColumn, value: ExportCellValue): ExportCellValue {
+  if (column.writeAsText && value instanceof Date) return formatDayCell(value);
+  return value ?? null;
+}
+
+/**
  * Writes `rows` into a worksheet shaped by `preset`.
  *
  * Split out from `buildWorkbookBuffer` so the styling rules can be asserted on
@@ -78,9 +94,11 @@ export function fillWorksheet(
     preset.columns.forEach((column, columnIndex) => {
       const cell = line.getCell(columnIndex + 1);
       const value = row.values[column.key];
-      // A real `Date` for a date column and a NUMBER for a number column: the
-      // importer reads both back as values, and neither survives as text.
-      cell.value = value ?? null;
+      // A real `Date` for a date column and a NUMBER for a number column, so
+      // the importer reads both back as values and neither survives as text —
+      // unless the preset asked for this column to be written as text, which is
+      // how a lesson day becomes the plain `DD.MM.YYYY` the diary expects.
+      cell.value = cellValue(column, value);
       if (column.wrap) {
         cell.alignment = { wrapText: true, vertical: "top" };
       }

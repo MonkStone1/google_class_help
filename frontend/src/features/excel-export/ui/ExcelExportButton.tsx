@@ -6,6 +6,8 @@ import type { ExportSource } from "../engine/types.ts";
 import { ExcelExportDialog } from "./ExcelExportDialog.tsx";
 
 type Props = {
+  /** Stable id of the course; the date memory is stored per course. */
+  courseId: string;
   courseName: string;
   /** The coursework the page already holds; the feature fetches nothing. */
   assignments: readonly ExportSource[];
@@ -23,7 +25,7 @@ type Props = {
  * assignments" case is unreachable by click and still stated inside the dialog
  * for a teacher who opened it before the coursework finished loading.
  */
-export function ExcelExportButton({ courseName, assignments }: Props) {
+export function ExcelExportButton({ courseId, courseName, assignments }: Props) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
 
@@ -39,6 +41,7 @@ export function ExcelExportButton({ courseName, assignments }: Props) {
       </button>
       <ExcelExportDialog
         open={open}
+        courseId={courseId}
         courseName={courseName}
         assignments={assignments}
         onClose={() => setOpen(false)}

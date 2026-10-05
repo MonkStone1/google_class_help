@@ -72,4 +72,29 @@ describe("buildFilename", () => {
     expect(name).not.toContain("\\");
     expect(name.startsWith(".")).toBe(false);
   });
+
+  it("takes the extension from the preset, not from a constant", () => {
+    // The regression this guards: a portal that accepts only `.xls` used to get
+    // a `.xlsx` and rejected the upload over the name alone.
+    expect(buildFilename("Математика", testPreset)).toBe("Математика_fixture.xlsx");
+    expect(
+      buildFilename("Математика", { ...testPreset, fileExtension: "xls" }),
+    ).toBe("Математика_fixture.xls");
+  });
+
+  it("does not let a preset smuggle a path or a second extension into the name", () => {
+    const hostile = { ...testPreset, fileExtension: "xls/../../etc/passwd" };
+
+    const name = buildFilename("Математика", hostile);
+
+    expect(name).not.toContain("/");
+    expect(name).not.toContain("\\");
+    expect(name.endsWith(".xls_.._.._etc_passwd")).toBe(true);
+  });
+
+  it("strips a leading dot, since the extension is written without one", () => {
+    expect(buildFilename("Математика", { ...testPreset, fileExtension: ".xls" })).toBe(
+      "Математика_fixture.xls",
+    );
+  });
 });

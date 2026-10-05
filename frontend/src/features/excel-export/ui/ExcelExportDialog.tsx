@@ -8,6 +8,8 @@ import { ExportPreviewTable } from "./ExportPreviewTable.tsx";
 
 type Props = {
   open: boolean;
+  /** Stable id of the course; the date memory is stored per course. */
+  courseId: string;
   courseName: string;
   /** The coursework the page has already loaded; nothing is re-fetched. */
   assignments: readonly ExportSource[];
@@ -29,6 +31,7 @@ type Props = {
  */
 export function ExcelExportDialog({
   open,
+  courseId,
   courseName,
   assignments,
   onClose,
@@ -46,7 +49,7 @@ export function ExcelExportDialog({
     error,
     canExport,
     run,
-  } = useExportRows(assignments, courseName);
+  } = useExportRows(assignments, courseName, courseId);
 
   // Escape closes — and only while the export is NOT in flight, so a
   // half-generated workbook is not abandoned by a stray keypress.
@@ -98,7 +101,14 @@ export function ExcelExportDialog({
             </select>
           </label>
 
-          <p className="export-hint">{t("export.dateHint")}</p>
+          {/* Two sentences, two keys: `dateHint` is the wording the task fixed
+              verbatim, and `dateMemory` adds the one thing it does not cover —
+              that a change is kept, so the teacher knows they will not have to
+              type the same dates into every export. */}
+          <div className="export-hints">
+            <p className="export-hint">{t("export.dateHint")}</p>
+            <p className="export-hint">{t("export.dateMemory")}</p>
+          </div>
 
           {error ? (
             <div className="alert alert-error" role="alert">

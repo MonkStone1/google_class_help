@@ -46,11 +46,27 @@ export function parseDayInput(value: string | undefined): Date | null {
   return date;
 }
 
+/** Two digits, so `4.9.2026` can never reach a cell. */
+function pad(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
 /** Local midnight -> `"YYYY-MM-DD"`, the value an `<input type="date">` takes. */
 export function formatDayInput(date: Date | null): string {
   if (!date) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/**
+ * A `Date` -> `"DD.MM.YYYY"`, the day ALONE as the text that lands in the cell.
+ *
+ * This is what a `writeAsText` date column is filled with, and it is built from
+ * the date parts rather than from `toLocaleString`, so it carries no time of
+ * day and no locale: `21:00:00` cannot appear in a cell that is meant to hold
+ * a lesson date. Local parts on purpose, for the reason `parseDayInput` gives.
+ */
+export function formatDayCell(date: Date): string {
+  return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()}`;
 }
 
 /** The date cell of one row: the teacher's override, else the preset default. */

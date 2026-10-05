@@ -30,6 +30,16 @@ export type ExportColumn = {
   /** Wrap long text instead of letting it run into the next column. */
   wrap?: boolean;
   /**
+   * Write a `date` cell as the TEXT `DD.MM.YYYY` instead of as a date value.
+   *
+   * A cell that holds text can carry no time of day, so this is what keeps
+   * `21:00:00` out of a column that is meant to hold a lesson DAY — and it is
+   * what the reference diary at `ukranian-dictionary-nz.ua` does. Declared per
+   * COLUMN rather than per preset, because a preset may well mix a real date
+   * with a written-out one; a preset that omits it keeps true date cells.
+   */
+  writeAsText?: boolean;
+  /**
    * How a `text` column reads its source row.
    *
    * This is what keeps the engine free of format knowledge: the preset says
@@ -82,6 +92,18 @@ export type ExportPreset = {
   sort: { primary: "createdAt"; tiebreak: "id" };
   /** Appended to the sanitized course name, e.g. "_електронний_щоденник". */
   filenameSuffix: string;
+  /**
+   * The extension the importer expects, without the dot: `"xls"` or `"xlsx"`.
+   *
+   * It is a PRESET's business, not the engine's: a portal that accepts only
+   * `.xls` uploads rejects a perfectly good workbook over its name alone.
+   */
+  fileExtension: string;
+  /**
+   * MIME the download is served with, so the browser offers the right program.
+   * Falls back to the engine's `.xlsx` type when a preset says nothing.
+   */
+  mimeType?: string;
   /**
    * The default date cell, built as LOCAL midnight.
    *

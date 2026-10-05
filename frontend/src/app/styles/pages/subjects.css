@@ -217,6 +217,19 @@
   color: var(--text-muted);
   font-size: 12.5px;
 }
+/*
+ * The date sentences are read as ONE block, so they are laid out as one: the
+ * parent's 12px flex gap keeps them off the preset selector, and the paragraph
+ * margins are dropped so the second sentence does not open a hole in the middle
+ * of a single thought. The 4px is what is left between two lines of 12.5px
+ * text — enough to see the break, not enough to look like a new section.
+ */
+.export-hints p {
+  margin: 0;
+}
+.export-hints p + p {
+  margin-top: 4px;
+}
 .export-warning {
   color: var(--warning);
   font-size: 12.5px;

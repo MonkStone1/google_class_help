@@ -53,6 +53,7 @@ function renderButton(assignments: readonly ExportSource[] = TWO) {
   return render(
     <SettingsProvider>
       <ExcelExportButton
+        courseId="c1"
         courseName="Математика 8/А"
         assignments={assignments}
       />
@@ -68,6 +69,9 @@ describe("the export button on the course page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     buildWorkbookBuffer.mockImplementation(async () => new ArrayBuffer(16));
+    // The date memory is per browser, so without this one test's dates would
+    // open the next test's dialog.
+    localStorage.removeItem("gc-export-dates");
   });
 
   it("opens a dialog with the preset, the hint and both buttons", () => {
@@ -87,6 +91,34 @@ describe("the export button on the course page", () => {
     expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument();
   });
 
+  it("says that changed dates are remembered, and that clearing one reverts it", () => {
+    // The promise the memory makes, stated on screen: without this the teacher
+    // cannot tell a saved date from the one Google Classroom happened to have,
+    // and would keep re-typing the same dates.
+    renderButton();
+    openDialog();
+
+    expect(
+      screen.getByText(/dates you change are remembered on this computer/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/clearing a field brings the assignment creation date back/i),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the task's own wording for the date hint alongside the new line", () => {
+    // `export.dateHint` was fixed verbatim by the task and must not have been
+    // rewritten to mention the memory; the new sentence is a separate element.
+    renderButton();
+    openDialog();
+
+    expect(
+      screen.getByText(
+        "The default date is taken from the assignment creation date in Google Classroom. You can change it before exporting if necessary.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("previews the rows in order, numbered 1 and 2", () => {
     renderButton();
     openDialog();
@@ -104,9 +136,9 @@ describe("the export button on the course page", () => {
     // What the teacher sees must be what lands in the file, or the preview is
     // decoration rather than a promise.
     expect(screen.getByText("1. Теми")).toBeInTheDocument();
-    expect(screen.getByText("Прочитати (google classroom)")).toBeInTheDocument();
+    expect(screen.getByText("Прочитати (Google classroom)")).toBeInTheDocument();
     // Every link is replaced, not only the first one.
-    expect(screen.getByText("Розв'язати вправи (google classroom)")).toBeInTheDocument();
+    expect(screen.getByText("Розв'язати вправи (Google classroom)")).toBeInTheDocument();
     expect(screen.queryByText(/https:\/\/example\.com/)).toBeNull();
   });
 
@@ -125,6 +157,24 @@ describe("the export button on the course page", () => {
     expect(assignments[0].created_at).toBe("2026-09-20T10:00:00");
   });
 
+  it("remembers a fixed date and shows it the next time the dialog opens", () => {
+    // The teacher's real workflow: fix the date once, and the next export
+    // starts from it instead of from the creation stamp again. One row, so
+    // there is exactly one date input to ask about.
+    const assignments = [makeSource()];
+    const first = renderButton(assignments);
+    openDialog();
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-10-05" },
+    });
+    first.unmount();
+
+    renderButton(assignments);
+    openDialog();
+
+    expect(screen.getByLabelText("Date")).toHaveValue("2026-10-05");
+  });
+
   it("saves a workbook under the sanitized course name", async () => {
     renderButton();
     openDialog();
@@ -134,7 +184,7 @@ describe("the export button on the course page", () => {
     await waitFor(() => expect(buildWorkbookBuffer).toHaveBeenCalledTimes(1));
     expect(saveBuffer).toHaveBeenCalledTimes(1);
     expect(saveBuffer.mock.calls[0][1]).toBe(
-      "Математика 8_А_електронний_щоденник.xlsx",
+      "Математика 8_А_електронний_щоденник.xls",
     );
   });
 

@@ -18,6 +18,8 @@ export const en_export = {
   "export.preset.ukranian_dictionary_nz": "ukranian-dictionary-nz.ua",
   "export.dateHint":
     "The default date is taken from the assignment creation date in Google Classroom. You can change it before exporting if necessary.",
+  "export.dateMemory":
+    "Dates you change are remembered on this computer, so the next export starts from them. Clearing a field brings the assignment creation date back.",
   "export.dateColumn": "Date",
   "export.cancel": "Cancel",
   "export.submit": "Export",

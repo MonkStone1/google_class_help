@@ -127,6 +127,47 @@ describe("the cells themselves", () => {
     expect(formatDayInput(cell.value as Date)).toBe("2026-09-20");
   });
 
+  it("writes a date column as DD.MM.YYYY text when the preset asks for it", async () => {
+    // The opt-in the diary preset uses, proved HERE so it stays a property of
+    // the engine rather than of one preset: same rows, same engine, a column
+    // that says `writeAsText` and a column that does not.
+    const textDates: ExportPreset = {
+      ...testPreset,
+      columns: [
+        ...testPreset.columns.map((column) =>
+          column.key === "when" ? { ...column, writeAsText: true } : column,
+        ),
+      ],
+    };
+    const rows = buildRows(testPreset, [makeSource({ created_at: "2026-09-20T21:00:00" })]);
+
+    const asText = await sheetOf(textDates, rows, "Fixture");
+    const asDate = await sheetOf(testPreset, rows, "Fixture");
+
+    // Text: the day alone, and the evening time of day is simply not there.
+    expect(asText.getRow(2).getCell(2).value).toBe("20.09.2026");
+    // Unchanged default: a preset that does not ask still gets a real date.
+    expect(asDate.getRow(2).getCell(2).value).toBeInstanceOf(Date);
+  });
+
+  it("leaves the day cell empty rather than writing a stray time for it", async () => {
+    const textDates: ExportPreset = {
+      ...testPreset,
+      columns: [
+        ...testPreset.columns.map((column) =>
+          column.key === "when" ? { ...column, writeAsText: true } : column,
+        ),
+      ],
+    };
+    const sheet = await sheetOf(
+      textDates,
+      [{ assignmentId: "w1", values: { seq: 1, when: null, body: "X", note: "" } }],
+      "Fixture",
+    );
+
+    expect(sheet.getRow(2).getCell(2).value).toBeNull();
+  });
+
   it("numbers rows as numbers, which is what the importer expects", async () => {
     const sheet = await sheetOf(
       testPreset,

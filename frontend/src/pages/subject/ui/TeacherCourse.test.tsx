@@ -142,7 +142,7 @@ describe("the export button on the teacher course page", () => {
     // nothing to the network (ADR-0041).
     expect(getCourseCoursework).toHaveBeenCalledTimes(1);
     expect(saveBuffer.mock.calls[0][1]).toBe(
-      "Математика 8_А_електронний_щоденник.xlsx",
+      "Математика 8_А_електронний_щоденник.xls",
     );
   });
 });

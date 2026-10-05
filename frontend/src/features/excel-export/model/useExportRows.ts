@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { useI18n } from "../../../shared/i18n/index.ts";
@@ -12,6 +12,7 @@ import {
 } from "../engine/registry.ts";
 import { buildRows } from "../engine/rows.ts";
 import { buildWorkbookBuffer } from "../engine/workbook.ts";
+import { readDateMemory, writeDateMemory } from "./dateMemory.ts";
 import type {
   DateOverrides,
   ExportPreset,
@@ -51,15 +52,62 @@ export type ExportRowsState = {
   run: () => Promise<boolean>;
 };
 
+/**
+ * The date memory as the hook holds it.
+ *
+ * `slot` is the course+preset the dates belong to, and it travels WITH the
+ * dates rather than beside them: that is what lets the hook notice a change of
+ * either and reload, instead of showing one format's dates in another.
+ */
+type MemoryState = {
+  slot: string;
+  dates: DateOverrides;
+  /** Whether the teacher has touched anything; only then is the slot written. */
+  edited: boolean;
+};
+
 export function useExportRows(
   assignments: readonly ExportSource[],
   courseName: string,
+  courseId: string,
 ): ExportRowsState {
   const { t } = useI18n();
   const [presetId, setPresetId] = useState(DEFAULT_PRESET_ID);
-  const [overrides, setOverrides] = useState<DateOverrides>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // The memory is read ONCE per course+preset, up front, so the preview opens
+  // already holding what the teacher decided last time instead of flashing the
+  // `created_at` dates and then jumping to the remembered ones.
+  const slot = `${courseId}:${presetId}`;
+  const [memory, setMemory] = useState<MemoryState>(() => ({
+    slot,
+    dates: readDateMemory(courseId, presetId),
+    edited: false,
+  }));
+
+  // React's documented "adjusting state when a prop changes": calling the
+  // setter DURING render re-renders before the browser paints, so switching
+  // preset never shows the previous format's dates for a frame. Doing it in an
+  // effect instead would paint them first.
+  if (memory.slot !== slot) {
+    setMemory({ slot, dates: readDateMemory(courseId, presetId), edited: false });
+  }
+
+  const overrides = memory.dates;
+  // Memoised because it is an effect dependency: `assignments.map(...)` inline
+  // would be a new array on every render and re-run the write below forever.
+  const knownIds = useMemo(
+    () => assignments.map((assignment) => assignment.id),
+    [assignments],
+  );
+
+  // One snapshot per slot, rewritten on every change — and only after a real
+  // edit, so merely OPENING the dialog cannot overwrite a memory it only read.
+  useEffect(() => {
+    if (!memory.edited) return;
+    writeDateMemory(courseId, presetId, overrides, knownIds);
+  }, [memory.edited, overrides, courseId, presetId, knownIds]);
 
   const presets = useMemo(() => listPresets(), []);
   // `null` rather than a throw: the SELECTOR is what failed, not the export,
@@ -84,7 +132,11 @@ export function useExportRows(
   );
 
   const setDateOverride = useCallback((assignmentId: string, day: string) => {
-    setOverrides((previous) => ({ ...previous, [assignmentId]: day }));
+    setMemory((previous) => ({
+      ...previous,
+      dates: { ...previous.dates, [assignmentId]: day },
+      edited: true,
+    }));
     // An edit clears the previous failure: leaving "invalid date" on screen
     // after the teacher fixed the date would be a lie about the current state.
     setError(null);
@@ -103,7 +155,7 @@ export function useExportRows(
     setError(null);
     try {
       const buffer = await buildWorkbookBuffer(preset, rows);
-      saveBuffer(buffer, buildFilename(courseName, preset));
+      saveBuffer(buffer, buildFilename(courseName, preset), preset.mimeType);
       toast.success(t("export.done"));
       return true;
     } catch {

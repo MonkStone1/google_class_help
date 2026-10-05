@@ -157,11 +157,14 @@ async function localeKeys(lang: "en" | "uk" | "ru"): Promise<string[]> {
  * translation, it is dead weight. Four `grades.chart.*grade*` keys were RENAMED
  * to `*score*` ones when the derived mark was dropped (a rename keeps the count),
  * and five `settings.grading*` keys arrived for the scale choice, which is what
- * took it from 431 to 436.
+ * took it from 431 to 436. The date memory of ADR-0041 then added ONE key,
+ * `export.dateMemory`, in each of the three dictionaries: 436 → 437. It is one
+ * key rather than an edit of `export.dateHint` precisely because that sentence
+ * is fixed verbatim by the task.
  * A new domain moves this number in the SAME commit as the dictionary files —
  * see the note at the top of this file.
  */
-const I18N_KEY_COUNT = 436;
+const I18N_KEY_COUNT = 437;
 
 describe("baseline: routes", () => {
   it("keeps every declared route, in order", () => {
@@ -213,7 +216,11 @@ describe("baseline: stylesheets", () => {
     // eight of those rules with it: `.grade-chart-bar`, `.grade-chart-average`
     // and the six `.grade-chart-legend*` selectors — a legend names the series,
     // and one series needs none. 504 − 8 = 496.
-    expect(cssSelectors().size).toBe(496);
+    //
+    // ADR-0041's date memory then grouped the two date sentences into one
+    // block, which took two rules with it: `.export-hints p` and
+    // `.export-hints p + p`. 496 + 2 = 498.
+    expect(cssSelectors().size).toBe(498);
   });
 
   it("keeps the stylesheets themselves in the app layer", () => {
