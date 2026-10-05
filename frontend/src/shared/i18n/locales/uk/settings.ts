@@ -45,6 +45,14 @@ export const uk_settings = {
   "settings.gradeScale12": "12 балів",
   "settings.gradeScale100": "100 балів",
   "settings.gradeScaleHint": "Застосовується до всіх графіків оцінок. Google Classroom зберігає сирі бали й не каже, з чого вони.",
+  // Що показує виставлена оцінка в таблиці «Усі учні» (ADR-0043).
+  // Формат обирає вчитель: бал «12» читається не так, як «12 / 12».
+  "settings.teacherMatrix": "Таблиця «Усі учні»",
+  "settings.teacherMatrixHint": "Як показується виставлена оцінка в таблиці «Усі учні»: лише бал, бал із максимуму, лише відсоток або все разом.",
+  "settings.teacherMatrixPoints": "Лише бали",
+  "settings.teacherMatrixRatio": "Бал із максимуму",
+  "settings.teacherMatrixPercent": "Лише відсотки",
+  "settings.teacherMatrixBoth": "Бали і відсотки",
   "settings.remindOverdue": "Нагадувати про прострочені завдання",
   "settings.remindToday": "Нагадувати про завдання на сьогодні",
   "settings.remindTomorrow": "Нагадувати про завдання на завтра",

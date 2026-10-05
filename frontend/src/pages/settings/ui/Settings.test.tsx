@@ -121,6 +121,45 @@ describe("document language", () => {
     expect(stored.gradeScale).toBe(100);
   });
 
+  it("remembers how a graded cell of the all-students table is drawn", () => {
+    // ADR-0043: one choice for the whole matrix, and it has to survive a reload —
+    // a format that reset itself would silently put the percentages back.
+    renderSettings();
+
+    expect(screen.getByRole("button", { name: "Points and percent" })).toHaveClass(
+      "active",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Points only" }));
+
+    expect(screen.getByRole("button", { name: "Points only" })).toHaveClass(
+      "active",
+    );
+    const stored = JSON.parse(localStorage.getItem("gc-settings") ?? "{}");
+    expect(stored.teacherGradeDisplay).toBe("points");
+  });
+
+  it("ignores a stored matrix format the app does not know", () => {
+    // A hand-edited or stale localStorage must not leave the matrix on a format
+    // with no rendering (the `normalizeTeacherGradeDisplay` guard).
+    localStorage.setItem(
+      "gc-settings",
+      JSON.stringify({
+        ...DEFAULT_SETTINGS,
+        language: "en",
+        teacherGradeDisplay: "average",
+      }),
+    );
+    render(
+      <SettingsProvider>
+        <Settings />
+      </SettingsProvider>,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Points and percent" }),
+    ).toHaveClass("active");
+  });
+
   it("declares the stored language on the document element", () => {
     renderSettingsIn("uk");
     expect(document.documentElement.lang).toBe("uk");

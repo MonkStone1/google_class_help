@@ -163,8 +163,12 @@ async function localeKeys(lang: "en" | "uk" | "ru"): Promise<string[]> {
  * is fixed verbatim by the task.
  * A new domain moves this number in the SAME commit as the dictionary files —
  * see the note at the top of this file.
+ *
+ * 443 after ADR-0043 added the six `settings.teacherMatrix*` keys: what a
+ * graded cell of the teacher's all-students matrix shows — the mark, the mark
+ * out of the task, the percentage, or the mark together with the percentage.
  */
-const I18N_KEY_COUNT = 437;
+const I18N_KEY_COUNT = 443;
 
 describe("baseline: routes", () => {
   it("keeps every declared route, in order", () => {

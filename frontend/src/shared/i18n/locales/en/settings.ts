@@ -45,6 +45,14 @@ export const en_settings = {
   "settings.gradeScale12": "12 points",
   "settings.gradeScale100": "100 points",
   "settings.gradeScaleHint": "Applied to every grade chart. Google Classroom stores raw points and does not say what they are out of.",
+  // What a graded cell of the teacher matrix shows (ADR-0043). The teacher
+  // picks: a raw "12" is read differently from "12 / 12".
+  "settings.teacherMatrix": "All students table",
+  "settings.teacherMatrixHint": "How a graded cell is drawn in the all-students table: the mark alone, the mark out of the task, the percentage alone, or all of them.",
+  "settings.teacherMatrixPoints": "Points only",
+  "settings.teacherMatrixRatio": "Points out of",
+  "settings.teacherMatrixPercent": "Percent only",
+  "settings.teacherMatrixBoth": "Points and percent",
   "settings.remindOverdue": "Remind about overdue assignments",
   "settings.remindToday": "Remind about assignments due today",
   "settings.remindTomorrow": "Remind about assignments due tomorrow",

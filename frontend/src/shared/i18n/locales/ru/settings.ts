@@ -45,6 +45,14 @@ export const ru_settings = {
   "settings.gradeScale12": "12 баллов",
   "settings.gradeScale100": "100 баллов",
   "settings.gradeScaleHint": "Применяется ко всем графикам оценок. Google Classroom хранит сырые баллы и не сообщает, что они из.",
+  // Что показывает выставленная оценка в таблице «Все ученики» (ADR-0043).
+  // Формат выбирает учитель: балл «12» читается не так, как «12 / 12».
+  "settings.teacherMatrix": "Таблица «Все ученики»",
+  "settings.teacherMatrixHint": "Как показывается выставленная оценка в таблице «Все ученики»: только балл, балл из максимума, только процент или всё вместе.",
+  "settings.teacherMatrixPoints": "Только баллы",
+  "settings.teacherMatrixRatio": "Балл из максимума",
+  "settings.teacherMatrixPercent": "Только проценты",
+  "settings.teacherMatrixBoth": "Баллы и проценты",
   "settings.remindOverdue": "Напоминать о просроченных заданиях",
   "settings.remindToday": "Напоминать о заданиях на сегодня",
   "settings.remindTomorrow": "Напоминать о заданиях на завтра",

@@ -49,3 +49,4 @@
 | [ADR-0040](adr-0040-layered-frontend-slices.md) | Пять слоёв в `frontend/src`: `shared/`, `entities/`, `features/`, `widgets/`, `pages/`, `app/` вместо плоских `components/`/`lib/`/`context/` | Accepted |
 | [ADR-0041](adr-0041-client-side-excel-export.md) | Клиентский экспорт курса в Excel: пресетная архитектура, ExcelJS, ноль строк бэкенда и ноль новых запросов | Accepted |
 | [ADR-0042](adr-0042-grades-chart-dialog.md) | График динамики оценок: своя отрисовка SVG в `features/grades-chart/`, две оси, модалка, ноль зависимостей и ноль строк бэкенда | Accepted |
+| [ADR-0043](adr-0043-teacher-matrix-grade-display.md) | Формат ячейки в таблице «Все ученики»: балл, балл из максимума, процент или всё вместе — переключатель в настройках | Accepted |

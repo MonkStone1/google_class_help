@@ -7,7 +7,9 @@ import { EmptyState, SectionSkeleton } from "../../../shared/ui/index.ts";
 import { formatDateTimeShort, parseDue } from "../../../shared/lib/index.ts";
 import { useI18n } from "../../../shared/i18n/index.ts";
 import { useResource } from "../../../shared/hooks/index.ts";
+import { useSettings } from "../../../shared/settings/index.ts";
 import type { SubmissionCell } from "../../../shared/types/index.ts";
+import { gradeCellText } from "../model/gradeCell.ts";
 
 /**
  * Dedicated teacher grades view (section 6): students as rows, assignments as
@@ -124,11 +126,14 @@ export function TeacherGrades() {
 
 function GradeCell({ cell }: { cell: SubmissionCell }) {
   const { t } = useI18n();
+  // ADR-0043: the format of a graded cell is a user preference, not a rule the
+  // page decides — the same matrix is read as marks in one school and as
+  // percentages in the next.
+  const { teacherGradeDisplay } = useSettings();
   if (cell.graded && cell.points !== null) {
     return (
       <span className="matrix-grade">
-        {cell.points} / {cell.max_points ?? "?"}
-        {cell.percent === null ? "" : ` · ${cell.percent}%`}
+        {gradeCellText(cell, teacherGradeDisplay)}
       </span>
     );
   }

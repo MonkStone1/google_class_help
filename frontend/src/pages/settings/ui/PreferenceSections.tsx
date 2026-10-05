@@ -1,7 +1,11 @@
 ﻿import { useSettings } from "../../../shared/settings/index.ts";
 import { LANGUAGE_OPTIONS, useI18n } from "../../../shared/i18n/index.ts";
 import type { I18nKey } from "../../../shared/i18n/index.ts";
-import type { AppSettings, ThemeMode } from "../../../shared/types/index.ts";
+import type {
+  AppSettings,
+  TeacherGradeDisplay,
+  ThemeMode,
+} from "../../../shared/types/index.ts";
 
 /**
  * The three sections that are pure preferences: how it looks, what the
@@ -18,6 +22,21 @@ const THEME_OPTIONS: Array<{ mode: ThemeMode; labelKey: I18nKey }> = [
   { mode: "light", labelKey: "settings.light" },
   { mode: "dark", labelKey: "settings.dark" },
   { mode: "system", labelKey: "settings.system" },
+];
+
+/**
+ * The cell formats of the teacher matrix (ADR-0043), in the order they are
+ * offered: the mark alone, the mark out of its maximum, the percentage alone,
+ * and the format the matrix had before the setting existed.
+ */
+const MATRIX_DISPLAY_OPTIONS: Array<{
+  mode: TeacherGradeDisplay;
+  labelKey: I18nKey;
+}> = [
+  { mode: "points", labelKey: "settings.teacherMatrixPoints" },
+  { mode: "ratio", labelKey: "settings.teacherMatrixRatio" },
+  { mode: "percent", labelKey: "settings.teacherMatrixPercent" },
+  { mode: "both", labelKey: "settings.teacherMatrixBoth" },
 ];
 
 export function PreferenceSections() {
@@ -167,6 +186,35 @@ export function PreferenceSections() {
                 {value === 12
                   ? t("settings.gradeScale12")
                   : t("settings.gradeScale100")}
+              </button>
+            ))}
+          </div>
+        </div>
+        {/* ADR-0043: the same reasoning, one step down — Classroom sends both
+            numbers in every cell and cannot say which one this school reads, so
+            the teacher picks once for the whole matrix. */}
+        <div className="settings-row">
+          <div>
+            <div className="settings-label">{t("settings.teacherMatrix")}</div>
+            <div className="settings-hint">
+              {t("settings.teacherMatrixHint")}
+            </div>
+          </div>
+          <div className="tabs">
+            {MATRIX_DISPLAY_OPTIONS.map((option) => (
+              <button
+                key={option.mode}
+                type="button"
+                className={
+                  settings.teacherGradeDisplay === option.mode
+                    ? "tab active"
+                    : "tab"
+                }
+                onClick={() =>
+                  settings.update({ teacherGradeDisplay: option.mode })
+                }
+              >
+                {t(option.labelKey)}
               </button>
             ))}
           </div>

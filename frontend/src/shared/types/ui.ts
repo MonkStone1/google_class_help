@@ -44,6 +44,25 @@ export type ThemeMode = "light" | "dark" | "system";
  */
 export type GradeScale = 12 | 100;
 
+/**
+ * What one grade cell of the teacher's all-students matrix shows.
+ *
+ * The matrix is the one surface where the same grade is read as a raw mark
+ * ("12"), as a mark out of the task ("12 / 12"), as a share of the task ("100 %")
+ * or as both — and which of them a school reads is not something the app can
+ * guess, exactly like `GradeScale` above (ADR-0043). `both` is the default, so
+ * the matrix looks exactly as it did before the setting existed.
+ *
+ * The formats are the ways the two numbers a cell carries (`points` and
+ * `percent`) can be shown: the mark alone, the mark out of its maximum, the
+ * share alone, or the mark together with the share.
+ */
+export type TeacherGradeDisplay =
+  | "points"
+  | "ratio"
+  | "percent"
+  | "both";
+
 export type Language = "en" | "uk" | "ru";
 
 export type DashboardSections = {
@@ -83,6 +102,11 @@ export type AppSettings = {
     subjectTab: AssignmentStatusFilter | "all";
     /** Top of the grade axis. 12 in a Ukrainian school, 100 on a percentage one. */
     gradeScale: GradeScale;
+    /**
+     * What a graded cell of the teacher matrix shows: the raw mark alone, the
+     * mark out of the task, the percentage alone, or all of it (ADR-0043).
+     */
+    teacherGradeDisplay: TeacherGradeDisplay;
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -114,4 +138,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
     collapsedGradeCourses: [],
     subjectTab: "all",
     gradeScale: 12,
+    // The matrix looked like this before the setting existed (ADR-0043).
+    teacherGradeDisplay: "both",
 };

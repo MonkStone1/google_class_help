@@ -21,6 +21,7 @@ import {
   type CalendarViewMode,
   type GradeScale,
   type Language,
+  type TeacherGradeDisplay,
   type ThemeMode,
 } from "../../shared/types/index.ts";
 import { LOCALE, detectLanguage, setLocale } from "../lib/index.ts";
@@ -32,6 +33,14 @@ const CALENDAR_VIEWS: readonly CalendarViewMode[] = ["month", "week", "day"];
 const LANGUAGES: readonly Language[] = ["en", "uk", "ru"];
 
 const GRADE_SCALES: readonly GradeScale[] = [12, 100];
+
+/** The ways a graded cell of the teacher matrix may be drawn. */
+const TEACHER_GRADE_DISPLAYS: readonly TeacherGradeDisplay[] = [
+  "points",
+  "ratio",
+  "percent",
+  "both",
+];
 
 /**
  * The theme actually painted on `<html>`, as opposed to the `system` /
@@ -84,6 +93,21 @@ function normalizeGradeScale(
   return GRADE_SCALES.includes(value as GradeScale)
     ? (value as GradeScale)
     : DEFAULT_SETTINGS.gradeScale;
+}
+
+/**
+ * Same guard for the teacher matrix cell format.
+ *
+ * A value the app does not know about must not silently become "no percent" or,
+ * worse, a cell that renders nothing: the fallback is `both`, the format the
+ * matrix has always had (ADR-0043).
+ */
+function normalizeTeacherGradeDisplay(
+  value: AppSettings["teacherGradeDisplay"] | undefined,
+): TeacherGradeDisplay {
+  return TEACHER_GRADE_DISPLAYS.includes(value as TeacherGradeDisplay)
+    ? (value as TeacherGradeDisplay)
+    : DEFAULT_SETTINGS.teacherGradeDisplay;
 }
 
 /**
@@ -149,6 +173,9 @@ function loadSettings(): AppSettings {
       ),
       subjectTab: normalizeSubjectTab(parsed.subjectTab),
       gradeScale: normalizeGradeScale(parsed.gradeScale),
+      teacherGradeDisplay: normalizeTeacherGradeDisplay(
+        parsed.teacherGradeDisplay,
+      ),
     };
   } catch {
     return { ...DEFAULT_SETTINGS, language: detectLanguage() };
